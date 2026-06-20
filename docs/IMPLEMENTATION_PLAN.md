@@ -1,31 +1,41 @@
 # Pickup and Putdown Event Detection
 
-## Simplified Architecture and Small-Team Implementation Plan
+## Clean Architecture and Small-Team Implementation Plan
+
+**Status:** cross-referenced against the complete case repository
+
+**Scope:** batch processing of video files for detection of `pickup` and `putdown` event intervals
+
+---
 
 ## 1. Objective
 
-Build a batch-processing system that accepts store video files and returns:
+Build a reproducible computer-vision system that accepts store video files and returns zero or more event predictions:
 
 ```text
 clip_id
 event_type: pickup | putdown
 t_start
 t_end
-item_count
-confidence
+score
 ```
 
-The system does not perform:
+The system must detect both:
 
-* product identification;
-* customer identification;
-* inventory counting;
-* theft detection;
-* live streaming;
-* real-time inference;
-* SAM-based segmentation.
+- **what happened** — `pickup` or `putdown`;
+- **when it happened** — an interval `[t_start, t_end]` measured in seconds from the start of the source clip.
 
-The first implementation operates entirely on video files:
+The project deliberately excludes:
+
+- product identification;
+- customer identification;
+- inventory counting;
+- theft detection;
+- face recognition;
+- live streaming in the first implementation;
+- SAM-based segmentation in the first implementation.
+
+The first implementation operates only on video files:
 
 ```bash
 pickup-putdown infer --input videos/example.mp4
@@ -37,169 +47,267 @@ or:
 pickup-putdown infer --input videos/
 ```
 
-The output is:
-
-```text
-predictions.csv
-```
+The required model output is exported as `predictions.csv` using the case schema.
 
 ---
 
-# 2. Final Simplified Architecture
+## 2. Operational Event Definitions
 
-```text
-Input video files
-        │
-        ▼
-Layer 0A: Clip triage
-Person detection + pose + tracking
-        │
-        ├── no person → exclude from event annotation/inference
-        │
-        └── person present
-                    │
-                    ▼
-Layer 0B: Interaction proposal generation
-Wrist tracks + fixed shelf regions
-                    │
-                    ▼
-Candidate video intervals
-                    │
-                    ▼
-Layer 1A: VideoMAE baseline
-Fixed-window pickup / putdown / background classification
-                    │
-                    ▼
-Layer 1B: VideoMAE temporal model
-VideoMAE embeddings + lightweight temporal head
-                    │
-                    ▼
-Proposed event type and interval
-                    │
-                    ▼
-Layer 2: Qwen3.6-27B verifier
-Event / no event
-Pickup / putdown
-Item count
-Visibility
-                    │
-                    ▼
-Layer 3: Deterministic fusion
-Accept, reject, relabel or flag
-                    │
-                    ▼
-Final predictions.csv
-```
+These definitions must be used consistently in annotation, prompting, training, and evaluation.
 
-The architecture contains four main components:
+### Pickup
 
-1. Dataset creation and interaction proposals.
-2. VideoMAE event detection.
-3. Qwen verification.
-4. Deterministic result fusion.
+A person removes an item from a shelf or surface and takes it into their hand or hands, so that the item leaves its resting place and becomes held or carried.
 
-There is no agentic orchestration requirement.
+### Putdown
+
+A person places an item that they were already holding onto a shelf or surface and releases it so that it remains resting there.
+
+### Non-events
+
+Do not label the following as events:
+
+- touching or inspecting an item without removing it;
+- looking or reaching past an item;
+- walking, browsing, or standing near shelves;
+- generic restocking of items that were not previously taken;
+- empty clips or clips with no person.
+
+### Fixed edge-case rules
+
+- Two items taken together produce **two pickup rows**.
+- Immediate pickup followed by return produces **one pickup and one putdown**.
+- Fully occluded or out-of-frame actions are excluded from `events.csv`.
+- Multiple simultaneous actors are all labeled.
+- Brief or ambiguous but visible actions are retained with `confidence=low`.
+- Difficult but labelable cases use `hard_case=true`.
+- Every event is stored as an interval `[t_start, t_end]`.
 
 ---
 
-# 3. Layer 0A: Dataset Architecture and Clip Triage
-
-## 3.1 Purpose
-
-Layer 0A answers:
+## 3. Final Simplified Architecture
 
 ```text
-Does this video contain a visible person?
-Is the video technically usable?
+Read-only cloud bucket / local input video files
+                    │
+                    ▼
+Layer 0A — Inventory and person triage
+YOLO person detection + ByteTrack at low sampling rate
+                    │
+        ┌───────────┴────────────┐
+        │                        │
+   no person                person present
+        │                        │
+retain manifest row         derive active span(s)
+mark unusable for           and person tracklets
+annotation/modeling              │
+                                 ▼
+Layer 0B — Interaction proposal generation
+YOLO pose + fixed shelf/surface regions at higher sampling rate
+                                 │
+                                 ▼
+High-recall candidate intervals for annotation and modeling
+                                 │
+                                 ▼
+Human annotation of complete active spans
+                                 │
+                                 ▼
+clips.csv + events.csv + internal ignore intervals
+                                 │
+                ┌────────────────┴────────────────┐
+                │                                 │
+                ▼                                 ▼
+Layer 1A — Standard baseline              Layer 2 — Standalone VLM
+VideoMAE fixed-window classifier          Qwen3.6-27B scans active-span
+pickup / putdown / background             windows independently
+                │                                 │
+                ▼                                 ▼
+Coarse event proposals                    Independent VLM events
+                │                                 │
+                ▼                                 │
+Layer 1B — Temporal refinement                     │
+VideoMAE embeddings + small Conv1D head            │
+                │                                 │
+                ▼                                 │
+Refined event type and interval                     │
+                └────────────────┬─────────────────┘
+                                 │
+                    Shared independent evaluation
+                                 │
+                                 ▼
+Layer 3 — Optional fusion
+Layer 1 proposes; Qwen verifies uncertain/proposed events
+                                 │
+                                 ▼
+Deterministic fusion and final predictions.csv
 ```
 
-It does not detect pickup or putdown.
+### Architectural principles
 
-Its purpose is to:
-
-* avoid manually watching empty clips;
-* remove corrupt and unusable videos;
-* index the source material;
-* create a review queue;
-* preserve metadata needed for reproducibility.
+1. **Layer 0 produces trustworthy labels and active spans.**
+2. **Stage B is a high-recall proposal mechanism, not the ground truth.**
+3. **Layer 1 and Layer 2 must be independently evaluable on the same test clips.**
+4. **Qwen verification of Layer 1 predictions belongs to Layer 3 fusion.**
+5. **All systems use the same prediction schema and evaluator.**
+6. **The first implementation uses batch video files only; streaming is deferred.**
 
 ---
 
-## 3.2 Canonical dataset files
+## 4. Repository, Storage, and Privacy Rules
 
-Create the following tables.
+### 4.1 Repository separation
 
-### `clips.parquet`
+The case repository is read-only.
 
-One row per source video:
+All implementation artifacts must live in the team's own solution repository and private storage.
+
+| Artifact | Location |
+|---|---|
+| Raw source footage | Provided read-only bucket |
+| Cached working subset | Private local/cloud storage |
+| Source code | Team solution repository |
+| `clips.csv`, `events.csv` | Solution repository or private versioned storage |
+| Extracted candidate clips | Private storage, not Git |
+| Embeddings and checkpoints | Private artifact storage, not Git |
+| Predictions, metrics, reports | Solution repository |
+| Credentials | Environment variables or ignored secret files |
+
+### 4.2 Required `.gitignore`
+
+```gitignore
+.env
+.env.*
+data/
+cache/
+artifacts/features/
+artifacts/checkpoints/
+*.mp4
+*.avi
+*.mov
+*.pt
+*.pth
+*.onnx
+*.gguf
+__pycache__/
+.pytest_cache/
+```
+
+### 4.3 Privacy
+
+- Do not identify or attempt to recognize individuals.
+- Keep footage in controlled working storage.
+- Do not redistribute source clips.
+- Blur faces in published examples, reports, and presentations.
+- Use clip-local actor IDs such as `track_3`; these are not identities.
+
+---
+
+## 5. Canonical Case Schemas
+
+The implementation may maintain richer internal Parquet files, but it must export the exact case-compatible CSV schemas.
+
+## 5.1 `clips.csv`
+
+One row per source video file:
 
 ```text
 clip_id
-source_uri
-source_filename
-source_etag
+s3_key
 duration_s
 fps
 width
 height
-capture_time
-recording_group
-decode_status
-has_person
+n_person_tracks
 usable
-triage_status
+active_start_s
+active_end_s
 split
+session_id
 notes
 ```
 
-Recommended values for `triage_status`:
+### Internal additions
+
+The internal `clips.parquet` may also include:
 
 ```text
-PENDING
-NO_PERSON
-PERSON_PRESENT
-UNUSABLE
-REVIEWED
+source_uri
+size_bytes
+etag
+capture_time
+decode_status
+has_person
+triage_status
+dataset_version
 ```
 
-### `events.parquet`
+### Active spans
 
-One row per labeled pickup or putdown:
+The official schema supports one main active span. Internally, preserve multiple spans in:
+
+```text
+active_spans.parquet
+```
+
+with:
+
+```text
+clip_id
+active_span_id
+t_start
+t_end
+n_person_tracks
+```
+
+Export the main or enclosing span to `active_start_s` and `active_end_s`, and describe unusual additional spans in `notes`.
+
+## 5.2 `events.csv`
+
+One row per human-verified ground-truth event:
 
 ```text
 event_id
-event_group_id
 clip_id
-actor_id
-event_type
+type
 t_start
 t_end
-item_index
-label_confidence
 hard_case
 annotator
-review_status
+confidence
 notes
 ```
 
-Allowed `label_confidence` values:
+Allowed `type`:
+
+```text
+pickup
+putdown
+```
+
+Allowed `confidence`:
 
 ```text
 high
-medium
+med
 low
 ```
 
-For two objects picked up simultaneously, create two rows:
+### Internal additions
+
+The internal `events.parquet` may include:
 
 ```text
-event_101 | group_12 | clip_7 | pickup | 4.20 | 5.10 | item_index=1
-event_102 | group_12 | clip_7 | pickup | 4.20 | 5.10 | item_index=2
+event_group_id
+actor_id
+item_index
+review_status
 ```
 
-### `ignore_intervals.parquet`
+For two objects picked up simultaneously, create two official event rows with the same interval and two unique `event_id` values.
 
-Store intervals that must not be treated as either positive events or negative background:
+## 5.3 Internal `ignore_intervals.parquet`
+
+This is not part of the official case schema, but it prevents excluded actions from being sampled as background.
 
 ```text
 ignore_id
@@ -211,7 +319,7 @@ annotator
 notes
 ```
 
-Reasons include:
+Suggested reasons:
 
 ```text
 ACTION_OCCLUDED
@@ -221,63 +329,122 @@ UNLABELABLE
 CORRUPT_SECTION
 ```
 
-This table is important because an excluded, occluded action must not accidentally become a background training example.
+Occluded events are not included in `events.csv`; their time ranges are kept only in the internal ignore table.
+
+## 5.4 `predictions.csv`
+
+One row per predicted event:
+
+```text
+pred_id
+clip_id
+type
+t_start
+t_end
+score
+model
+```
+
+Recommended model identifiers:
+
+```text
+layer1_videomae_window_v1
+layer1_videomae_tcn_v1
+layer2_qwen36_27b_standalone_v1
+layer3_videomae_qwen_verifier_v1
+```
+
+Richer audit information must be preserved separately and must never replace the canonical prediction export.
 
 ---
 
-## 3.3 Automated metadata indexing
+# 6. Layer 0A — Inventory, Person Triage, and Active Spans
 
-The indexing process must:
+## 6.1 Purpose
 
-1. List available video objects in the cloud bucket.
-2. Generate a stable `clip_id`.
-3. Read metadata with `ffprobe`.
-4. Record duration, FPS, resolution and codec.
-5. Detect duplicate files using URI, ETag or checksum.
-6. Mark decode failures.
-7. Avoid downloading all source videos.
+Layer 0A answers:
 
-Command:
+```text
+Is the video technically usable?
+Does it contain a person?
+When is a person present?
+How many person tracklets are detected?
+```
+
+It does not attempt to detect pickup or putdown.
+
+Its main outputs are:
+
+- populated clip metadata;
+- `n_person_tracks`;
+- `usable`;
+- active person span or spans;
+- cached person tracklets.
+
+## 6.2 Inventory
+
+The inventory process must:
+
+1. List all video objects in the bucket.
+2. Generate a stable `clip_id` for each object.
+3. Read duration, FPS, resolution, codec, and size.
+4. Record the exact object key as `s3_key`.
+5. detect duplicate objects using key, size, ETag, or checksum;
+6. record decode failures;
+7. avoid downloading the complete 80 GB dataset.
+
+Suggested command:
 
 ```bash
 pickup-putdown index \
   --source s3://bucket/prefix \
-  --output manifests/clips.parquet
+  --output manifest/clips.parquet
 ```
 
-The local cache should download videos only when they are:
+Support S3-compatible endpoints:
 
-* selected for triage;
-* selected for annotation;
-* selected for training;
-* selected for evaluation.
+```yaml
+storage:
+  bucket_uri: s3://bucket/prefix
+  region: null
+  endpoint_url: null
+  anonymous: false
+```
 
----
+## 6.3 Local cache policy
 
-## 3.4 YOLO pose and ByteTrack triage
+Download videos only when they are selected for:
 
-Use one small pretrained YOLO pose model with ByteTrack.
+- triage;
+- annotation;
+- training;
+- validation;
+- testing.
 
-At the application level, pass the video filename directly:
+The cache must be bounded and reproducible. Cache entries should be addressable by `clip_id`, source key, and object version or ETag.
+
+## 6.4 Person detection and tracking
+
+Use a pretrained YOLO person detector with ByteTrack or BoT-SORT.
+
+For the simplest implementation, pass the encoded video file directly to Ultralytics:
 
 ```python
 from ultralytics import YOLO
 
-model = YOLO(settings.pose_model)
+model = YOLO(settings.person_model)
 
 results = model.track(
-    source=video_path,
+    source=str(video_path),
     tracker="bytetrack.yaml",
     stream=True,
     classes=[0],
-    vid_stride=settings.triage_stride,
+    vid_stride=calculated_stride,
     verbose=False,
 )
 ```
 
-The library decodes the video internally.
-
-Your code must iterate over the results and extract:
+The library decodes the video internally. The application still iterates over one result object per processed frame and extracts:
 
 ```text
 frame_index
@@ -285,98 +452,128 @@ timestamp
 track_id
 person_bbox
 detection_confidence
-keypoints
-keypoint_confidences
 ```
 
 Do not save every decoded frame.
 
-Save structured tracking results to:
+Save structured tracks to:
 
 ```text
-tracks/<clip_id>.parquet
+tracks/person/<clip_id>.parquet
 ```
 
-Optionally save one preview video with:
+## 6.5 Sampling rate
 
-* person boxes;
-* track IDs;
-* wrist keypoints;
-* timestamps.
+Layer 0A only needs coarse person presence.
 
----
+Recommended initial rate:
 
-## 3.5 Triage frame rate
+```text
+one processed frame every 1–2 seconds
+```
 
-For an initial 25–30 FPS video, process approximately 3–5 FPS.
-
-Configure this through `vid_stride`.
-
-Example:
+Equivalent target FPS:
 
 ```yaml
 triage:
-  target_fps: 4
+  target_fps: 0.5
   minimum_track_duration_s: 0.75
   minimum_person_confidence: 0.35
 ```
 
-The stride should be calculated from the actual source FPS:
+Calculate video stride from source FPS:
 
 ```text
-vid_stride = round(source_fps / target_fps)
+vid_stride = max(1, round(source_fps / target_fps))
 ```
 
-Do not hard-code the same stride for every video.
+Do not hard-code one stride for all videos.
 
----
+## 6.6 Stable person-track rule
 
-## 3.6 Person-presence rule
+Mark a clip as containing a person when at least one tracklet:
 
-Mark a clip `PERSON_PRESENT` when at least one person track:
-
-* lasts longer than the configured minimum duration;
-* contains enough confident detections;
-* is not restricted to one accidental frame.
+- lasts for at least the configured minimum duration;
+- contains multiple confident detections;
+- is not a single-frame detection.
 
 Suggested initial rule:
 
 ```text
-stable track duration ≥ 0.75 seconds
+track duration >= 0.75 s
 and
 at least 3 confident observations
 ```
 
-Mark the clip `NO_PERSON` when no stable track exists.
+## 6.7 Empty clips
 
-Do not delete `NO_PERSON` records. Keep them in `clips.parquet` so triage performance can be evaluated later.
+When no stable person track is found:
 
----
+```text
+n_person_tracks = 0
+usable = false
+```
 
-## 3.7 Human quality control for triage
+Keep the row in `clips.csv`. Do not delete it.
 
-Automatically rejected videos must still be sampled.
+No-person clips are used to evaluate the triage stage and end-to-end compute savings. They are not used as Layer 1 event-classification negatives.
+
+## 6.8 Active spans
+
+For each kept clip, calculate when one or more people are visible.
+
+Store:
+
+```text
+active_start_s
+active_end_s
+```
+
+If there are separate bursts of person presence, store all of them internally in `active_spans.parquet`.
+
+Active spans are used to:
+
+- focus annotation;
+- avoid processing dead footage in Layer 1;
+- generate standalone Layer 2 windows;
+- reduce repeated video decoding.
+
+## 6.9 Triage quality control
 
 Review:
 
-* 5–10% of `NO_PERSON` clips;
-* all clips with decode errors;
-* clips containing very low-confidence partial detections;
-* a random sample from each recording day or session.
+- 5–10% of automatically rejected no-person clips;
+- all clips with decode failures;
+- clips with partial or low-confidence person detections;
+- a random sample from each recording session or day.
 
-The main triage metric is:
+The key triage metric is **person-containing clip recall**. False-positive retention is acceptable; false-negative removal may discard real events.
+
+## 6.10 Layer 0A outputs
 
 ```text
-person-containing clip recall
+manifest/clips.parquet
+manifest/active_spans.parquet
+tracks/person/<clip_id>.parquet
+artifacts/triage_previews/<clip_id>.mp4  # optional sample only
 ```
 
-False-positive triage is acceptable because a human can reject an unnecessary clip. False-negative triage is dangerous because it can remove real events.
+## 6.11 Layer 0A exit criteria
+
+Layer 0A is complete when:
+
+- bucket inventory is reproducible;
+- metadata and decode status are recorded;
+- no-person clips remain in the manifest with `usable=false`;
+- active person spans are generated;
+- person-track recall is sampled and reviewed;
+- no manual frame extraction is required.
 
 ---
 
-# 4. Layer 0B: Interaction Proposal Generation
+# 7. Layer 0B — Interaction Proposal Generation
 
-## 4.1 Purpose
+## 7.1 Purpose
 
 Layer 0B answers:
 
@@ -384,22 +581,18 @@ Layer 0B answers:
 When is a tracked person likely interacting with a shelf or surface?
 ```
 
-It does not decide whether the action is pickup or putdown.
+It does not decide whether the interaction is pickup, putdown, or a negative action.
 
-Its output is a list of high-recall candidate intervals.
+It produces high-recall candidate intervals used to:
 
-Layer 0B is used for:
+- prioritize human annotation;
+- create training windows;
+- reduce Layer 1 computation;
+- optionally reduce the number of standalone VLM windows.
 
-* prioritizing annotation;
-* generating training windows;
-* reducing Layer 1 computation;
-* reducing the number of clips sent to Qwen.
+## 7.2 Fixed shelf and surface regions
 
----
-
-## 4.2 Configure shelf regions once
-
-Because the camera is fixed, manually define shelf and surface polygons once.
+Because the camera is fixed, define shelf and placement regions once.
 
 Example `configs/shelves.yaml`:
 
@@ -422,36 +615,78 @@ regions:
       - [1120, 410]
       - [1190, 770]
       - [580, 780]
-```
 
-For each exact region, generate an expanded interaction region:
-
-```yaml
 interaction_margin_px: 60
 ```
 
-The exact polygon represents the shelf.
+Store shelf-region configuration in version control.
 
-The expanded polygon represents the area in which hand interaction is plausible.
+## 7.3 Pose inference
 
----
+Use a pretrained YOLO pose model with ByteTrack.
 
-## 4.3 Candidate-generation signals
+The encoded video path can again be passed directly to Ultralytics:
 
-Use the following signals:
+```python
+pose_model = YOLO(settings.pose_model)
+
+results = pose_model.track(
+    source=str(video_path),
+    tracker="bytetrack.yaml",
+    stream=True,
+    classes=[0],
+    vid_stride=calculated_stride,
+    verbose=False,
+)
+```
+
+The application extracts:
+
+```text
+frame_index
+timestamp
+track_id
+person_bbox
+left_wrist_xy
+right_wrist_xy
+keypoint_confidences
+```
+
+Save:
+
+```text
+tracks/pose/<clip_id>.parquet
+```
+
+## 7.4 Sampling rate
+
+Fine hand interaction requires a higher sampling rate than Layer 0A.
+
+Recommended initial setting:
+
+```yaml
+proposals:
+  target_fps: 8
+```
+
+Three or four FPS may miss very brief interactions. Start around 8 FPS and tune using measured proposal recall.
+
+## 7.5 Candidate signals
+
+Initial high-recall signals:
 
 1. Left or right wrist enters an expanded shelf region.
 2. Wrist approaches within a configured distance of a shelf polygon.
-3. Wrist remains near the shelf for a minimum duration.
-4. The person bounding box overlaps the shelf interaction region.
-5. Wrist direction changes near the shelf.
-6. Motion increases inside the shelf region.
+3. Wrist remains near a shelf for a minimum duration.
+4. Person box overlaps the shelf interaction region.
 
-For the first implementation, wrist proximity is sufficient. Local shelf motion and direction changes can be added after the basic version works.
+Optional later signals:
 
----
+- wrist-direction reversal;
+- local shelf-region motion;
+- object-like motion near the hand.
 
-## 4.4 Initial candidate rule
+## 7.6 Initial candidate rule
 
 Create a raw interaction when:
 
@@ -462,17 +697,17 @@ for at least 0.25 seconds
 
 Then:
 
-1. Merge interactions from the same actor and shelf when the gap is less than one second.
-2. Add two seconds before the interaction.
-3. Add two seconds after the interaction.
-4. Clamp the interval to the video duration.
-5. Cap very long candidate windows at approximately 8–10 seconds.
-6. Preserve the original unpadded interaction timestamps.
+1. Merge intervals from the same actor and shelf when the gap is below the merge threshold.
+2. Add temporal context before and after.
+3. Clamp intervals to clip duration.
+4. Cap abnormally long candidate windows.
+5. Preserve both raw and padded times.
 
 Suggested configuration:
 
 ```yaml
 proposals:
+  target_fps: 8
   minimum_wrist_confidence: 0.30
   minimum_interaction_duration_s: 0.25
   merge_gap_s: 1.0
@@ -481,11 +716,7 @@ proposals:
   maximum_candidate_duration_s: 10.0
 ```
 
-These are starting values, not fixed truths.
-
----
-
-## 4.5 Candidate table
+## 7.7 Candidate schema
 
 Create `candidates.parquet`:
 
@@ -503,165 +734,137 @@ proposal_score
 review_status
 ```
 
-Example:
+## 7.8 Critical annotation rule
 
-```text
-cand_001
-clip_007
-actor_3
-shelf_left
-12.8
-14.1
-10.8
-16.1
-WRIST_IN_REGION
-0.82
-PENDING
-```
+Stage B proposals must never define the ground truth.
 
----
+For every person-containing clip selected for the reference dataset:
 
-## 4.6 Critical annotation rule
-
-Do not annotate only the proposed candidate windows.
-
-Layer 0B may miss events.
-
-For every person-containing clip selected for the ground-truth dataset:
-
-1. Show candidate intervals as suggestions.
-2. Require the annotator to review the complete video.
-3. Allow the annotator to create events outside proposed intervals.
-4. Record which true events were covered by proposals.
+1. Show proposed intervals as suggestions.
+2. Require the annotator to review the full active span.
+3. Allow manual events outside proposals.
+4. Record which ground-truth events were covered by proposals.
 
 Measure:
 
 ```text
-Stage B proposal recall =
-ground-truth events covered by at least one candidate
+proposal_recall =
+number of ground-truth events overlapped by a candidate
 /
-all ground-truth events
+total number of ground-truth events
 ```
 
-Target high recall rather than high precision.
+Prioritize recall over precision.
 
-A practical initial target is at least 90% proposal recall on the reviewed subset. If recall is lower, widen the shelf margin, reduce wrist-confidence thresholds or increase temporal padding.
+A practical initial target is at least 90% recall on the reviewed validation subset. If recall is low, increase shelf margins, lower confidence thresholds, increase temporal padding, or process at a higher FPS.
 
----
-
-# 5. Layer 0 Annotation Protocol
-
-## 5.1 Annotation interface
-
-Use a small Streamlit application.
-
-The interface should contain:
-
-* video player;
-* current timestamp;
-* frame-step buttons;
-* playback-speed controls;
-* candidate interval markers;
-* event list;
-* add pickup button;
-* add putdown button;
-* add ignore interval button;
-* confidence selector;
-* hard-case checkbox;
-* item-count selector;
-* save and next-clip buttons.
-
-Keyboard shortcuts are strongly recommended:
+## 7.9 Layer 0B outputs
 
 ```text
-P = add pickup
-D = add putdown
-I = add ignore interval
-H = hard case
-L = low confidence
-Space = play/pause
-Left/Right = frame step
+manifest/candidates.parquet
+tracks/pose/<clip_id>.parquet
+artifacts/candidate_previews/<candidate_id>.mp4
 ```
 
+## 7.10 Layer 0B exit criteria
+
+Layer 0B is complete when:
+
+- shelf regions are version-controlled;
+- wrist-based proposals are generated automatically;
+- proposal previews can be inspected;
+- complete active spans are still reviewed by humans;
+- proposal recall is measurable;
+- Stage B is not used as the sole source of ground truth.
+
 ---
 
-## 5.2 Annotation procedure
+# 8. Annotation Protocol
 
-For every `PERSON_PRESENT` clip in the selected dataset:
+## 8.1 Annotation tool
 
-1. Watch the entire clip once at normal or increased speed.
-2. Review every proposed interaction window.
+Choose one real video annotation tool and use it consistently across the team:
+
+- CVAT;
+- Label Studio;
+- VIA;
+- ELAN.
+
+A custom Streamlit tool is acceptable only when importing Stage B proposals into the selected annotation tool is more difficult than implementing the required timeline annotation workflow.
+
+The selected tool must support:
+
+- precise interval annotation;
+- complete active-span review;
+- editing and deleting proposals;
+- pickup and putdown labels;
+- confidence and hard-case metadata;
+- reproducible export.
+
+## 8.2 Annotation procedure
+
+For each selected person-containing clip:
+
+1. Watch the complete active span once.
+2. Inspect Stage B candidate intervals.
 3. Rewatch possible actions frame by frame.
-4. Mark `t_start` when the physical action begins.
+4. Mark `t_start` when the physical transfer action begins.
 5. Mark `t_end` when the object is carried away or settled.
 6. Assign `pickup` or `putdown`.
-7. Record item count.
-8. Set confidence.
-9. Set `hard_case` where applicable.
-10. Add ignore intervals for fully occluded or unlabelable actions.
-11. Mark the whole clip `REVIEWED`.
+7. Create separate rows for multiple items.
+8. Set `confidence` to `high`, `med`, or `low`.
+9. Set `hard_case=true` when appropriate.
+10. Add an internal ignore interval for fully occluded or unlabelable actions.
+11. Mark the clip as fully reviewed.
 
----
+## 8.3 Restocking decision
 
-## 5.3 Annotation rules
+Before large-scale annotation, inspect whether restocking occurs and record the project decision in the copied labeling guidelines:
 
-### Pickup
+```text
+Restocking observed: yes/no
+Restocking handling: hard negative / excluded interval
+```
 
-The item leaves its resting position and becomes held or carried.
+Generic restocking must not be labeled as putdown.
 
-### Putdown
+## 8.4 Annotation budget
 
-An item already held by the person is released and remains resting on a shelf or surface.
+Cap labeling effort before annotation scales.
 
-### Negative examples
+Example initial target:
 
-Do not label:
+```yaml
+annotation_budget:
+  target_pickup_events: 100
+  target_putdown_events: 100
+  target_hard_negative_intervals: 200
+  double_annotation_fraction: 0.15
+```
 
-* touching without removal;
-* looking;
-* reaching past;
-* browsing;
-* standing;
-* walking by;
-* generic restocking;
-* hand movement without a visible object transfer.
+Adjust the target after inspecting actual class frequency. The team should agree on the budget and a stopping rule.
 
-### Edge cases
-
-* Two items at once: create two event rows.
-* Immediate pickup and return: create pickup and putdown events.
-* Fully occluded or out-of-frame action: add an ignore interval.
-* Multiple actors: label every visible event.
-* Ambiguous but visible: label with `confidence=low`.
-* Difficult but labelable: set `hard_case=true`.
-
----
-
-## 5.4 Annotation quality assurance
+## 8.5 Agreement check
 
 At least 15% of selected clips should be independently annotated by two people.
 
-For disagreements, review:
+Compare:
 
 ```text
 event existence
 event type
-start time
-end time
+t_start
+t_end
 item count
-visibility
+confidence
 hard-case status
 ```
 
-Resolve disagreements before freezing the test set.
+Resolve disagreements and update the labeling guideline before freezing the test set.
 
-Generate a preview clip for every annotated event:
+## 8.6 Event previews
 
-```text
-artifacts/event_previews/<event_id>.mp4
-```
-
-The preview should include approximately:
+Generate a short preview for every event:
 
 ```text
 2 seconds before t_start
@@ -669,47 +872,61 @@ event interval
 2 seconds after t_end
 ```
 
----
+Save to:
 
-## 5.5 Dataset split
+```text
+artifacts/event_previews/<event_id>.mp4
+```
 
-Split by:
+This is the main label-quality audit artifact.
 
-1. recording session, when available;
-2. customer sequence, when reliably inferable without identification;
+## 8.7 Dataset split
+
+Split by the strongest available grouping:
+
+1. recording session;
+2. contiguous customer sequence where safely inferable;
 3. recording day;
-4. complete source clip as the minimum fallback.
+4. whole clip as the minimum fallback.
 
-Never split extracted candidate windows independently.
+Never split derived windows independently.
 
-Freeze the test split before model tuning.
+Freeze the test split before threshold tuning or model comparison.
+
+## 8.8 Layer 0 final outputs
+
+```text
+manifest/clips.csv
+manifest/events.csv
+manifest/labeling-guidelines.md
+manifest/ignore_intervals.parquet
+manifest/active_spans.parquet
+manifest/candidates.parquet
+manifest/split_version.json
+```
 
 ---
 
-# 6. Layer 1A: VideoMAE Baseline Without a Custom Temporal Head
+# 9. Layer 1A — VideoMAE Fixed-Window Baseline
 
-## 6.1 Purpose
+## 9.1 Purpose
 
-Layer 1A is the simplest complete standard-model baseline.
+Layer 1A is the simplest complete non-VLM detector.
 
 It answers:
 
 ```text
-Does this fixed video window contain:
+Does this fixed window contain:
 - pickup;
 - putdown;
 - background?
 ```
 
-This stage uses the standard VideoMAE video-classification head.
+It uses the standard VideoMAE classification head and produces coarse event intervals from overlapping windows.
 
-It does not use a custom temporal sequence head.
+## 9.2 Training examples
 
----
-
-## 6.2 Training examples
-
-Generate fixed-length windows from reviewed videos.
+Generate fixed windows only from person-containing active spans.
 
 Suggested initial configuration:
 
@@ -724,28 +941,28 @@ layer1a:
     - putdown
 ```
 
-Create windows from:
+Positive samples:
 
-* all annotated events;
-* Stage B candidate windows without events;
-* touching and browsing negatives;
-* random person-present background;
-* a limited number of no-person negatives.
+- windows overlapping pickup events;
+- windows overlapping putdown events.
 
-Do not generate training windows that overlap `ignore_intervals`.
+Negative samples:
 
----
+- touch without removal;
+- reaching or browsing;
+- standing near shelves;
+- walking past;
+- carrying an item without transfer;
+- hand motion near shelves;
+- Stage B candidate intervals with no event.
 
-## 6.3 Window labeling
+Do not use no-person clips as Layer 1 training negatives.
 
-For each fixed window:
+Do not use windows that overlap internal ignore intervals.
 
-* label `pickup` when it overlaps a pickup event sufficiently;
-* label `putdown` when it overlaps a putdown event sufficiently;
-* label `background` when it overlaps no event and no ignore interval;
-* skip windows containing incompatible overlapping events during the initial baseline.
+## 9.3 Window manifest
 
-Store:
+Create:
 
 ```text
 sample_id
@@ -758,9 +975,9 @@ actor_id
 split
 ```
 
----
+For the initial baseline, skip windows containing simultaneous incompatible event labels if the single-label classifier cannot represent them.
 
-## 6.4 Video decoding
+## 9.4 Video decoding
 
 The dataset loader accepts:
 
@@ -774,121 +991,80 @@ It must:
 
 1. seek to the required interval;
 2. decode only that interval;
-3. sample frames uniformly;
+3. sample frames uniformly in chronological order;
 4. resize and normalize using the VideoMAE processor;
-5. return a tensor and label.
+5. return the frame tensor and label.
 
-Do not pre-extract all frames to disk.
+Do not pre-extract the complete dataset into JPEG files.
 
-Optional optimization:
+## 9.5 Training gates
 
-* cache decoded fixed windows as compressed MP4 files;
-* do not cache millions of JPEG frames.
+### Gate A — visual data inspection
 
----
+Render at least 20 examples showing sampled frames, label, source timestamps, and clip ID.
 
-## 6.5 Training progression
-
-Run three checks in order.
-
-### Check 1: Data-loader inspection
-
-Render at least 20 training samples with:
-
-* sampled frames;
-* label;
-* source timestamps.
-
-Confirm temporal order is correct.
-
-### Check 2: Tiny overfit test
+### Gate B — tiny overfit
 
 Train on approximately 8–16 samples until the model nearly memorizes them.
 
-Do not begin a full run until the tiny overfit test succeeds.
+Do not run a full experiment until this succeeds.
 
-### Check 3: Baseline training
+### Gate C — baseline training
 
 Initially:
 
-* freeze the VideoMAE encoder;
-* train only the classification head;
-* use weighted sampling or weighted loss;
-* select checkpoints using validation F1, not accuracy.
+- freeze most or all of the VideoMAE encoder;
+- train the classification head;
+- use weighted sampling, focal loss, or weighted cross-entropy;
+- select checkpoints using validation F1, not accuracy.
 
-If the baseline is stable, unfreeze the final encoder blocks.
+If stable, unfreeze the final encoder blocks.
 
----
-
-## 6.6 Baseline inference
+## 9.6 Inference
 
 For each Stage B candidate:
 
-1. Slide a four-second window over the candidate.
-2. Use a one-second stride.
-3. Obtain pickup, putdown and background probabilities.
+1. Slide a 4-second window over the candidate.
+2. Use a 1-second stride.
+3. Predict pickup, putdown, and background probabilities.
 4. Smooth adjacent scores.
-5. Merge adjacent windows with the same predicted class.
-6. Produce an approximate interval.
+5. Merge adjacent windows with the same class.
+6. Produce a coarse event interval.
 
-Output:
-
-```text
-predictions_layer1a.parquet
-```
-
-Fields:
+Export canonical predictions as:
 
 ```text
-prediction_id
-clip_id
-actor_id
-event_type
-t_start
-t_end
-confidence
-source_candidate_id
+results/layer1a/predictions.csv
 ```
 
-The interval from Layer 1A will be coarse. That is acceptable for the baseline.
+## 9.7 Layer 1A exit criteria
+
+- Frame order and sampling are visually validated.
+- Tiny overfit succeeds.
+- Inference produces canonical predictions.
+- Precision, recall, F1, and pickup/putdown confusion are calculated.
+- False-positive and false-negative previews can be generated.
 
 ---
 
-## 6.7 Layer 1A exit criteria
+# 10. Layer 1B — VideoMAE Embeddings and Temporal Head
 
-Layer 1A is complete when:
+## 10.1 Purpose
 
-* data loading has been visually validated;
-* the model passes the tiny overfit test;
-* inference produces the required prediction schema;
-* event-level precision, recall and F1 can be calculated;
-* pickup/putdown confusion is reported;
-* failure previews can be generated automatically.
+Layer 1B improves interval localization while retaining a simple implementation.
 
----
+It converts overlapping VideoMAE micro-clips into a temporal embedding sequence and predicts pickup, putdown, or background at each timestep.
 
-# 7. Layer 1B: VideoMAE Encoder With a Temporal Head
+## 10.2 Feature extraction
 
-## 7.1 Purpose
-
-Layer 1B improves interval localization.
-
-Instead of classifying one complete fixed window, it creates a temporal sequence of VideoMAE embeddings and predicts a class for each temporal step.
-
-Use a simple temporal segmentation head rather than a complex research-grade temporal action detector.
-
----
-
-## 7.2 Feature extraction
-
-For every reviewed candidate or clip:
+For each active span or candidate interval:
 
 1. Divide the interval into overlapping micro-clips.
 2. Run each micro-clip through the VideoMAE encoder.
-3. Save one embedding per temporal position.
-4. Preserve the timestamp represented by each embedding.
+3. Save one embedding and representative timestamp per micro-clip.
+4. Cache the embeddings so temporal-head training is fast.
 
-Suggested initial configuration:
+Suggested settings:
 
 ```yaml
 layer1b:
@@ -897,13 +1073,13 @@ layer1b:
   sampled_frames: 16
 ```
 
-Output:
+Save:
 
 ```text
 features/<clip_id>/<candidate_id>.npz
 ```
 
-Containing:
+containing:
 
 ```text
 timestamps: [T]
@@ -912,13 +1088,9 @@ actor_id
 candidate_id
 ```
 
-Cache these embeddings so the temporal head can be trained quickly.
+## 10.3 Temporal labels
 
----
-
-## 7.3 Temporal labels
-
-Convert each event interval into per-timestep labels:
+Convert event intervals into per-timestep labels:
 
 ```text
 background
@@ -927,18 +1099,14 @@ putdown
 ignore
 ```
 
-A timestep receives:
+- A timestep centered inside a pickup event receives `pickup`.
+- A timestep centered inside a putdown event receives `putdown`.
+- A timestep inside an internal ignore interval receives `ignore`.
+- All other valid positions receive `background`.
 
-* `pickup` when its center falls inside a pickup interval;
-* `putdown` when its center falls inside a putdown interval;
-* `ignore` when it falls inside an ignore interval;
-* `background` otherwise.
+Ignore positions do not contribute to the loss.
 
-Ignore positions must not contribute to the loss.
-
----
-
-## 7.4 Temporal head
+## 10.4 Temporal head
 
 Use a small temporal convolutional network:
 
@@ -958,7 +1126,7 @@ Classification head
 background / pickup / putdown per timestep
 ```
 
-A suitable first version:
+Suggested starting configuration:
 
 ```yaml
 temporal_head:
@@ -970,101 +1138,227 @@ temporal_head:
 
 Use focal loss or weighted cross-entropy.
 
-Do not add boundary regression, transformers or multi-scale feature pyramids until the simpler temporal head has been evaluated.
+Do not introduce transformers, multi-scale feature pyramids, or boundary-regression heads until the simple head has been evaluated.
 
----
+## 10.5 Interval decoding
 
-## 7.5 Interval decoding
-
-Convert timestep probabilities into events:
-
-1. Smooth probabilities with a short moving average.
-2. Select timesteps above the class threshold.
+1. Smooth class probabilities with a short moving average.
+2. Select timesteps above a validation-tuned threshold.
 3. Combine adjacent timesteps of the same class.
-4. Fill very short gaps.
-5. Remove intervals shorter than the minimum event duration.
-6. Apply temporal non-maximum suppression.
-7. Use the first and last active timestep as `t_start` and `t_end`.
+4. Fill very short internal gaps.
+5. Remove intervals shorter than the minimum duration.
+6. Apply temporal non-maximum suppression where necessary.
+7. Set `t_start` and `t_end` from the first and last accepted timesteps.
 
-Output:
+## 10.6 Layer 1B exit criteria
+
+- Embeddings are reproducibly generated and cached.
+- Sequence labels are visually inspected.
+- Tiny sequence overfit succeeds.
+- Canonical intervals are produced.
+- Layer 1B is compared directly against Layer 1A.
+- The more complex model is retained only if it improves useful metrics.
+
+---
+
+# 11. Layer 2 — Standalone Qwen3.6-27B Detector
+
+## 11.1 Purpose
+
+Layer 2 must be an independent VLM detector, not only a verifier.
+
+It receives active person spans and produces event predictions without seeing Layer 1 predictions.
+
+This creates a fair comparison:
 
 ```text
-predictions_layer1b.parquet
+Layer 1 standard detector
+versus
+Layer 2 standalone VLM detector
 ```
 
-This becomes the input to the Qwen verifier.
+## 11.2 Model-size note
 
----
+The case describes a small VLM as the intended baseline. Qwen3.6-27B is larger than that profile.
 
-## 7.6 Layer 1B exit criteria
+The final report must explicitly record:
 
-Layer 1B is complete when:
+- model name;
+- quantization;
+- runtime backend;
+- GPU hardware;
+- peak VRAM;
+- inference speed;
+- reason for selecting the larger model.
 
-* embeddings are reproducibly generated;
-* the temporal head passes a tiny overfit test;
-* predicted intervals are produced;
-* results are compared against Layer 1A;
-* tIoU and midpoint metrics are reported;
-* Layer 1B either improves interval detection or is explicitly rejected in favour of Layer 1A.
+Using Qwen3.6-27B is acceptable as a deliberate resource-enabled choice, but it should not be presented as a small-model baseline.
 
-Do not assume the more complex model is automatically better.
+## 11.3 Input windows
 
----
+Qwen scans active spans, not complete raw clips containing long dead periods.
 
-# 8. Layer 2: Qwen3.6-27B Verifier
+Suggested initial standalone windowing:
 
-## 8.1 Purpose
+```yaml
+layer2:
+  window_duration_s: 8.0
+  window_stride_s: 4.0
+  target_fps: 4
+```
 
-Qwen does not scan full raw videos.
+Each window should include:
 
-Qwen receives only event proposals produced by Layer 1.
+- chronological frames or a short MP4;
+- visible frame numbers or relative timestamps;
+- source clip ID;
+- source window start time.
 
-For each proposed interval, Qwen verifies:
+The VLM must return zero or more events relative to the window. The application converts them into source-clip timestamps.
+
+## 11.4 Standalone response schema
+
+```json
+{
+  "events": [
+    {
+      "type": "pickup",
+      "t_start": 2.4,
+      "t_end": 3.7,
+      "item_count": 1,
+      "visible": true,
+      "confidence": 0.82
+    }
+  ]
+}
+```
+
+Allowed types:
 
 ```text
-Is an event visibly present?
-Is it pickup or putdown?
-How many items are involved?
-Is the action sufficiently visible?
+pickup
+putdown
 ```
 
-Qwen does not train or fine-tune.
+An empty event list is valid.
 
-Qwen does not generate the primary interval.
+## 11.5 Prompt requirements
 
-The Layer 1 interval remains the final timing source.
+The standalone prompt must include:
+
+- exact pickup definition;
+- exact putdown definition;
+- negatives;
+- occlusion rule;
+- two-item rule;
+- immediate pickup/putdown rule;
+- instruction to preserve temporal order;
+- instruction not to infer hidden actions;
+- strict JSON schema;
+- instruction that times are relative to the supplied window.
+
+Use low-temperature or deterministic decoding.
+
+Do not request verbose chain-of-thought reasoning.
+
+## 11.6 Parsing and validation
+
+- Validate every response with Pydantic.
+- Strip common JSON wrappers or code fences.
+- Retry once on invalid JSON.
+- Preserve the raw response.
+- Count invalid, retried, and permanently unparseable outputs.
+
+## 11.7 Duplicate merging
+
+Overlapping VLM windows may predict the same event multiple times.
+
+Merge predictions when:
+
+- types match;
+- temporal IoU or midpoint tolerance exceeds a validation-tuned threshold;
+- predictions originate from overlapping source windows.
+
+Use the highest confidence or a confidence-weighted merged interval.
+
+## 11.8 Layer 2 output
+
+Export:
+
+```text
+results/layer2/predictions.csv
+results/layer2/raw_responses.jsonl
+results/layer2/run_metadata.json
+```
+
+## 11.9 Layer 2 reporting
+
+Record:
+
+```text
+model
+quantization
+backend
+frame sampling rate
+frames per window
+window duration
+window stride
+prompt version
+temperature
+invalid JSON count
+retry count
+unparseable count
+GPU
+peak VRAM
+seconds per video minute
+```
+
+## 11.10 Layer 2 exit criteria
+
+- Qwen scans active spans independently of Layer 1.
+- It produces canonical predictions.
+- Duplicate merging is deterministic.
+- Parsing failures are measured.
+- Layer 2 is evaluated on the same held-out clips using the shared evaluator.
 
 ---
 
-## 8.2 Verifier input
+# 12. Layer 3 — Qwen Verification and Deterministic Fusion
+
+## 12.1 Purpose
+
+Layer 3 uses Qwen as a verifier of Layer 1 event proposals.
+
+Qwen verifies:
+
+```text
+event / no event
+pickup / putdown
+item count
+visibility
+```
+
+Qwen does not replace the Layer 1 interval in the first implementation.
+
+## 12.2 Verification input
 
 For every Layer 1 prediction:
 
-1. Add approximately two seconds of context before.
-2. Add approximately two seconds of context after.
-3. Extract a short MP4 section.
-4. Overlay relative timestamps or frame numbers.
-5. Preserve chronological order.
-6. Keep the full scene for the initial implementation.
+1. Add context before and after the predicted interval.
+2. Extract a short MP4.
+3. Overlay relative timestamps or frame numbers.
+4. Preserve chronological order.
+5. Pass the full scene initially.
 
-Example:
+Suggested context:
 
 ```text
-Layer 1 interval: [14.2, 15.4]
-Qwen clip: [12.2, 17.4]
+4 seconds before Layer 1 t_start
+2 seconds after Layer 1 t_end
 ```
 
-Optional later improvement:
+The larger pre-event context helps distinguish putdown from generic placement or restocking.
 
-* send an actor-and-shelf crop when multiple-person scenes cause confusion.
-
-Do not implement actor crops initially unless necessary.
-
----
-
-## 8.3 Qwen response schema
-
-Require strict JSON:
+## 12.3 Verification response schema
 
 ```json
 {
@@ -1077,7 +1371,7 @@ Require strict JSON:
 }
 ```
 
-Allowed `event_type` values:
+Allowed `event_type`:
 
 ```text
 pickup
@@ -1086,7 +1380,7 @@ none
 uncertain
 ```
 
-Allowed `reason_code` examples:
+Suggested `reason_code` values:
 
 ```text
 ITEM_LEAVES_SURFACE_WITH_HAND
@@ -1098,51 +1392,15 @@ MULTIPLE_ACTIONS
 AMBIGUOUS
 ```
 
-Validate every response with Pydantic.
-
-Retry once when:
-
-* JSON is invalid;
-* a required field is missing;
-* a value is outside the allowed enumeration.
-
-After a failed retry, mark the verification as:
-
-```text
-VERIFICATION_ERROR
-```
-
----
-
-## 8.4 Qwen prompt requirements
-
-The prompt must include:
-
-* exact pickup definition;
-* exact putdown definition;
-* negatives;
-* occlusion rule;
-* two-item rule;
-* immediate pickup/putdown rule;
-* instruction to use temporal direction;
-* instruction not to infer hidden actions;
-* strict JSON schema.
-
-Use low-temperature or deterministic decoding.
-
-Do not request lengthy chain-of-thought reasoning.
-
----
-
-## 8.5 Verifier output
+## 12.4 Audit output
 
 Create:
 
 ```text
-qwen_verifications.jsonl
+results/layer3/qwen_verifications.jsonl
 ```
 
-Each record should preserve:
+Preserve:
 
 ```text
 prediction_id
@@ -1163,29 +1421,9 @@ model_version
 
 Never overwrite the original Layer 1 prediction.
 
----
+## 12.5 Initial fusion rules
 
-# 9. Layer 3: Simplified Fusion
-
-## 9.1 Purpose
-
-Layer 3 combines Layer 1 and Qwen results using deterministic rules.
-
-There is:
-
-* no SAM;
-* no additional learned fusion model;
-* no streaming;
-* no agent;
-* no further training.
-
----
-
-## 9.2 Fusion rules
-
-Use the following initial rules.
-
-### Rule 1: Invisible action
+### Invisible action
 
 ```text
 qwen_event_visible = false
@@ -1194,16 +1432,10 @@ qwen_event_visible = false
 Result:
 
 ```text
-reject prediction
+REJECTED_NOT_VISIBLE
 ```
 
-Preserve it in the audit table with:
-
-```text
-final_status = REJECTED_NOT_VISIBLE
-```
-
-### Rule 2: No event
+### No event
 
 ```text
 qwen_event_present = false
@@ -1212,10 +1444,10 @@ qwen_event_present = false
 Result:
 
 ```text
-reject prediction
+REJECTED_NO_EVENT
 ```
 
-### Rule 3: Qwen confirms Layer 1 type
+### Type confirmed
 
 ```text
 layer1_type = qwen_event_type
@@ -1224,103 +1456,63 @@ layer1_type = qwen_event_type
 Result:
 
 ```text
-accept event
+ACCEPTED
 ```
 
-Use:
+Use the Layer 1 interval and Qwen item count.
 
-* Layer 1 interval;
-* confirmed event type;
-* Qwen item count;
-* combined audit information.
-
-### Rule 4: Qwen changes the event type
+### Type changed
 
 ```text
 layer1_type != qwen_event_type
-and
-qwen_event_present = true
+and qwen_event_present = true
 ```
 
 Result:
 
 ```text
-accept Qwen type
-retain Layer 1 interval
-mark type_changed = true
+ACCEPTED_TYPE_CHANGED
 ```
 
-Preserve both types for evaluation.
+Retain the Layer 1 interval, use the Qwen type, and preserve both values in the audit record.
 
-### Rule 5: Qwen uncertain
+### Uncertain
 
 ```text
 qwen_event_type = uncertain
-or
-qwen_confidence below threshold
+or qwen_confidence < threshold
 ```
 
 Result:
 
 ```text
-final_status = NEEDS_REVIEW
+NEEDS_REVIEW
 ```
 
-For a fully automatic demo, exclude `NEEDS_REVIEW` predictions from final accepted events.
+Exclude `NEEDS_REVIEW` from the fully automatic accepted export.
 
-### Rule 6: Multiple items
+### Multiple items
 
-When:
+When `item_count=2`, create two final rows sharing the same interval and an internal `event_group_id`.
 
-```text
-qwen_item_count = 2
-```
+## 12.6 Layer 3 evaluation
 
-Create two final event rows sharing the same:
+Evaluate Layer 3 separately from standalone Layer 2.
 
-```text
-event_group_id
-t_start
-t_end
-```
+The final comparison contains:
+
+| System | Role |
+|---|---|
+| VideoMAE Layer 1A | Standard baseline |
+| VideoMAE Layer 1B | Standard temporal model |
+| Qwen standalone | Layer 2 VLM detector |
+| VideoMAE + Qwen verifier | Layer 3 fusion |
 
 ---
 
-## 9.3 Final prediction table
+# 13. Batch Inference
 
-Create `predictions_final.parquet` and `predictions_final.csv`:
-
-```text
-final_event_id
-event_group_id
-clip_id
-actor_id
-event_type
-t_start
-t_end
-item_index
-layer1_confidence
-qwen_confidence
-type_changed
-final_status
-source_prediction_id
-```
-
-Only rows with:
-
-```text
-final_status = ACCEPTED
-```
-
-are exported as official predictions.
-
----
-
-# 10. Batch Inference
-
-## 10.1 Input
-
-Support:
+## 13.1 Supported inputs
 
 ```bash
 pickup-putdown infer --input clip.mp4
@@ -1332,42 +1524,38 @@ and:
 pickup-putdown infer --input directory/
 ```
 
-No camera stream, RTSP input or live buffer is required.
+No camera stream, RTSP input, live buffer, Kafka, or streaming service is required.
 
----
-
-## 10.2 Batch inference flow
+## 13.2 Batch flow
 
 For each input video:
 
-1. Read video metadata.
-2. Run YOLO pose and ByteTrack.
-3. Reject or finish early if no person is present.
-4. Generate Stage B interaction candidates.
-5. Run Layer 1 on candidate intervals.
-6. Convert scores into proposed events.
-7. Render Qwen verification clips.
-8. Call Qwen3.6-27B.
-9. Validate Qwen JSON.
+1. Read metadata.
+2. Run Layer 0A person detection and tracking.
+3. Finish early if no person is detected.
+4. Generate active spans.
+5. Run Layer 0B pose and interaction proposals.
+6. Run the selected Layer 1 model on proposals.
+7. Optionally run standalone Layer 2 over active spans.
+8. Optionally render Layer 1 verification clips.
+9. Run Qwen verification.
 10. Apply deterministic fusion.
-11. Write final results.
+11. Write canonical predictions and audit artifacts.
 
----
-
-## 10.3 Required CLI commands
-
-Implement the following commands:
+## 13.3 Required CLI commands
 
 ```bash
 pickup-putdown index
 pickup-putdown triage
 pickup-putdown propose
 pickup-putdown annotate
+pickup-putdown validate-manifest
 pickup-putdown build-dataset
 pickup-putdown train-layer1a
 pickup-putdown extract-features
 pickup-putdown train-layer1b
 pickup-putdown infer-layer1
+pickup-putdown infer-layer2
 pickup-putdown verify-qwen
 pickup-putdown fuse
 pickup-putdown evaluate
@@ -1376,17 +1564,247 @@ pickup-putdown infer
 
 Each command must:
 
-* use a configuration file;
-* log its parameters;
-* fail with a non-zero exit code on errors;
-* avoid silently overwriting outputs;
-* produce a machine-readable summary.
+- use a configuration file;
+- log resolved parameters;
+- return a non-zero exit code on failure;
+- avoid silent overwrites;
+- produce a machine-readable summary;
+- record the Git commit and dataset version.
+
+## 13.4 Single-video output
+
+```text
+outputs/example/
+├── metadata.json
+├── tracks_person.parquet
+├── tracks_pose.parquet
+├── active_spans.parquet
+├── candidates.parquet
+├── predictions_layer1.csv
+├── predictions_layer2.csv
+├── qwen_verifications.jsonl
+├── predictions_final.csv
+└── previews/
+```
 
 ---
 
-# 11. Implementation Sequence for a Small Team
+# 14. Shared Evaluation
 
-## 11.1 Team structure
+## 14.1 Matching
+
+For each clip and class:
+
+1. Construct valid prediction/ground-truth pairs.
+2. Calculate temporal IoU.
+3. Perform one-to-one matching.
+4. Match only pairs meeting the selected criterion.
+5. Count unmatched predictions as false positives.
+6. Count unmatched ground truth as false negatives.
+
+Use the same evaluation code for Layer 1, standalone Layer 2, and Layer 3.
+
+## 14.2 Required metrics
+
+```text
+Precision / Recall / F1 at tIoU 0.3
+Precision / Recall / F1 at tIoU 0.5
+Precision / Recall / F1 at midpoint tolerance ±1 s
+pickup → putdown confusion
+putdown → pickup confusion
+start-time MAE
+end-time MAE
+false positives per video hour
+Stage B proposal recall
+runtime per video minute
+```
+
+Optional:
+
+```text
+mAP at selected temporal IoU thresholds
+```
+
+## 14.3 Stratified metrics
+
+Report separately where sample size permits:
+
+```text
+pickup vs putdown
+normal vs hard_case
+high/med vs low confidence
+single-person vs multiple-person
+short vs long events
+```
+
+## 14.4 Test discipline
+
+Use validation data for:
+
+- probability thresholds;
+- smoothing width;
+- merge gaps;
+- minimum duration;
+- temporal NMS;
+- VLM window settings;
+- Qwen confidence threshold.
+
+Do not tune on the test set.
+
+---
+
+# 15. Recommended Repository Layout
+
+```text
+pickup-putdown-solution/
+├── README.md
+├── pyproject.toml
+├── uv.lock
+├── Makefile
+├── .gitignore
+├── configs/
+│   ├── storage.yaml
+│   ├── camera.yaml
+│   ├── shelves.yaml
+│   ├── triage.yaml
+│   ├── proposals.yaml
+│   ├── layer1a.yaml
+│   ├── layer1b.yaml
+│   ├── layer2_qwen.yaml
+│   ├── layer3_fusion.yaml
+│   └── evaluation.yaml
+├── src/pickup_putdown/
+│   ├── ingestion/
+│   │   ├── index_bucket.py
+│   │   ├── video_probe.py
+│   │   └── cache.py
+│   ├── annotation/
+│   │   ├── import_export.py
+│   │   ├── schemas.py
+│   │   ├── validation.py
+│   │   └── agreement.py
+│   ├── perception/
+│   │   ├── person_tracker.py
+│   │   ├── pose_tracker.py
+│   │   ├── shelf_regions.py
+│   │   └── proposals.py
+│   ├── layer1/
+│   │   ├── video_dataset.py
+│   │   ├── videomae_classifier.py
+│   │   ├── feature_extractor.py
+│   │   ├── temporal_head.py
+│   │   ├── train_layer1a.py
+│   │   ├── train_layer1b.py
+│   │   └── inference.py
+│   ├── layer2/
+│   │   ├── window_generator.py
+│   │   ├── candidate_renderer.py
+│   │   ├── prompts.py
+│   │   ├── schemas.py
+│   │   ├── qwen_client.py
+│   │   └── merge_predictions.py
+│   ├── layer3/
+│   │   ├── verifier.py
+│   │   └── fusion.py
+│   ├── evaluation/
+│   │   ├── temporal_matching.py
+│   │   ├── metrics.py
+│   │   ├── failure_gallery.py
+│   │   └── report.py
+│   └── cli.py
+├── tests/
+├── manifest/
+│   ├── clips.csv
+│   ├── events.csv
+│   ├── labeling-guidelines.md
+│   └── versions/
+├── results/
+├── notebooks/
+└── docker/
+```
+
+---
+
+# 16. Minimal Technology Stack
+
+```text
+Python 3.11
+pyenv
+uv or pip with locked dependencies
+PyTorch
+Hugging Face Transformers
+Ultralytics YOLO person/pose
+ByteTrack or BoT-SORT
+FFmpeg / ffprobe
+PyAV or decord
+OpenCV
+Pandas or Polars
+PyArrow / Parquet
+Pydantic
+Typer
+CVAT, Label Studio, VIA, or ELAN
+MLflow or structured run directories
+Docker Compose
+```
+
+Do not introduce in the initial implementation:
+
+- Kubernetes;
+- Kafka;
+- MCP;
+- autonomous agent frameworks;
+- distributed orchestration;
+- feature stores;
+- SAM;
+- live-camera infrastructure.
+
+---
+
+# 17. Reproducibility Controls
+
+Every run must record:
+
+```text
+run_id
+git_commit
+dataset_version
+split_version
+config path
+resolved config
+random seed
+model identifier
+checkpoint hash
+```
+
+Example:
+
+```json
+{
+  "run_id": "20260620_layer1b_v003",
+  "git_commit": "abc1234",
+  "dataset_version": "manifest_v3",
+  "split_version": "split_v1",
+  "config": "configs/layer1b.yaml",
+  "seed": 42,
+  "model": "videomae-small"
+}
+```
+
+Rules:
+
+- fix random seeds;
+- version labeled datasets immutably;
+- never overwrite manifests silently;
+- keep configuration outside source code;
+- record the exact code version for every result;
+- use the same evaluator for all systems;
+- preserve raw Layer 1 and VLM outputs before fusion.
+
+---
+
+# 18. Small-Team Implementation Sequence
+
+## 18.1 Team structure
 
 Recommended three-person team:
 
@@ -1394,254 +1812,254 @@ Recommended three-person team:
 
 Responsible for:
 
-* bucket indexing;
-* metadata;
-* local cache;
-* triage validation;
-* annotation application;
-* labeling quality;
-* dataset splits.
+- bucket inventory;
+- metadata and caching;
+- annotation-tool setup;
+- labeling protocol;
+- agreement checks;
+- dataset splits and versions.
 
 ### Person B — Standard CV and VideoMAE
 
 Responsible for:
 
-* YOLO pose and tracking;
-* shelf regions;
-* Stage B proposals;
-* VideoMAE datasets;
-* Layer 1A;
-* Layer 1B.
+- person tracking;
+- pose inference;
+- shelf regions;
+- Stage B proposals;
+- Layer 1A and Layer 1B.
 
-### Person C — VLM, evaluation and integration
+### Person C — VLM, evaluation, and integration
 
 Responsible for:
 
-* Qwen service;
-* prompt and schema;
-* Qwen clip rendering;
-* fusion;
-* metrics;
-* command-line integration;
-* final report.
+- standalone Qwen Layer 2;
+- Qwen verification;
+- fusion;
+- shared evaluator;
+- CLI integration;
+- final reporting.
 
-All team members should annotate data for at least one fixed session each day.
+All team members should annotate a controlled shared subset before independent annotation begins.
 
 ---
 
-## Day 1: Repository, ingestion and triage
+## Day 1 — Repository, inventory, and person triage
 
 ### Person A
 
-1. Create the repository.
-2. Create `clips.parquet` schema.
-3. Implement bucket listing.
-4. Implement `ffprobe` metadata extraction.
-5. Implement bounded local caching.
-6. Index an initial subset of source videos.
-7. Record decode failures.
+1. Create the solution repository.
+2. Configure environment and dependency locking.
+3. Create canonical and internal clip schemas.
+4. Implement bucket listing and S3-compatible endpoint support.
+5. Implement `ffprobe` metadata extraction.
+6. Implement bounded local caching.
+7. Index an initial source subset.
+8. Record decode failures and duplicate candidates.
 
 ### Person B
 
-1. Install and pin the YOLO package.
-2. Select one small pose checkpoint.
-3. Implement direct video-file tracking.
-4. Extract person boxes, track IDs and wrists.
-5. Save tracking records to Parquet.
-6. Generate one annotated preview video.
+1. Install and pin Ultralytics.
+2. Select a small pretrained person model.
+3. Implement direct video-file tracking with ByteTrack.
+4. Calculate timestamped person tracklets.
+5. Derive active span or spans.
+6. Save track records to Parquet.
+7. Generate at least one preview video with person boxes and track IDs.
 
 ### Person C
 
-1. Create the shared configuration structure.
-2. Create Pydantic schemas for clips, events and predictions.
-3. Implement logging and run metadata.
-4. Create an empty evaluation command.
-5. Prepare the Qwen response schema.
+1. Create shared Pydantic schemas.
+2. Create the run-metadata format.
+3. Implement structured logging.
+4. Create the shared evaluator skeleton.
+5. Create the canonical prediction exporter.
+6. Prepare Qwen response schemas.
 
 ### Day 1 acceptance criteria
 
-* One command indexes videos.
-* One command triages a video.
-* No manual frame extraction is required.
-* Tracking data is saved as structured records.
-* At least one preview video displays person IDs and wrists.
-* Corrupt files fail cleanly.
-* Configuration and outputs are reproducible.
+- One command inventories source videos.
+- One command triages a video file directly.
+- `clips.parquet` contains technical metadata.
+- Stable person tracklets are stored.
+- Active spans are generated.
+- Empty clips remain in the manifest with `usable=false`.
+- Corrupt files fail cleanly.
 
 ---
 
-## Day 2: Stage B and annotation system
+## Day 2 — Stage B and annotation workflow
 
 ### Person A
 
-1. Build the Streamlit annotation interface.
-2. Implement event creation and editing.
-3. Implement ignore intervals.
-4. Add confidence and hard-case fields.
-5. Add item-count support.
-6. Add complete-clip review status.
-7. Test saving and reloading annotations.
+1. Select and configure one annotation tool.
+2. Copy and adapt the labeling guidelines.
+3. Define restocking handling.
+4. Implement annotation export to `events.csv`.
+5. Implement internal ignore intervals.
+6. Implement manifest validation.
+7. Define the annotation budget.
 
 ### Person B
 
-1. Create a shelf-polygon configuration tool or simple editor.
-2. Define shelf regions for the camera.
-3. Implement wrist-to-region interaction detection.
-4. Merge nearby interaction intervals.
-5. Add temporal context.
-6. Save `candidates.parquet`.
-7. Generate candidate preview clips.
+1. Select and pin a YOLO pose model.
+2. Define fixed shelf and surface polygons.
+3. Implement direct video-file pose tracking.
+4. Implement wrist-to-region interaction detection.
+5. Merge nearby intervals.
+6. Add temporal context.
+7. Save `candidates.parquet`.
+8. Generate candidate preview clips.
 
 ### Person C
 
-1. Implement dataset validators.
-2. Check timestamps against video duration.
-3. Detect duplicate IDs.
-4. Detect events overlapping ignore intervals.
-5. Generate event preview clips.
-6. Implement proposal-recall measurement.
+1. Validate event timestamps against clip duration.
+2. Detect duplicate IDs.
+3. Detect illegal events inside ignore intervals.
+4. Generate event previews.
+5. Implement proposal-recall measurement.
+6. Implement agreement-summary utilities.
 
 ### Whole team
 
-1. Read the labeling definitions together.
-2. Label the same small set independently.
+1. Read the event definitions together.
+2. Independently annotate the same small pilot set.
 3. Compare disagreements.
-4. Resolve ambiguous interpretation before scaling annotation.
-5. Begin reviewing complete person-containing clips.
+4. Refine the guideline.
+5. Begin annotation of complete active spans.
 
 ### Day 2 acceptance criteria
 
-* Shelf regions are version-controlled.
-* Candidate intervals can be generated automatically.
-* Annotators see candidate suggestions.
-* Annotators must still review complete clips.
-* Events and ignore intervals are saved.
-* Event previews can be generated.
-* Proposal recall can be measured.
-
-Do not proceed to serious training until complete-clip review works reliably.
+- Shelf configuration is version-controlled.
+- Candidate intervals are generated automatically.
+- Annotators review complete active spans, not only proposals.
+- Canonical event exports work.
+- Ignore intervals work internally.
+- Event previews and proposal recall are available.
 
 ---
 
-## Day 3: Dataset freeze and Layer 1A
+## Day 3 — Dataset freeze and Layer 1A
 
 ### Person A
 
-1. Continue full-clip annotation.
+1. Continue annotation up to the agreed budget.
 2. Double-label at least 15% of selected clips.
-3. Resolve annotation disagreements.
-4. Assign recording groups.
-5. Create train, validation and test splits.
-6. Freeze the initial test split.
+3. Resolve disagreements.
+4. Assign `session_id` or the strongest available grouping.
+5. Create train, validation, and test splits.
+6. Freeze test split version 1.
+7. Export canonical `clips.csv` and `events.csv`.
 
 ### Person B
 
 1. Implement fixed-window generation.
-2. Exclude ignore intervals.
-3. Add pickup, putdown and background windows.
-4. Implement the VideoMAE dataset loader.
+2. Exclude no-person clips and ignore intervals.
+3. Generate pickup, putdown, and hard-negative windows.
+4. Implement the VideoMAE loader.
 5. Render sampled-frame debug views.
-6. Run the tiny overfit test.
+6. Run a tiny overfit test.
 7. Train the first Layer 1A model.
+8. Implement coarse event decoding.
 
 ### Person C
 
-1. Implement temporal matching.
-2. Implement midpoint tolerance.
-3. Implement tIoU.
-4. Implement precision, recall and F1.
-5. Implement pickup/putdown confusion counts.
-6. Generate a basic HTML or Markdown evaluation report.
+1. Complete one-to-one temporal matching.
+2. Implement tIoU.
+3. Implement midpoint tolerance.
+4. Implement precision, recall, and F1.
+5. Implement class-confusion counts.
+6. Generate the first evaluation report and failure previews.
 
 ### Day 3 acceptance criteria
 
-* The test split is frozen.
-* Training windows contain no test clips.
-* Ignore intervals are excluded.
-* VideoMAE sees frames in correct temporal order.
-* The tiny dataset can be overfit.
-* Layer 1A produces event predictions.
-* Event-level metrics are calculated.
+- Test split is frozen.
+- Split leakage checks pass.
+- Ignore intervals are excluded from negative sampling.
+- VideoMAE frames are in correct order.
+- Tiny overfit succeeds.
+- Layer 1A produces canonical event predictions.
+- Event-level metrics are calculated.
 
-If the tiny overfit test fails, stop and debug before continuing.
+If the tiny overfit test fails, stop model scaling and debug the data path.
 
 ---
 
-## Day 4: Layer 1B and Qwen verifier
+## Day 4 — Layer 1B and standalone Layer 2
 
 ### Person A
 
-1. Review false positives from Layer 1A.
-2. Add missing hard negatives.
-3. Review false negatives.
-4. Correct annotation errors where justified.
-5. Do not modify the frozen test labels based on model predictions without documented review.
+1. Review Layer 1A false positives.
+2. Add or correct hard-negative annotations where justified.
+3. Review false negatives for missed labels.
+4. Document any changes as a new dataset version.
+5. Do not tune against the test split.
 
 ### Person B
 
 1. Extract overlapping VideoMAE embeddings.
-2. Cache timestamps and embeddings.
+2. Cache timestamps and embedding arrays.
 3. Generate per-timestep labels.
 4. Implement the Conv1D temporal head.
 5. Run a tiny sequence overfit test.
 6. Train Layer 1B.
-7. Decode timestep predictions into intervals.
-8. Compare Layer 1A and Layer 1B.
+7. Decode temporal scores into intervals.
+8. Compare Layer 1A and Layer 1B on validation data.
 
 ### Person C
 
-1. Render short verification MP4s.
-2. Add timestamp or frame overlays.
-3. Implement the Qwen client.
-4. Implement the strict prompt.
-5. Validate output with Pydantic.
+1. Implement active-span VLM windows.
+2. Render timestamps or frame numbers.
+3. Implement the Qwen3.6-27B client.
+4. Implement the standalone Layer 2 prompt.
+5. Validate responses with Pydantic.
 6. Retry invalid JSON once.
-7. Save raw and parsed verification records.
-8. Test Qwen on known positive and negative examples.
+7. Merge duplicate events across overlapping windows.
+8. Record runtime, quantization, hardware, and parse failures.
 
 ### Day 4 acceptance criteria
 
-* Layer 1B produces temporal intervals.
-* Layer 1A and Layer 1B are compared on identical data.
-* Qwen receives only short proposed sections.
-* Qwen does not scan entire raw videos.
-* Qwen output is machine-validated.
-* Raw model responses are preserved.
-* No fine-tuning of Qwen is required.
+- Layer 1B produces temporal intervals.
+- Layer 1A and Layer 1B are directly comparable.
+- Qwen runs independently of Layer 1.
+- Qwen scans only active spans, not full dead footage.
+- Qwen outputs canonical event predictions.
+- Invalid-response rate is measured.
 
 ---
 
-## Day 5: Fusion, batch inference and final evaluation
+## Day 5 — Layer 3, batch inference, and final evaluation
 
 ### Person A
 
 1. Review Layer 1/Qwen disagreements.
-2. Categorize failure modes.
-3. Confirm the final annotation manifest.
-4. Prepare privacy-safe example clips.
+2. Categorize common failure modes.
+3. Confirm final manifest and labeling guideline versions.
+4. Prepare privacy-safe example material.
 
 ### Person B
 
-1. Optimize repeated video decoding where necessary.
+1. Finalize the selected Layer 1 model.
 2. Confirm Stage B proposal recall.
-3. Finalize Layer 1 model selection.
-4. Package checkpoints and configuration.
-5. Measure inference runtime.
+3. Optimize repeated video decoding where necessary.
+4. Package model checkpoints and configs.
+5. Measure runtime per video minute.
 
 ### Person C
 
-1. Implement fusion rules.
-2. Generate final predictions.
-3. Implement the single-file inference command.
-4. Implement directory batch inference.
-5. Run the untouched test set.
-6. Produce the final metrics report.
-7. Produce the final failure gallery.
-8. Document exact reproduction commands.
+1. Implement the Qwen verifier prompt.
+2. Implement deterministic fusion rules.
+3. Generate final canonical predictions.
+4. Implement single-file inference.
+5. Implement directory batch inference.
+6. Run the untouched test set.
+7. Produce the final metrics table.
+8. Produce the final failure gallery.
+9. Document exact reproduction commands.
 
 ### Day 5 acceptance criteria
 
-The following command must work:
+The following command works:
 
 ```bash
 pickup-putdown infer \
@@ -1650,25 +2068,13 @@ pickup-putdown infer \
   --output outputs/example/
 ```
 
-It must produce:
-
-```text
-outputs/example/
-├── metadata.json
-├── tracks.parquet
-├── candidates.parquet
-├── predictions_layer1.parquet
-├── qwen_verifications.jsonl
-├── predictions_final.csv
-└── previews/
-```
-
-The final report must include:
+The final report includes:
 
 ```text
 Layer 1A metrics
 Layer 1B metrics
-Layer 1 + Qwen metrics
+standalone Layer 2 metrics
+Layer 3 fusion metrics
 pickup precision / recall / F1
 putdown precision / recall / F1
 pickup-to-putdown confusion
@@ -1676,137 +2082,142 @@ putdown-to-pickup confusion
 tIoU metrics
 midpoint-tolerance metrics
 false positives per video hour
-proposal recall
+Stage B proposal recall
 runtime per video minute
+Qwen invalid-response rate
+Qwen hardware and quantization
 ```
 
 ---
 
-# 12. Mandatory Engineering Gates
+# 19. Mandatory Engineering Gates
 
-## Gate 1: Dataset validity
+## Gate 1 — Dataset validity
 
 Do not train until:
 
-* videos decode correctly;
-* timestamps are validated;
-* event previews match labels;
-* ignore intervals work;
-* split leakage checks pass.
+- videos decode correctly;
+- timestamps are validated;
+- event previews match labels;
+- ignore intervals work;
+- split leakage checks pass.
 
-## Gate 2: Proposal recall
+## Gate 2 — Proposal recall
 
 Do not rely on Stage B filtering until proposal recall has been measured.
 
-Candidate precision may be low.
+Candidate precision may be low. Candidate recall must be high.
 
-Candidate recall must be high.
+## Gate 3 — Tiny overfit
 
-## Gate 3: Tiny overfit
+Layer 1A and Layer 1B must pass tiny overfit tests.
 
-Both Layer 1A and Layer 1B must pass a tiny overfit test.
+Failure commonly indicates:
 
-Failure usually indicates:
+- wrong labels;
+- wrong frame order;
+- broken sampling;
+- loss-mask errors;
+- wrong tensor shapes;
+- incorrectly frozen parameters;
+- model/data mismatch.
 
-* incorrect labels;
-* incorrect frame order;
-* incorrect sampling;
-* broken loss masking;
-* wrong tensor shape;
-* frozen parameters;
-* data/model mismatch.
+## Gate 4 — Independent Layer 2
 
-## Gate 4: Independent evaluation
+Do not call Qwen verification “Layer 2.”
 
-Do not tune thresholds on the test set.
+Layer 2 is complete only when Qwen independently scans active-span windows and produces its own event predictions.
 
-Use validation data for:
+## Gate 5 — Test isolation
 
-* probability thresholds;
-* smoothing;
-* merge gaps;
-* minimum duration;
-* Qwen confidence threshold.
+Use validation data for all thresholds and decoding settings.
 
-## Gate 5: Auditability
+Do not tune on the test set.
+
+## Gate 6 — Auditability
 
 Preserve:
 
-* Layer 1 prediction;
-* Qwen verification;
-* final fusion decision;
-* prompt version;
-* model version;
-* configuration;
-* source timestamps.
+- human ground truth;
+- Layer 1 predictions;
+- standalone Layer 2 predictions;
+- Qwen verification outputs;
+- fusion decisions;
+- prompt versions;
+- model versions;
+- configs;
+- source timestamps.
 
-Never keep only the final accepted event.
-
----
-
-# 13. Minimal Technology Stack
-
-```text
-Python 3.11
-pyenv
-PyTorch
-Transformers
-Ultralytics YOLO pose
-ByteTrack through Ultralytics
-FFmpeg / ffprobe
-PyAV
-OpenCV
-Pandas or Polars
-Parquet
-Pydantic
-Typer
-Streamlit
-MLflow or structured local run directories
-Docker Compose
-```
-
-Use one Python repository.
-
-Do not introduce:
-
-* Kubernetes;
-* Kafka;
-* MCP;
-* agent frameworks;
-* distributed orchestration;
-* feature stores;
-* SAM;
-* live-stream infrastructure.
+Never retain only the final accepted event list.
 
 ---
 
-# 14. Final Implementation Decision
+# 20. Priority Order if Time Is Limited
+
+The case explicitly values depth over reaching every optional layer.
+
+## Required priority
+
+1. Trustworthy Layer 0 dataset.
+2. Shared evaluator.
+3. Layer 1A standard baseline.
+4. Standalone Layer 2 Qwen detector.
+
+## Next priority
+
+5. Layer 1B temporal head.
+6. Layer 3 Qwen verification and fusion.
+7. Error taxonomy and ablations.
+
+If annotation quality falls behind schedule, defer Layer 1B before compromising the dataset.
+
+---
+
+# 21. Deferred Work
+
+Do not implement in the first delivery:
+
+- SAM or object segmentation;
+- product identity;
+- live streaming;
+- RTSP ingestion;
+- causal online detection;
+- multi-camera fusion;
+- inventory state;
+- agent orchestration;
+- VLM fine-tuning;
+- Kubernetes deployment.
+
+These may be considered only after the batch pipeline is reproducible and evaluated.
+
+---
+
+# 22. Final Implementation Decision
 
 ## Layer 0A
 
 ```text
 Video file
-→ YOLO pose + ByteTrack
-→ person-presence triage
-→ tracks.parquet
+→ YOLO person detection + ByteTrack at low rate
+→ person tracklets and active spans
+→ canonical clips manifest
 ```
 
 ## Layer 0B
 
 ```text
-Person/wrist tracks
-+ fixed shelf polygons
-→ interaction candidate intervals
-→ candidates.parquet
+Active-span video
+→ YOLO pose + fixed shelf polygons at higher rate
+→ high-recall interaction candidates
 ```
 
 ## Layer 1A
 
 ```text
-Fixed candidate windows
-→ VideoMAE video classifier
+Candidate windows
+→ VideoMAE classifier
 → pickup / putdown / background
-→ coarse intervals
+→ coarse event intervals
 ```
 
 ## Layer 1B
@@ -1814,32 +2225,32 @@ Fixed candidate windows
 ```text
 Overlapping VideoMAE embeddings
 → small Conv1D temporal head
-→ pickup / putdown probabilities over time
-→ refined intervals
+→ pickup / putdown scores over time
+→ refined event intervals
 ```
 
 ## Layer 2
 
 ```text
-Layer 1 proposed interval with context
-→ Qwen3.6-27B
-→ event, type, count and visibility verification
+Active-span overlapping windows
+→ Qwen3.6-27B standalone detection
+→ independent event intervals
 ```
 
 ## Layer 3
 
 ```text
-Layer 1 interval
-+ Qwen verification
-→ deterministic fusion
-→ final event rows
+Layer 1 proposal with context
+→ Qwen3.6-27B verification
+→ deterministic accept / reject / relabel
+→ final canonical predictions
 ```
 
 ## Runtime
 
 ```text
-MP4 files only
+MP4/video files only
 batch inference only
 no streaming
-no live camera integration
+no live-camera integration
 ```
