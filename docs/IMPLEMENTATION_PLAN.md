@@ -1,8 +1,8 @@
 # Pickup and Putdown Event Detection
 
-## Updated Architecture and Small-Team Implementation Plan
+## Concepts-Aligned Architecture and Small-Team Implementation Plan
 
-**Status:** aligned with the case README, concepts, manifest schema, Layer 0, Layer 1, Layer 2, Layer 3, deliverables, and best-practices guidance.
+**Status:** refined against the case operational definitions, edge-case rules, manifest schema, Layer 0–3 guidance, deliverables, privacy rules, and best practices.
 
 **Scope:** batch processing of video files to detect `pickup` and `putdown` intervals.
 
@@ -54,55 +54,122 @@ The final prediction export must follow the case `predictions.csv` schema.
 
 # 2. Operational Event Definitions
 
-These definitions must remain identical across:
+These definitions are the system contract. They must remain identical across:
 
 - labeling guidelines;
-- annotation;
-- Track A rules;
-- Track B training labels;
+- annotation exports;
+- Track A state-transition rules;
+- Track B training targets and decoders;
 - Qwen prompts;
-- evaluation.
+- evaluation and error analysis.
 
-## 2.1 Pickup
+## 2.1 Problem formulation
+
+The task is **temporal action detection on untrimmed video**.
+
+The system must find zero or more events in a source clip and output both:
+
+```text
+event type: pickup | putdown
+event interval: [t_start, t_end]
+```
+
+A trimmed-window classifier is only an internal component. The complete system must still accept an untrimmed clip and return event intervals.
+
+## 2.2 Pickup
 
 A person removes an item from a shelf or surface and takes it into their hand or hands, so that the item leaves its resting place and becomes held or carried.
 
-## 2.2 Putdown
+The defining transition is:
+
+```text
+shelf/surface → hand
+```
+
+## 2.3 Putdown
 
 A person places an item that they were already holding onto a shelf or surface and releases it so that it remains resting there.
 
-## 2.3 Non-events
+The defining transition is:
 
-Do not label:
+```text
+hand → shelf/surface
+```
 
-- touching or inspecting without removal;
+A generic placement or restocking action is not a putdown unless the visible evidence establishes that the item is being returned after being held/taken in the relevant interaction context.
+
+## 2.4 Non-events and hard negatives
+
+Do not label the following as events:
+
+- touching or inspecting an item without removing it;
 - looking or reaching past an item;
 - browsing, standing, or walking near shelves;
-- generic restocking of goods that were not previously taken;
+- hand movement near a shelf without a persistent object transfer;
+- visible restocking or placement of newly introduced goods;
 - empty or no-person clips.
 
-## 2.4 Edge-case rules
+Visible restocking is normally retained as a **background/hard-negative example**, not placed in an ignore interval.
 
-- Taking two items simultaneously produces **two pickup rows**.
-- Immediate pickup followed by return produces **one pickup and one putdown**.
+## 2.5 Edge-case rules
+
+- Taking two items simultaneously produces **two event rows**, one per item.
+- Immediate pickup followed by return produces **two ordered events**: pickup, then putdown.
 - Fully occluded or out-of-frame actions are excluded from `events.csv`.
-- Multiple simultaneous actors are all labeled.
-- Visible but ambiguous actions are retained with `confidence=low`.
+- Multiple simultaneous actors are all labeled and processed separately.
+- Visible but ambiguous or very brief actions are retained with `confidence=low`.
 - Difficult but labelable cases use `hard_case=true`.
 - Every event is stored as an interval `[t_start, t_end]`.
 
-## 2.5 Temporal direction
+## 2.6 Event interval semantics
 
-Pickup and putdown are approximate time reversals:
+Candidate intervals and event intervals are different artifacts.
 
 ```text
-pickup:  shelf → hand
-putdown: hand → shelf
+candidate_start / candidate_end:
+    broad interval in which an interaction may occur
+
+event t_start:
+    onset of the final purposeful action that results in transfer
+
+event t_end for pickup:
+    the item has left its resting place and is stably held/carried
+
+event t_end for putdown:
+    the item has been released and remains stably resting on the surface
 ```
 
-All feature extraction, classification, and prompting must preserve chronological frame order.
+A hand entering or leaving an expanded shelf region is a useful proposal signal, but it is not automatically the event boundary.
 
----
+## 2.7 Low confidence versus ignore
+
+Use `confidence=low` when the action is visible and is more likely than not to satisfy the definition, but its exact type, count, or boundaries are uncertain.
+
+Use an internal ignore interval when the evidence required to decide whether transfer occurred is unavailable, for example because the hand/item is fully occluded or outside the frame.
+
+```text
+low confidence → official event row remains in events.csv
+ignore interval → no official event row; zero training/evaluation weight
+```
+
+## 2.8 Temporal direction
+
+Pickup and putdown are approximate time reversals. All feature extraction, frame sampling, training, decoding, and prompting must preserve chronological order.
+
+Never shuffle frames or aggregate them as an unordered bag.
+
+## 2.9 Terminology invariant
+
+Use these terms consistently:
+
+| Artifact | Meaning |
+|---|---|
+| Active span | At least one person is visible |
+| Interaction candidate | A person/hand may interact with a shelf or surface |
+| Event prediction | A model claims a pickup or putdown occurred |
+| Ground-truth event | A human-verified pickup or putdown |
+
+Stage A and Stage B outputs are not event predictions. A candidate must never be exported to `predictions.csv` until Track A, Track B, or Layer 2 classifies it as an event.
 
 # 3. Final Architecture
 
@@ -121,11 +188,12 @@ retain manifest row         derive active span(s)
 exclude from event          and person tracklets
 annotation/modeling              │
                                  ▼
-Layer 0B — Pose and shelf-interaction proposals
+Layer 0B — Actor-specific pose and interaction proposals
 YOLO pose + fixed shelf/surface regions at higher sampling rate
                                  │
                                  ▼
-High-recall interaction candidates + wrist/actor trajectories
+Broad candidates + wrist/actor trajectories
+Each candidate may contain zero, one, or multiple events
                                  │
                                  ▼
 Human annotation of complete active spans
@@ -137,16 +205,23 @@ clips.csv + events.csv + internal ignore intervals
              │                                        │
              ▼                                        ▼
 Layer 1 Track A                               Layer 1 Track B
-Pose/hand-region baseline                     Learned temporal detector
-wrist trajectory + hand/shelf state           │
-transition + deterministic logic               ├─ Track B1: VideoMAE window classifier
+Pose/hand-region baseline                     Learned actor-conditioned detector
+repeated state transitions                    │
++ hand/shelf appearance                       ├─ Track B1: VideoMAE window classifier
              │                                 └─ Track B2: cached VideoMAE features + TCN
              ▼                                        │
-Independent pickup/putdown events                     ▼
-                                             Independent pickup/putdown events
+zero/one/multiple events                              ▼
+                                             zero/one/multiple events
              │                                        │
              └───────────────────┬────────────────────┘
                                  │
+                      Shared non-VLM item count
+                     1 item | 2+ items | uncertain
+                                 │
+                                 ▼
+                 Expand multi-item actions into rows
+                                 │
+                                 ▼
                          Shared evaluation
                                  │
                                  ▼
@@ -167,17 +242,18 @@ Deterministic final predictions.csv
 
 ## 3.1 Architectural principles
 
-1. Layer 0 creates trustworthy labels and active spans.
-2. Layer 0B proposals accelerate annotation but do not define ground truth.
-3. Track A is the first official non-VLM baseline.
-4. Track B1 is a learned fixed-window baseline.
-5. Track B2 is the stronger feature-based temporal model.
-6. Layer 1 and Layer 2 must be independently evaluable.
-7. Qwen verification of Layer 1 predictions belongs to Layer 3.
-8. All systems use the same prediction schema and evaluator.
-9. Streaming is deferred; all inputs are encoded video files.
-
----
+1. Layer 0 creates trustworthy ground truth and person-active spans.
+2. Layer 0B proposals accelerate work but do not define ground truth or predictions.
+3. A candidate is a container and may contain zero, one, or multiple ordered events.
+4. Track A is the first official non-VLM detector.
+5. Track B1 is a learned fixed-window baseline.
+6. Track B2 is the stronger feature-based temporal model.
+7. Track B inputs are actor-conditioned so simultaneous people can produce independent events.
+8. Layer 1 and Layer 2 are independently evaluable on the same held-out clips.
+9. Qwen verification of Layer 1 predictions belongs to Layer 3.
+10. Multi-item actions are exported as separate canonical prediction rows.
+11. All systems use the same prediction schema and two-pass evaluator.
+12. Streaming is deferred; inputs are encoded video files.
 
 # 4. Repository, Storage, and Privacy
 
@@ -330,7 +406,12 @@ UNLABELABLE
 CORRUPT_SECTION
 ```
 
-Excluded actions must not appear in `events.csv`, but their intervals must not be sampled as background.
+Rules:
+
+- Excluded actions must not appear in `events.csv`.
+- Ignore intervals must never be sampled as background.
+- Visible but ambiguous actions are not ignore intervals; they remain event rows with `confidence=low`.
+- Visible restocking is normally a hard negative, not an ignore interval.
 
 ## 5.5 `predictions.csv`
 
@@ -354,7 +435,21 @@ layer2_qwen36_27b_standalone_v1
 layer3_track_b_qwen_verifier_v1
 ```
 
----
+Internal prediction records may additionally contain:
+
+```text
+event_group_id
+candidate_id
+actor_id
+hand_side
+region_id
+item_count
+item_count_score
+boundary_method
+source_prediction_id
+```
+
+For a two-item action, export two official prediction rows with unique `pred_id` values and the same type and interval. Retain `event_group_id` internally to link them.
 
 # 6. Layer 0A — Inventory, Person Triage, and Active Spans
 
@@ -446,16 +541,19 @@ Do not save all frames to disk.
 
 ## 6.5 Sampling rate
 
-Stage A only needs coarse person presence.
+Stage A only needs coarse person presence, but it must not systematically miss short appearances.
 
 Recommended starting point:
 
 ```yaml
 triage:
-  target_fps: 0.5
-  minimum_track_duration_s: 0.75
+  target_fps: 1.0
+  minimum_visible_duration_s: 0.75
+  minimum_observations: 2
   minimum_person_confidence: 0.35
 ```
+
+Use 2 FPS for very short motion-triggered clips when one FPS misses brief person appearances.
 
 Calculate:
 
@@ -463,22 +561,24 @@ Calculate:
 vid_stride = max(1, round(source_fps / target_fps))
 ```
 
+Track duration must be calculated from source timestamps, not inferred only from the number of sampled frames.
+
 ## 6.6 Stable track rule
 
 Mark `PERSON_PRESENT` when at least one track:
 
-- lasts at least 0.75 seconds;
-- has at least three confident observations;
-- is not a one-frame false detection.
+- spans at least the configured visible duration using source timestamps;
+- has at least the configured number of confident observations;
+- is not an isolated accidental detection.
 
 When no stable track exists:
 
 ```text
 n_person_tracks = 0
-usable = false
+usable = false for event annotation/modeling
 ```
 
-Keep the row in `clips.csv` for triage evaluation.
+Keep the row in `clips.csv` for Stage A evaluation. Do not use no-person clips as Layer 1 action-classification negatives.
 
 ## 6.7 Active spans
 
@@ -535,68 +635,54 @@ When is a tracked person likely interacting with a shelf or surface?
 It produces:
 
 - actor and wrist trajectories;
-- candidate interaction intervals;
-- the signals consumed by Layer 1 Track A;
-- high-recall windows for annotation and Track B.
+- broad candidate interaction intervals;
+- actor/shelf context for Track A and Track B;
+- high-recall suggestions for annotation.
 
-It does not define ground truth.
+It does **not** decide pickup or putdown.
+
+A candidate may contain:
+
+```text
+zero events
+one event
+multiple ordered events
+```
+
+Examples include a touch-only negative, one pickup, or a pickup immediately followed by a putdown.
 
 ## 7.2 Fixed shelf and surface regions
 
-Define camera-specific polygons once:
+Because the camera is fixed, define shelf and placement polygons once and version them.
 
 ```yaml
 camera_id: store_camera_01
-
 regions:
   - region_id: shelf_left
     type: shelf
-    polygon:
-      - [115, 90]
-      - [520, 85]
-      - [530, 620]
-      - [110, 625]
-
+    polygon: [[115, 90], [520, 85], [530, 620], [110, 625]]
   - region_id: center_table
     type: surface
-    polygon:
-      - [600, 420]
-      - [1120, 410]
-      - [1190, 770]
-      - [580, 780]
-
+    polygon: [[600, 420], [1120, 410], [1190, 770], [580, 780]]
 interaction_margin_px: 60
 ```
 
-Commit this configuration to Git.
+Maintain exact regions and expanded interaction regions.
 
 ## 7.3 Direct pose-video processing
 
-Use YOLO pose with ByteTrack:
+Pass the video path directly to YOLO pose tracking. The library decodes frames internally; the application stores timestamped structured results.
 
-```python
-pose_model = YOLO(settings.pose_model)
-
-results = pose_model.track(
-    source=str(video_path),
-    tracker="bytetrack.yaml",
-    stream=True,
-    classes=[0],
-    vid_stride=calculated_stride,
-    verbose=False,
-)
-```
-
-Extract:
+Store at least:
 
 ```text
 frame_index
 timestamp
-track_id
+actor_id
 person_bbox
 left_wrist_xy
 right_wrist_xy
-wrist_confidence
+wrist_confidences
 ```
 
 Save:
@@ -614,7 +700,7 @@ proposals:
   target_fps: 8
 ```
 
-Benchmark 2, 4, and 8 FPS later. Short hand interactions may be missed at very low rates.
+Benchmark 2, 4, and 8 FPS on validation data. Measure proposal recall and temporal error, not only runtime.
 
 ## 7.5 Candidate signals
 
@@ -633,19 +719,14 @@ Optional later signals:
 
 ## 7.6 Candidate rule
 
-Create a raw interaction when:
-
-```text
-a confident wrist remains inside an expanded shelf region
-for at least 0.25 seconds
-```
+Create a raw interaction when a confident wrist remains inside an expanded shelf region for at least the configured duration.
 
 Then:
 
-1. Merge intervals from the same actor, hand, and shelf when the gap is below the threshold.
+1. Merge intervals only for the same actor, hand, and shelf region.
 2. Add context before and after.
-3. Clamp to video duration.
-4. Preserve raw and padded intervals.
+3. Clamp to source duration.
+4. Preserve raw and padded boundaries separately.
 5. Cap excessively long windows.
 
 ```yaml
@@ -658,6 +739,8 @@ proposals:
   context_after_s: 2.0
   maximum_candidate_duration_s: 10.0
 ```
+
+Candidate merging must not imply event merging. Later decoders may emit multiple events from one candidate.
 
 ## 7.7 Candidate schema
 
@@ -680,16 +763,14 @@ review_status
 
 Annotators must review complete active spans, not only proposals.
 
-Measure:
-
 ```text
 proposal_recall =
-number of ground-truth events overlapped by a candidate
+number of ground-truth events overlapped by at least one candidate
 /
 total number of ground-truth events
 ```
 
-Target high recall. A reasonable initial target is at least 90% on the reviewed validation subset.
+A reasonable initial target is at least 90% on the reviewed validation subset. Candidate precision may be low; recall is the priority.
 
 ## 7.9 Outputs
 
@@ -699,16 +780,17 @@ tracks/pose/<clip_id>.parquet
 artifacts/candidate_previews/<candidate_id>.mp4
 ```
 
+No Stage B row is written to `predictions.csv`.
+
 ## 7.10 Exit criteria
 
 - Shelf regions are version-controlled.
-- Wrist proposals are generated automatically.
+- Actor-specific wrist proposals are generated automatically.
 - Candidate previews are inspectable.
 - Full active spans remain human-reviewed.
 - Proposal recall is measurable.
-- Pose trajectories are available for Track A.
-
----
+- Candidates may contain zero, one, or multiple events.
+- Pose trajectories are available for Track A and actor-conditioned Track B.
 
 # 8. Annotation Protocol
 
@@ -728,6 +810,7 @@ The selected tool must support:
 - interval annotation;
 - complete active-span review;
 - proposal correction and deletion;
+- multiple events inside one candidate;
 - metadata fields;
 - reproducible export.
 
@@ -736,29 +819,60 @@ The selected tool must support:
 For every selected person-containing clip:
 
 1. Watch the complete active span.
-2. Inspect Stage B proposals.
+2. Inspect Stage B proposals as suggestions only.
 3. Rewatch possible events frame by frame.
-4. Mark `t_start` when the physical transfer action begins.
-5. Mark `t_end` when the object is carried away or settled.
+4. Mark `t_start` at the onset of the final purposeful action that causes transfer.
+5. Mark `t_end` when the resulting object state is stable:
+   - pickup: item is stably held/carried;
+   - putdown: item is released and stably resting.
 6. Assign `pickup` or `putdown`.
 7. Create separate rows for multiple items.
-8. Set `confidence` to `high`, `med`, or `low`.
-9. Set `hard_case=true` when appropriate.
-10. Add internal ignore intervals for excluded actions.
-11. Mark the clip fully reviewed.
+8. Create separate ordered rows for pickup followed by immediate putdown.
+9. Label every visible actor event.
+10. Set `confidence` to `high`, `med`, or `low`.
+11. Set `hard_case=true` when appropriate.
+12. Add an internal ignore interval only when transfer evidence is unavailable.
+13. Mark the complete active span reviewed.
 
-## 8.3 Restocking decision
+## 8.3 Restocking and negatives
 
-Before annotation scales, record:
+Record before annotation scales:
 
 ```text
 Restocking observed: yes/no
-Restocking handling: hard negative / excluded interval
+Staff/restocking scope decision: included as negatives / clips excluded by documented policy
 ```
 
-Generic restocking must not be labeled as putdown.
+Rules:
 
-## 8.4 Annotation budget
+- Visible restocking is not a putdown.
+- When retained in the dataset, visible restocking is background/hard negative.
+- Do not create an ignore interval merely because an action is restocking.
+- Use ignore only when visibility is insufficient to determine transfer.
+
+## 8.4 Confidence and ignore decision
+
+```text
+confidence=low:
+    transfer is visible and likely, but type/count/boundaries are uncertain
+
+ignore interval:
+    necessary transfer evidence is hidden, outside frame, or technically unusable
+```
+
+Recommended training weights:
+
+```yaml
+label_weights:
+  high: 1.0
+  med: 1.0
+  low: 0.5
+  ignore: 0.0
+```
+
+The primary official evaluation includes all event rows. Also report a high/med-only slice and a low-confidence slice.
+
+## 8.5 Annotation budget
 
 Agree on a target before labeling expands:
 
@@ -772,7 +886,7 @@ annotation_budget:
 
 Adjust after measuring actual event frequency.
 
-## 8.5 Agreement check
+## 8.6 Agreement check
 
 Double-label at least 15% of selected clips.
 
@@ -790,7 +904,7 @@ hard-case status
 
 Resolve disagreements before freezing the test set.
 
-## 8.6 Event previews
+## 8.7 Event previews
 
 Generate:
 
@@ -806,127 +920,137 @@ Save to:
 artifacts/event_previews/<event_id>.mp4
 ```
 
-## 8.7 Split policy
+## 8.8 Split policy
 
 Split by the strongest available grouping:
 
 1. recording session;
-2. contiguous customer sequence where safely inferable;
+2. contiguous customer sequence where safely inferable without identifying a person;
 3. recording day;
 4. whole clip as fallback.
 
-Never split derived windows independently.
+Never split derived windows, candidates, frames, or feature sequences independently.
 
-Freeze the test split before tuning models or thresholds.
+Freeze the test split before model or threshold tuning.
 
-## 8.8 Outputs
+## 8.9 Outputs
 
 ```text
 manifest/clips.csv
 manifest/events.csv
-manifest/labeling-guidelines.md
 manifest/ignore_intervals.parquet
-manifest/active_spans.parquet
-manifest/candidates.parquet
-manifest/split_version.json
+manifest/labeling-guidelines.md
+manifest/splits.json
+artifacts/event_previews/
 ```
 
----
+The copied labeling guidelines must remain synchronized with Section 2.
 
 # 9. Layer 1 Track A — Pose and Hand/Shelf State Baseline
 
 ## 9.1 Purpose
 
-Track A is the first official non-VLM event detector.
+Track A is the first official non-VLM detector.
 
-It must independently output:
+It converts actor-specific interaction candidates into zero, one, or multiple ordered event predictions by combining:
 
-```text
-pickup or putdown
-start time
-end time
-confidence
-```
-
-Track A extends Layer 0B from a proposal generator into an interpretable event detector.
+- wrist trajectory;
+- shelf interaction geometry;
+- hand appearance before/after contact;
+- shelf appearance before/after contact;
+- deterministic state-transition logic.
 
 ## 9.2 Inputs
 
-For every interaction candidate:
-
 ```text
-actor track
-hand side
+candidate_id
+clip_id
+actor_id
+hand_side
+region_id
+broad candidate interval
 wrist trajectory
-shelf region
-raw and padded interval
-source video
+person trajectory
 ```
 
-## 9.3 Temporal state machine
+Track A processes each actor, hand, and shelf region independently.
 
-Operate per:
+## 9.3 Repeating temporal state machine
 
-```text
-actor_id + hand_side + region_id
-```
-
-State sequence:
+The state machine must be able to emit more than one event inside a candidate.
 
 ```text
 OUTSIDE
-   │ wrist enters interaction region
-   ▼
-APPROACHING
-   │ wrist reaches shelf/contact area
-   ▼
-CONTACT
-   │ wrist begins moving away
-   ▼
-WITHDRAWING
-   │ wrist exits interaction region
-   ▼
-STATE COMPARISON
-   ├── shelf → hand = pickup
-   ├── hand → shelf = putdown
-   └── no persistent transition = background
+  → APPROACHING
+  → CONTACT
+  → TRANSFER/STABILIZATION
+  → WITHDRAWING
+  → OUTSIDE
 ```
 
-## 9.4 Pre/post sampling points
+After an event is emitted, the state machine remains active for the rest of the candidate and can enter another contact/transfer cycle.
 
-For each interaction, select stable observations:
+Example:
 
 ```text
-before: shortly before final approach
-contact: closest wrist/shelf interaction
-post: after the hand exits and state stabilizes
+CONTACT → shelf-to-hand transition → PICKUP
+        → later CONTACT → hand-to-shelf transition → PUTDOWN
 ```
 
-Avoid frames where the hand is fully occluded.
+## 9.4 Candidate versus event boundaries
 
-## 9.5 Hand crops
+Retain both:
 
-Extract a crop centered on the wrist before and after interaction.
+```text
+candidate_start_s / candidate_end_s
+event_start_s / event_end_s
+```
 
-Store:
+Use wrist-region entry/exit only to delimit the broad interaction context.
+
+Estimate event boundaries from the final transition:
+
+```text
+event t_start:
+    onset of the final purposeful approach/contact sequence producing transfer
+
+event t_end for pickup:
+    item is stably separated from shelf and held/carried
+
+event t_end for putdown:
+    item is released and remains stably on the surface
+```
+
+When transition boundaries cannot be estimated reliably, use wrist entry/exit as a versioned fallback and record:
+
+```text
+boundary_method = WRIST_REGION_FALLBACK
+```
+
+## 9.5 Pre/contact/post sampling points
+
+For each potential transition, sample:
+
+```text
+pre_contact
+contact/transfer
+post_transfer_stable
+```
+
+Sampling points must be based on timestamps and chronological evidence, not arbitrary frame order.
+
+## 9.6 Hand and shelf crops
+
+Extract actor/hand-specific hand crops and a local shelf patch around the estimated contact point:
 
 ```text
 hand_before_crop
 hand_after_crop
-```
-
-The crop must include enough surrounding context to show an object being carried, not only a few hand pixels.
-
-## 9.6 Shelf crops
-
-Extract a local shelf patch around the contact point:
-
-```text
 shelf_before_crop
 shelf_after_crop
 ```
 
-The patch should be large enough to capture an item disappearing, appearing, or changing position.
+The shelf patch must be large enough to observe an item disappearing, appearing, or remaining unchanged.
 
 ## 9.7 Lightweight appearance features
 
@@ -937,7 +1061,7 @@ Start with a frozen image encoder:
 - CLIP;
 - MobileNet feature extractor.
 
-Extract:
+Cache:
 
 ```text
 hand_before_embedding
@@ -946,11 +1070,7 @@ shelf_before_embedding
 shelf_after_embedding
 ```
 
-Cache these features.
-
 ## 9.8 Lightweight state classifiers
-
-Train small classifiers, not a new large detector.
 
 ### Hand-state classifier
 
@@ -975,49 +1095,75 @@ Acceptable first models:
 - small MLP;
 - gradient-boosted trees.
 
-Use training labels derived from human-verified event intervals and hard negatives.
-
 ## 9.9 Deterministic decision rules
 
 ### Pickup
 
 ```text
 hand approaches shelf
-AND interaction occurs
-AND hand becomes carrying and/or shelf indicates removal
-AND hand exits with the new state
+AND transfer is visible
+AND hand becomes carrying and/or shelf indicates object removal
+AND the object state remains changed after contact
 ```
 
 ### Putdown
 
 ```text
 hand approaches while carrying
-AND interaction occurs
-AND hand becomes empty and/or shelf indicates placement
-AND the item remains after the hand exits
+AND transfer is visible
+AND hand becomes empty and/or shelf indicates object placement
+AND the item remains resting after release
 ```
 
 ### Background interaction
 
 ```text
-hand enters and exits shelf region
-BUT no persistent hand/shelf state transition occurs
+hand enters/exits interaction region
+BUT no persistent shelf-to-hand or hand-to-shelf transfer occurs
 ```
 
-This must classify touching, reaching, and browsing as background.
+This includes touching, inspecting, reaching, browsing, and visible restocking.
 
-## 9.10 Event interval
+## 9.10 Multi-event decoding
 
-Initial approximation:
+Track A returns a list, not a single label:
 
 ```text
-t_start = first stable wrist entry into expanded shelf region
-t_end   = stable wrist exit after the interaction
+[]
+[pickup]
+[putdown]
+[pickup, putdown]
+[other ordered combinations supported by evidence]
 ```
 
-A later refinement may use the contact point and stabilization point.
+Merge events only when they have:
 
-## 9.11 Confidence score
+- the same actor;
+- the same type;
+- compatible overlapping/adjacent intervals;
+- evidence that they are duplicate detections of one transfer.
+
+Never merge adjacent pickup and putdown predictions merely because the gap is short.
+
+## 9.11 Shared non-VLM item-count estimator
+
+After an event is detected, estimate:
+
+```text
+1 item
+2+ items
+uncertain
+```
+
+Use an event-aligned hand/object crop and a lightweight classifier or deterministic two-hand logic.
+
+- One object in each hand can naturally yield two linked events.
+- Two objects in one hand requires the count estimator.
+- `uncertain` remains one prediction internally flagged for review unless Layer 3 resolves it.
+
+For `item_count=2`, export two canonical prediction rows with the same event interval and an internal shared `event_group_id`.
+
+## 9.12 Confidence score
 
 Combine normalized evidence:
 
@@ -1025,12 +1171,14 @@ Combine normalized evidence:
 wrist trajectory confidence
 hand-state transition confidence
 shelf-transition confidence
+boundary confidence
 visibility quality
+item-count confidence
 ```
 
 Keep the formula deterministic and version-controlled.
 
-## 9.12 Outputs
+## 9.13 Outputs
 
 Canonical:
 
@@ -1041,9 +1189,14 @@ results/layer1_track_a/predictions.csv
 Internal diagnostics:
 
 ```text
+candidate_id
 actor_id
 hand_side
 region_id
+event_group_id
+item_count
+item_count_score
+boundary_method
 hand_before_score
 hand_after_score
 shelf_transition_score
@@ -1051,25 +1204,23 @@ visibility_score
 decision_rule
 ```
 
-## 9.13 Track A exit criteria
+## 9.14 Track A exit criteria
 
-- Track A emits canonical pickup/putdown predictions.
+- Track A emits canonical pickup/putdown predictions, not candidates.
+- One candidate can yield zero, one, or multiple events.
+- Immediate pickup/putdown can produce two ordered rows.
 - Simultaneous actors are processed separately.
-- Hard negative interactions are classified.
-- Pre/post crop extraction is visually validated.
-- Decision rules are deterministic and auditable.
+- Multi-item actions can be expanded into separate rows.
+- Visible restocking and touch-only interactions are background.
+- Event boundaries represent transfer/stabilization rather than the full candidate whenever possible.
 - Thresholds are selected on validation data.
 - Event-level metrics and failure previews are generated.
-
----
 
 # 10. Layer 1 Track B1 — VideoMAE Fixed-Window Classifier
 
 ## 10.1 Purpose
 
-Track B1 is the simplest learned video baseline and corresponds to the guideline's lighter middle option.
-
-It classifies a fixed chronological window as:
+Track B1 is the simplest learned video baseline. It classifies chronological actor-conditioned windows as:
 
 ```text
 pickup
@@ -1077,16 +1228,34 @@ putdown
 background
 ```
 
-It produces coarse event intervals by sliding, smoothing, and merging window predictions.
+Sliding-window scores are decoded into zero or more event intervals for the original untrimmed clip.
 
-## 10.2 Training windows
+## 10.2 Actor-conditioned inputs
 
-Use only person-containing active spans.
+Build one input stream per:
+
+```text
+clip_id + actor_id + region_id + candidate_id
+```
+
+Recommended spatial crop:
+
+```text
+union of actor bounding boxes across the window
++ active shelf/surface region
++ 15–20% margin
+```
+
+Keep an optional full-scene view for debugging, but use the actor-conditioned crop as the primary training input. This allows simultaneous people to produce independent events.
+
+## 10.3 Training windows
+
+Start with shorter, overlapping windows to separate close pickup/putdown transitions:
 
 ```yaml
 track_b1:
-  window_duration_s: 4.0
-  window_stride_s: 1.0
+  window_duration_s: 2.5
+  window_stride_s: 0.5
   sampled_frames: 16
   labels:
     - background
@@ -1098,8 +1267,9 @@ track_b1:
 
 - pickup events;
 - putdown events;
-- immediate pickup/return sequences where separable;
-- hard but labelable events.
+- immediate pickup/return sequences represented by separate windows where possible;
+- hard but labelable events;
+- low-confidence events with reduced sample/loss weight.
 
 ### Hard negatives
 
@@ -1107,7 +1277,7 @@ track_b1:
 - reaching or browsing;
 - standing near shelves;
 - carrying an item near another shelf;
-- hand movement near products;
+- visible restocking;
 - Stage B candidates without events.
 
 ### Exclusions
@@ -1115,48 +1285,63 @@ track_b1:
 - no-person clips;
 - ignore intervals;
 - corrupt sections;
-- fully occluded actions.
+- fully occluded or out-of-frame actions.
 
-## 10.3 Window manifest
+## 10.4 Window labeling when events are close
+
+A single-label window cannot represent two types simultaneously. Use this deterministic rule:
+
+1. Prefer windows whose temporal center lies inside exactly one event interval.
+2. When multiple event intervals overlap the window, assign the event whose midpoint is closest to the window center.
+3. Skip only cases whose event midpoints are effectively indistinguishable at the configured temporal resolution.
+4. Preserve both original event rows for inference/evaluation.
+
+Do not remove all immediate pickup/putdown examples from training.
+
+## 10.5 Window manifest
 
 ```text
 sample_id
 clip_id
+candidate_id
+actor_id
+region_id
 window_start_s
 window_end_s
 label
 event_id
-actor_id
+label_confidence
+sample_weight
 split
 ```
 
-Skip windows with incompatible simultaneous labels if the initial single-label classifier cannot represent them.
-
-## 10.4 Video loading
+## 10.6 Video loading
 
 The loader accepts:
 
 ```text
 video path
+actor-conditioned crop track
 window_start_s
 window_end_s
 ```
 
 It must:
 
-1. Seek to the requested interval.
-2. Decode only that interval.
-3. Sample frames uniformly in chronological order.
-4. Resize and normalize using the VideoMAE processor.
-5. Return the tensor and label.
+1. seek to the requested interval;
+2. decode only that interval;
+3. reconstruct the actor/shelf crop;
+4. sample frames uniformly in chronological order;
+5. resize and normalize using the VideoMAE processor;
+6. return tensor, label, and metadata.
 
 Do not pre-extract the full dataset into JPEG images.
 
-## 10.5 Training gates
+## 10.7 Training gates
 
 ### Gate A — visual inspection
 
-Render at least 20 samples with frame sequence, label, timestamps, and clip ID.
+Render at least 20 samples with chronological frames, crop box, label, timestamps, actor ID, and region ID.
 
 ### Gate B — tiny overfit
 
@@ -1169,59 +1354,61 @@ Start with:
 - pretrained VideoMAE-Small;
 - frozen or mostly frozen encoder;
 - trained classification head;
-- weighted loss or weighted sampling;
-- checkpoint selection by validation F1, not accuracy.
+- weighted loss/sampling using label confidence and class frequency;
+- checkpoint selection by validation event F1, not frame/window accuracy.
 
-Then optionally unfreeze final encoder blocks.
+## 10.8 Inference and multi-event decoding
 
-## 10.6 Inference
+For each actor-conditioned active span or candidate:
 
-For each active span or Stage B candidate:
+1. slide the configured window;
+2. predict class probabilities;
+3. smooth scores chronologically;
+4. apply class-specific validation thresholds;
+5. detect distinct class peaks;
+6. merge only duplicate intervals of the same type and actor;
+7. preserve adjacent different-type peaks as separate events;
+8. derive coarse event intervals from accepted score regions;
+9. run the shared non-VLM item-count estimator;
+10. expand two-item actions into separate canonical rows.
 
-1. Slide a four-second window.
-2. Use a one-second stride.
-3. Predict class probabilities.
-4. Smooth adjacent scores.
-5. Apply validation-selected thresholds.
-6. Merge adjacent windows of the same type.
-7. Produce coarse intervals.
-
-## 10.7 Outputs
+## 10.9 Outputs
 
 ```text
 results/layer1_track_b1/predictions.csv
 ```
 
-## 10.8 Track B1 exit criteria
+## 10.10 Track B1 exit criteria
 
-- Frame order is visually validated.
+- Actor-conditioned crops and frame order are visually validated.
 - Tiny overfit succeeds.
-- Canonical predictions are produced.
-- Pickup/putdown confusion is reported.
-- Track B1 is compared with Track A using the same evaluator.
-
----
+- One candidate can produce multiple ordered event predictions.
+- Immediate pickup/putdown is not forcibly merged.
+- Simultaneous actors can produce independent rows.
+- Canonical predictions are produced and compared with Track A using the same evaluator.
 
 # 11. Layer 1 Track B2 — Cached VideoMAE Features and TCN
 
 ## 11.1 Purpose
 
-Track B2 is the stronger learned model.
-
-It separates expensive feature extraction from cheap temporal detector training.
+Track B2 separates expensive actor-conditioned feature extraction from cheap temporal detector training.
 
 ```text
-video → cached VideoMAE features → temporal detector → event intervals
+actor-conditioned video sequence
+→ cached VideoMAE features
+→ temporal detector
+→ zero/one/multiple event intervals
 ```
 
 ## 11.2 Feature extraction
 
-For every active span or candidate:
+For every actor/region active span or candidate:
 
-1. Divide it into overlapping micro-clips.
-2. Pass each micro-clip through the frozen VideoMAE encoder.
-3. Save one embedding and representative timestamp per micro-clip.
-4. Reuse the feature files for all temporal-head experiments.
+1. create the actor+shelf union crop sequence;
+2. divide it into overlapping chronological micro-clips;
+3. pass each micro-clip through the frozen VideoMAE encoder;
+4. save one embedding and representative timestamp per micro-clip;
+5. reuse the features for all temporal-head experiments.
 
 ```yaml
 track_b2:
@@ -1236,16 +1423,18 @@ track_b2:
 Save:
 
 ```text
-features/<clip_id>/<span_or_candidate_id>.npz
+features/<clip_id>/<actor_id>/<candidate_or_span_id>.npz
 ```
 
 Contents:
 
 ```text
+clip_id
+candidate_or_span_id
+actor_id
+region_id
 timestamps: [T]
 embeddings: [T, D]
-actor_id
-span_or_candidate_id
 ```
 
 ## 11.3 Temporal labels
@@ -1264,7 +1453,15 @@ ignore
 - Center inside ignore interval → `ignore`.
 - Otherwise → `background`.
 
-Ignore positions do not contribute to loss.
+When event intervals are very close, retain the ordered sequence at the available temporal resolution rather than collapsing it into one label.
+
+Use confidence weights:
+
+```text
+high/med = 1.0
+low = 0.5
+ignore = 0.0
+```
 
 ## 11.4 Temporal head
 
@@ -1294,17 +1491,20 @@ temporal_head:
   dropout: 0.2
 ```
 
-Use focal loss or weighted cross-entropy.
+Use focal loss or weighted cross-entropy with ignore masking.
 
 ## 11.5 Interval decoding
 
 1. Smooth temporal probabilities.
 2. Apply class-specific validation thresholds.
-3. Combine adjacent timesteps.
-4. Fill short internal gaps.
-5. Remove intervals below minimum duration.
-6. Apply temporal non-maximum suppression where required.
-7. Use first/last accepted positions as `t_start` and `t_end`.
+3. Detect contiguous/peaked score regions per class.
+4. Fill only short internal gaps for the same class.
+5. Never merge adjacent intervals of different types.
+6. Remove intervals below minimum duration.
+7. Apply class-specific temporal NMS only to duplicates.
+8. Estimate event boundaries around transfer/stabilization; retain the first/last accepted timestep as a coarse fallback.
+9. Run the shared non-VLM item-count estimator.
+10. Expand multi-item actions into separate canonical rows.
 
 ## 11.6 Outputs
 
@@ -1314,14 +1514,13 @@ results/layer1_track_b2/predictions.csv
 
 ## 11.7 Track B2 exit criteria
 
-- Features are cached reproducibly.
-- Sequence labels are visually inspected.
+- Actor-conditioned features are cached reproducibly.
+- Sequence labels and chronological order are visually inspected.
 - Tiny sequence overfit succeeds.
-- Canonical intervals are produced.
-- Track B2 is compared with Track A and Track B1.
-- Track B2 is retained only if it improves useful metrics or localization.
-
----
+- Close pickup/putdown transitions can remain separate.
+- Multiple actors are independently represented.
+- Canonical intervals and multi-item rows are produced.
+- Track B2 is retained only if it improves useful metrics or localization over simpler baselines.
 
 # 12. Optional Stronger Track B — ActionFormer
 
@@ -1413,11 +1612,13 @@ Start at 8 FPS for hand interaction and reduce only if recall and event quality 
 
 ## 14.1 Purpose
 
-Layer 2 must independently detect events. It must not receive Layer 1 predictions.
+Layer 2 independently detects events. It must not receive Layer 1 predictions.
 
 ```text
-active span → overlapping Qwen windows → independent event predictions
+active span → overlapping chronological Qwen windows → independent event predictions
 ```
+
+Each window may contain zero, one, or multiple events.
 
 ## 14.2 Model-size note
 
@@ -1448,6 +1649,8 @@ Each window includes:
 - clip ID;
 - source-window start time.
 
+Use active spans rather than Layer 1 proposals so the Layer 2 comparison remains independent.
+
 ## 14.4 Response schema
 
 ```json
@@ -1465,17 +1668,21 @@ Each window includes:
 }
 ```
 
-An empty event list is valid.
+An empty list and multiple ordered events are both valid.
 
 ## 14.5 Prompt requirements
 
 Include:
 
 - exact pickup and putdown definitions;
-- non-events;
-- occlusion rule;
-- two-item rule;
-- immediate pickup/putdown rule;
+- event-boundary semantics;
+- touching/browsing negatives;
+- visible restocking is not putdown;
+- occluded/out-of-frame actions must be excluded;
+- visible ambiguity may be returned with low confidence;
+- two-item action means two event rows or `item_count=2` for expansion;
+- immediate pickup/putdown means two ordered events;
+- multiple actors must all be reported;
 - temporal-order requirement;
 - strict JSON schema;
 - instruction that times are relative to the supplied window.
@@ -1488,7 +1695,10 @@ Use deterministic or low-temperature decoding. Do not request verbose reasoning.
 - Retry invalid JSON once.
 - Preserve raw responses.
 - Count parse failures.
-- Merge duplicate predictions from overlapping windows deterministically.
+- Convert relative times to source times deterministically.
+- Merge only duplicate same-type overlapping predictions from adjacent windows.
+- Never merge a pickup and putdown solely because they are close.
+- Expand `item_count=2` into two canonical rows.
 
 ## 14.7 Outputs
 
@@ -1502,17 +1712,16 @@ results/layer2/run_metadata.json
 
 - Qwen runs independently of Layer 1.
 - It scans active spans, not dead footage.
-- Canonical predictions are produced.
-- Duplicate merging is deterministic.
+- Zero, one, or multiple events per window are supported.
+- Canonical multi-item rows are produced.
+- Duplicate merging is deterministic and type-aware.
 - Parse failures and runtime are reported.
-
----
 
 # 15. Layer 3 — Qwen Verification and Deterministic Fusion
 
 ## 15.1 Purpose
 
-Layer 3 uses Qwen to verify Layer 1 proposals.
+Layer 3 uses Qwen to verify individual Layer 1 event predictions.
 
 Qwen verifies:
 
@@ -1523,11 +1732,11 @@ item count
 visibility
 ```
 
-Layer 1 remains the timing source in the first version.
+Layer 1 remains the timing source in the first version. Multiple Layer 1 events inside one candidate are verified independently.
 
 ## 15.2 Verification input
 
-For each Layer 1 prediction:
+For each Layer 1 event prediction:
 
 ```text
 4 seconds before Layer 1 t_start
@@ -1535,7 +1744,7 @@ through
 2 seconds after Layer 1 t_end
 ```
 
-Clamp to source boundaries. Overlay relative timestamps or frame numbers.
+Clamp to source boundaries. Overlay relative timestamps or frame numbers. Include enough pre-context to distinguish a return from generic restocking.
 
 ## 15.3 Response schema
 
@@ -1566,8 +1775,8 @@ ITEM_LEAVES_SURFACE_WITH_HAND
 ITEM_RELEASED_ON_SURFACE
 TOUCH_ONLY
 NO_OBJECT_TRANSFER
+RESTOCKING_NOT_PUTDOWN
 ACTION_OCCLUDED
-MULTIPLE_ACTIONS
 AMBIGUOUS
 ```
 
@@ -1579,10 +1788,11 @@ AMBIGUOUS
 event_visible = false → REJECTED_NOT_VISIBLE
 ```
 
-### No event
+### No event or visible restocking
 
 ```text
 event_present = false → REJECTED_NO_EVENT
+reason_code = RESTOCKING_NOT_PUTDOWN → REJECTED_NO_EVENT
 ```
 
 ### Type confirmed
@@ -1591,7 +1801,7 @@ event_present = false → REJECTED_NO_EVENT
 Layer 1 type = Qwen type → ACCEPTED
 ```
 
-Use Layer 1 interval and Qwen item count.
+Use the Layer 1 interval and verified item count.
 
 ### Type changed
 
@@ -1600,7 +1810,7 @@ Layer 1 type != Qwen type and event_present = true
 → ACCEPTED_TYPE_CHANGED
 ```
 
-Retain Layer 1 interval and record both types.
+Retain the Layer 1 interval and record both types.
 
 ### Uncertain
 
@@ -1624,6 +1834,8 @@ Preserve:
 ```text
 prediction_id
 clip_id
+candidate_id
+actor_id
 layer1_model
 layer1_type
 layer1_start_s
@@ -1640,8 +1852,6 @@ model_version
 ```
 
 Never overwrite the original Layer 1 prediction.
-
----
 
 # 16. Batch Inference
 
@@ -1727,20 +1937,39 @@ outputs/example/
 
 # 17. Shared Evaluation
 
-## 17.1 Matching
+Use one evaluator for Track A, Track B1, Track B2, standalone Layer 2, and Layer 3.
 
-For every clip and class:
+## 17.1 Pass 1 — class-aware event matching
 
-1. Construct prediction/ground-truth pairs.
-2. Calculate temporal IoU.
-3. Perform one-to-one matching.
-4. Match only pairs meeting the criterion.
+For every clip and event type:
+
+1. Construct prediction/ground-truth pairs of the same type.
+2. Calculate temporal IoU and midpoint distance.
+3. Perform one-to-one maximum-weight matching.
+4. Match only pairs meeting the selected criterion.
 5. Count unmatched predictions as false positives.
-6. Count unmatched truth as false negatives.
+6. Count unmatched ground truth as false negatives.
 
-Use one evaluator for Track A, Track B1, Track B2, Layer 2, and Layer 3.
+Use this pass for precision, recall, F1, tIoU metrics, and timing errors.
 
-## 17.2 Required metrics
+## 17.2 Pass 2 — class-agnostic temporal matching
+
+To measure pickup/putdown reversal:
+
+1. Match predictions and ground truth using temporal alignment without requiring the same type.
+2. Compare the types after matching.
+3. Count:
+
+```text
+GT pickup  + predicted pickup   → correct pickup
+GT pickup  + predicted putdown  → pickup→putdown confusion
+GT putdown + predicted pickup   → putdown→pickup confusion
+GT putdown + predicted putdown  → correct putdown
+```
+
+This pass is reported separately and does not replace class-aware precision/recall matching.
+
+## 17.3 Required metrics
 
 ```text
 Precision / Recall / F1 at tIoU 0.3
@@ -1761,28 +1990,45 @@ Optional:
 mAP at selected temporal IoU thresholds
 ```
 
-## 17.3 Stratified metrics
+## 17.4 Multi-item and event-count evaluation
 
-Where sample size permits:
+Two ground-truth rows for a two-item pickup require two matched prediction rows to achieve full recall.
+
+Also report:
 
 ```text
-pickup vs putdown
+absolute event-count error per clip
+multi-item event recall
+```
+
+Do not collapse duplicated item rows into one event before official matching.
+
+## 17.5 Confidence and hard-case slices
+
+Report where sample size permits:
+
+```text
+all official event rows
+high/med-confidence events only
+low-confidence events only
 normal vs hard_case
-high/med vs low confidence
 single-person vs multiple-person
 short vs long events
 ```
 
-## 17.4 Threshold discipline
+Ignore intervals never enter ground-truth matching.
+
+## 17.6 Threshold discipline
 
 Choose on validation data:
 
 - Track A state thresholds;
 - class thresholds;
 - smoothing widths;
-- merge gaps;
+- same-type merge gaps;
 - minimum event durations;
-- temporal NMS settings;
+- class-specific temporal NMS settings;
+- item-count threshold;
 - Qwen confidence threshold.
 
 Example:
@@ -1791,13 +2037,11 @@ Example:
 inference:
   pickup_threshold: 0.61
   putdown_threshold: 0.58
-  merge_gap_s: 0.75
+  same_type_merge_gap_s: 0.75
   minimum_event_duration_s: 0.30
 ```
 
 Never tune on the test set.
-
----
 
 # 18. Recommended Repository Layout
 
@@ -1854,6 +2098,8 @@ pickup-putdown-solution/
 │   │   │   ├── train.py
 │   │   │   └── inference.py
 │   │   └── common/
+│   │       ├── actor_crops.py
+│   │       ├── item_count.py
 │   │       ├── decoding.py
 │   │       └── schemas.py
 │   ├── layer2/
@@ -1867,7 +2113,8 @@ pickup-putdown-solution/
 │   │   ├── verifier.py
 │   │   └── fusion.py
 │   ├── evaluation/
-│   │   ├── temporal_matching.py
+│   │   ├── class_aware_matching.py
+│   │   ├── confusion_matching.py
 │   │   ├── metrics.py
 │   │   ├── failure_gallery.py
 │   │   └── report.py
@@ -1974,7 +2221,7 @@ Responsible for:
 - bucket inventory;
 - metadata and caching;
 - annotation tooling;
-- labeling protocol;
+- concept-aligned labeling protocol;
 - agreement checks;
 - splits and dataset versions.
 
@@ -1985,9 +2232,10 @@ Responsible for:
 - person tracking;
 - pose inference;
 - shelf regions;
-- Stage B proposals;
+- Stage B candidates;
 - Track A;
-- Track B1 and Track B2.
+- actor-conditioned Track B1 and Track B2;
+- shared non-VLM item counting.
 
 ### Person C — VLM, evaluation, and integration
 
@@ -1995,14 +2243,12 @@ Responsible for:
 
 - standalone Qwen Layer 2;
 - Qwen verification;
-- fusion;
-- shared evaluator;
+- deterministic fusion;
+- two-pass evaluator;
 - CLI integration;
 - reporting.
 
-All members annotate a shared pilot before independent annotation.
-
----
+All members annotate the same pilot before independent annotation.
 
 ## Day 1 — Repository, inventory, and Stage A
 
@@ -2021,16 +2267,16 @@ All members annotate a shared pilot before independent annotation.
 1. Pin Ultralytics and select a small person model.
 2. Implement direct video-file person tracking.
 3. Save timestamped person tracklets.
-4. Derive active spans.
+4. Derive active spans using timestamp-based duration.
 5. Generate one preview with boxes and IDs.
-6. Test 0.5–1 FPS triage settings.
+6. Test 1 FPS and 2 FPS triage settings.
 
 ### Person C
 
 1. Create Pydantic schemas.
 2. Create run metadata and structured logging.
-3. Implement canonical prediction export.
-4. Create evaluator skeleton.
+3. Implement canonical prediction export, including duplicate rows for multi-item actions.
+4. Create class-aware and class-agnostic evaluator skeletons.
 5. Prepare Qwen response schemas.
 
 ### Day 1 acceptance criteria
@@ -2038,20 +2284,19 @@ All members annotate a shared pilot before independent annotation.
 - Source videos can be indexed reproducibly.
 - A video file can be triaged directly.
 - Active spans and stable tracks are stored.
+- Short person appearances are not rejected due to an inconsistent sampling rule.
 - Empty clips remain in the manifest.
 - Decode errors fail cleanly.
-
----
 
 ## Day 2 — Stage B and annotation workflow
 
 ### Person A
 
 1. Configure one annotation tool.
-2. Copy and adapt the labeling guidelines.
-3. Document restocking handling.
+2. Copy and adapt the labeling guidelines from Section 2.
+3. Document visible restocking as a hard negative unless a pre-declared scope policy excludes staff clips.
 4. Implement export to `events.csv`.
-5. Implement ignore intervals.
+5. Implement ignore intervals and the low-confidence/ignore distinction.
 6. Define annotation budget.
 7. Implement manifest validation.
 
@@ -2060,11 +2305,11 @@ All members annotate a shared pilot before independent annotation.
 1. Pin a YOLO pose model.
 2. Define shelf/surface polygons.
 3. Implement direct video pose tracking.
-4. Implement wrist-to-region interactions.
-5. Merge candidate intervals.
+4. Implement actor-specific wrist-to-region interactions.
+5. Merge only broad candidates for the same actor, hand, and region.
 6. Add temporal context.
 7. Save `candidates.parquet`.
-8. Generate candidate previews.
+8. Generate candidate previews showing that a candidate may contain multiple events.
 
 ### Person C
 
@@ -2072,24 +2317,24 @@ All members annotate a shared pilot before independent annotation.
 2. Generate event previews.
 3. Implement proposal-recall measurement.
 4. Implement annotation agreement summaries.
-5. Prepare the shared evaluation data structures.
+5. Prepare multi-item and multiple-event evaluation data structures.
 
 ### Whole team
 
 1. Annotate the same pilot clips.
-2. Compare disagreements.
-3. Refine the guideline.
-4. Start complete active-span annotation.
+2. Compare event existence, type, interval, count, confidence, and hard-case decisions.
+3. Verify immediate pickup/putdown and two-item examples explicitly.
+4. Refine the guideline.
+5. Start complete active-span annotation.
 
 ### Day 2 acceptance criteria
 
 - Shelf regions are version-controlled.
-- Candidate intervals are generated.
+- Candidate intervals are generated but never exported as predictions.
 - Annotators review complete active spans.
-- Canonical event export works.
+- Canonical event export works for multiple events and multiple items.
+- Low-confidence and ignore handling are distinct.
 - Proposal recall can be measured.
-
----
 
 ## Day 3 — Dataset freeze and Track A
 
@@ -2105,34 +2350,37 @@ All members annotate a shared pilot before independent annotation.
 
 ### Person B
 
-1. Extract pre/contact/post frames for candidates.
-2. Extract hand and shelf crops.
+1. Extract pre/contact/post frames for each candidate transition.
+2. Extract actor-specific hand and shelf crops.
 3. Visually validate crops on at least 30 examples.
 4. Extract frozen image embeddings.
 5. Build hand-state and shelf-transition training data.
 6. Train lightweight state classifiers.
-7. Implement the deterministic state machine.
-8. Export Track A predictions.
+7. Implement the repeating state machine.
+8. Implement transfer/stabilization boundary estimation and fallback metadata.
+9. Implement the shared item-count estimator.
+10. Export Track A predictions.
 
 ### Person C
 
-1. Complete one-to-one temporal matching.
-2. Implement tIoU and midpoint tolerance.
-3. Implement precision, recall, F1, and confusion.
-4. Generate Track A failure previews.
-5. Prepare Qwen standalone window generation.
+1. Complete class-aware temporal matching.
+2. Complete class-agnostic confusion matching.
+3. Implement tIoU, midpoint tolerance, precision, recall, F1, and type confusion.
+4. Implement multi-item count evaluation.
+5. Generate Track A failure previews.
+6. Prepare Qwen standalone window generation.
 
 ### Day 3 acceptance criteria
 
 - Test split is frozen.
-- Track A produces canonical pickup/putdown intervals.
-- Hard negatives are processed.
-- Crop extraction and state transitions are auditable.
-- Event-level metrics are calculated.
+- Track A produces zero, one, or multiple canonical events per candidate.
+- Immediate pickup/putdown remains two ordered events.
+- Multi-item actions can produce two rows.
+- Visible restocking and touch-only interactions are background.
+- Event boundaries represent transfer/stabilization or are explicitly marked as fallback.
+- Both evaluator passes work.
 
----
-
-## Day 4 — Track B1 and standalone Layer 2
+## Day 4 — Actor-conditioned Track B1 and standalone Layer 2
 
 ### Person A
 
@@ -2143,62 +2391,65 @@ All members annotate a shared pilot before independent annotation.
 
 ### Person B
 
-1. Generate Track B1 fixed-window data.
-2. Exclude ignore intervals and no-person clips.
-3. Render sampled-frame debug views.
-4. Run tiny overfit.
-5. Train VideoMAE-Small classifier.
-6. Implement sliding-window decoding.
-7. Compare Track B1 with Track A on validation data.
+1. Generate actor-conditioned Track B1 windows.
+2. Use center-based labels for close events rather than dropping all pickup/putdown sequences.
+3. Exclude ignore intervals and no-person clips.
+4. Render sampled-frame and crop debug views.
+5. Run tiny overfit.
+6. Train VideoMAE-Small classifier.
+7. Implement type-aware multi-peak decoding.
+8. Apply the shared item-count estimator.
+9. Compare Track B1 with Track A on validation data.
 
 ### Person C
 
 1. Implement active-span Qwen windows.
 2. Overlay frame numbers/timestamps.
 3. Implement Qwen3.6-27B client.
-4. Implement standalone prompt and Pydantic validation.
+4. Implement concepts-aligned standalone prompt and Pydantic validation.
 5. Retry invalid JSON once.
-6. Merge duplicate window predictions.
-7. Record runtime, quantization, hardware, and parse errors.
+6. Merge only duplicate same-type window predictions.
+7. Expand multi-item outputs.
+8. Record runtime, quantization, hardware, and parse errors.
 
 ### Day 4 acceptance criteria
 
 - Track B1 passes tiny overfit.
-- Track B1 produces canonical events.
+- Actor-conditioned Track B1 can separate simultaneous actors.
+- Close pickup/putdown events are not forcibly merged.
 - Qwen runs independently of Layer 1.
-- Qwen scans active spans only.
+- Qwen supports zero, one, or multiple events per window.
 - Qwen parsing failures are measured.
-
----
 
 ## Day 5 — Track B2, Layer 3, and final integration
 
 ### Person A
 
 1. Review Layer 1/Qwen disagreements.
-2. Categorize failure modes.
+2. Categorize failure modes using the concepts taxonomy.
 3. Confirm final manifest versions.
 4. Prepare privacy-safe examples.
 
 ### Person B
 
-1. Extract and cache VideoMAE features.
-2. Generate timestep labels.
+1. Extract and cache actor-conditioned VideoMAE features.
+2. Generate confidence-weighted timestep labels.
 3. Implement the TCN.
 4. Run tiny sequence overfit.
 5. Train Track B2.
-6. Decode temporal intervals.
-7. Compare Track A, B1, and B2.
-8. Package selected checkpoints and configs.
+6. Decode type-aware temporal intervals.
+7. Apply the shared item-count estimator.
+8. Compare Track A, B1, and B2.
+9. Package selected checkpoints and configs.
 
 ### Person C
 
-1. Implement Qwen verification prompt.
-2. Implement deterministic fusion.
+1. Implement the Qwen verification prompt.
+2. Implement deterministic fusion per Layer 1 prediction.
 3. Implement single-file and directory inference.
 4. Run final validation comparison.
 5. Run the untouched test set once.
-6. Produce final metrics and failure gallery.
+6. Produce both matching-pass metrics and failure gallery.
 7. Document exact reproduction commands.
 
 ### Day 5 acceptance criteria
@@ -2220,73 +2471,89 @@ standalone Layer 2 metrics
 Layer 3 fusion metrics
 pickup precision / recall / F1
 putdown precision / recall / F1
-pickup ↔ putdown confusion
-tIoU metrics
-midpoint-tolerance metrics
-false positives per video hour
-Stage B proposal recall
-runtime per video minute
-Qwen invalid-response rate
+pickup → putdown confusion
+putdown → pickup confusion
+tIoU and midpoint metrics
+multi-item recall and event-count error
+high/med and low-confidence slices
 Qwen hardware and quantization
 ```
 
----
-
 # 22. Mandatory Engineering Gates
 
-## Gate 1 — Dataset validity
+## Gate 1 — Concept and dataset validity
 
 Do not train until:
 
+- pickup and putdown definitions are copied into the labeling guideline;
+- event intervals represent transfer/stabilization, not full candidate duration;
+- low confidence and ignore are distinct;
+- visible restocking is handled as a negative unless excluded by a documented scope policy;
 - videos decode correctly;
-- timestamps are validated;
-- event previews match labels;
-- ignore intervals work;
+- timestamps and previews match labels;
 - split leakage checks pass.
 
 ## Gate 2 — Proposal recall
 
-Do not rely on Stage B filtering until recall is measured. Precision may be low; recall must be high.
+Do not rely on Stage B filtering until recall is measured. Candidate precision may be low; recall must be high.
+
+A candidate is never an event prediction.
 
 ## Gate 3 — Track A completeness
 
-Track A is complete only when it independently outputs pickup/putdown intervals. Candidate generation alone is not a Layer 1 baseline.
+Track A is complete only when it independently outputs zero, one, or multiple pickup/putdown intervals per candidate.
 
-## Gate 4 — Tiny overfit
+It must support:
 
-Track B1 and Track B2 must pass tiny overfit tests.
+- immediate pickup followed by putdown;
+- simultaneous actors;
+- multi-item row expansion;
+- touch/restocking negatives.
 
-Common failure causes:
+## Gate 4 — Tiny overfit and actor conditioning
 
-- wrong labels;
-- shuffled frame order;
-- broken sampling;
-- incorrect ignore masking;
-- wrong tensor shapes;
-- frozen trainable parameters.
+Track B1 and Track B2 must pass tiny overfit tests, and debug views must prove that:
 
-## Gate 5 — Independent Layer 2
+- frames are chronological;
+- actor/shelf crops correspond to the intended actor;
+- simultaneous actors are represented separately;
+- ignore positions have zero loss.
+
+## Gate 5 — Type-aware decoding
+
+No decoder may merge pickup and putdown solely because they are temporally adjacent.
+
+Only same-type duplicate detections may be merged or suppressed.
+
+## Gate 6 — Independent Layer 2
 
 Qwen verification is not Layer 2. Layer 2 requires independent scanning of active-span windows.
 
-## Gate 6 — Test isolation
+## Gate 7 — Two-pass evaluation
 
-All thresholds and decoding settings are selected on validation data.
+The evaluator must provide:
 
-## Gate 7 — Auditability
+- class-aware matching for precision/recall/F1;
+- class-agnostic temporal matching for pickup/putdown confusion;
+- multi-item row-level evaluation.
+
+## Gate 8 — Test isolation
+
+All thresholds, merge rules, boundary settings, count thresholds, and prompt revisions are selected on validation data.
+
+## Gate 9 — Auditability
 
 Preserve:
 
-- ground truth;
+- ground truth and ignore intervals;
+- broad candidates;
 - Track A predictions;
 - Track B1 predictions;
 - Track B2 predictions;
 - standalone Layer 2 predictions;
 - Qwen verification records;
 - fusion decisions;
-- prompts, configs, and model versions.
-
----
+- prompts, configs, dataset versions, and model versions.
 
 # 23. Priority Order if Time Is Limited
 
@@ -2332,44 +2599,57 @@ Do not implement initially:
 
 ```text
 Video file
-→ YOLO person detection + ByteTrack at low rate
-→ person tracklets and active spans
+→ YOLO person detection + ByteTrack at 1–2 FPS
+→ timestamped person tracklets and active spans
 ```
 
 ## Layer 0B
 
 ```text
 Active-span video
-→ YOLO pose + fixed shelf polygons at higher rate
-→ wrist trajectories and high-recall candidates
+→ actor-specific YOLO pose + fixed shelf polygons at ~8 FPS
+→ broad wrist/shelf interaction candidates
 ```
+
+A candidate is only a container and may contain zero, one, or multiple events.
 
 ## Layer 1 Track A
 
 ```text
-Pose candidate
-+ hand/shelf pre/post crops
+Actor-specific pose candidate
++ hand/shelf pre/contact/post crops
 + lightweight frozen image features
-+ deterministic state machine
-→ pickup / putdown / background intervals
++ repeating deterministic state machine
+→ zero/one/multiple pickup or putdown intervals
+```
+
+Boundaries represent the transfer and stabilization where possible, with an explicit fallback method when only coarse wrist-region boundaries are available.
+
+## Shared Layer 1 item count
+
+```text
+Detected event
+→ event-aligned hand/object crop + lightweight count logic
+→ 1 item | 2+ items | uncertain
+→ separate canonical rows for multiple items
 ```
 
 ## Layer 1 Track B1
 
 ```text
-Chronological fixed windows
+Actor-conditioned chronological windows
 → VideoMAE classifier
-→ pickup / putdown / background
-→ coarse intervals
+→ type-aware temporal peaks
+→ zero/one/multiple coarse event intervals
 ```
 
 ## Layer 1 Track B2
 
 ```text
-Cached overlapping VideoMAE features
+Cached actor-conditioned VideoMAE features
 → small TCN
 → temporal class scores
-→ refined intervals
+→ type-aware refined intervals
 ```
 
 ## Layer 2
@@ -2377,16 +2657,24 @@ Cached overlapping VideoMAE features
 ```text
 Active-span overlapping windows
 → Qwen3.6-27B standalone detection
-→ independent event intervals
+→ independent zero/one/multiple event intervals
 ```
 
 ## Layer 3
 
 ```text
-Selected Layer 1 proposal with context
+Each selected Layer 1 event with context
 → Qwen verification
-→ deterministic accept / reject / relabel
+→ deterministic accept / reject / relabel / item-count resolution
 → final canonical predictions
+```
+
+## Evaluation
+
+```text
+Pass 1: class-aware matching → precision / recall / F1 / timing
+Pass 2: class-agnostic temporal matching → pickup↔putdown confusion
+Row-level multi-item matching → count correctness
 ```
 
 ## Runtime
@@ -2397,3 +2685,4 @@ batch inference only
 no streaming
 no live-camera integration
 ```
+
