@@ -31,6 +31,7 @@ class Clip(BaseModel):
     width: int
     height: int
     n_person_tracks: int = 0
+    has_person: bool = False
     usable: bool = False
     active_start_s: float | None = None
     active_end_s: float | None = None
@@ -203,3 +204,74 @@ class Candidate(BaseModel):
         if v < 0:
             raise ValueError("timestamp must be non-negative")
         return v
+
+
+# ---------------------------------------------------------------------------
+# tracks_person.parquet — flat observation schema
+# ---------------------------------------------------------------------------
+
+
+class PersonObservation(BaseModel):
+    clip_id: str
+    person_track_id: str
+    tracker_track_id: int | None
+    sample_index: int
+    source_frame_index: int
+    timestamp_s: float
+    bbox_x1: float
+    bbox_y1: float
+    bbox_x2: float
+    bbox_y2: float
+    confidence: float
+    is_stable: bool = False
+
+    @field_validator("timestamp_s")
+    @classmethod
+    def non_negative_timestamp(cls, v: float) -> float:
+        if v < 0:
+            raise ValueError("timestamp must be non-negative")
+        return v
+
+
+# ---------------------------------------------------------------------------
+# Track summaries (internal)
+# ---------------------------------------------------------------------------
+
+
+class TrackSummary(BaseModel):
+    clip_id: str
+    tracker_track_id: int
+    first_seen_s: float
+    last_seen_s: float
+    visible_duration_s: float
+    n_observations: int
+    mean_confidence: float
+    max_observation_gap_s: float
+    is_stable: bool = False
+
+    @field_validator("first_seen_s", "last_seen_s", "visible_duration_s", "max_observation_gap_s")
+    @classmethod
+    def non_negative(cls, v: float) -> float:
+        if v < 0:
+            raise ValueError("must be non-negative")
+        return v
+
+
+# ---------------------------------------------------------------------------
+# Triage sampling report
+# ---------------------------------------------------------------------------
+
+
+class TriageSamplingReport(BaseModel):
+    clip_id: str
+    decision: str
+    selected_for_qa: bool
+    selection_reason: str | None = None
+    preview_path: str | None = None
+    source_duration_s: float
+    target_fps: float
+    effective_sample_fps: float
+    n_raw_tracks: int
+    n_stable_tracks: int
+    n_observations: int
+    review_status: str = "pending"
