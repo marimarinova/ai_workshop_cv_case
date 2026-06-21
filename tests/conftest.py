@@ -92,3 +92,76 @@ def valid_candidate_data() -> dict:
         "proposal_score": 0.72,
         "review_status": "pending",
     }
+
+
+@pytest.fixture
+def valid_person_observation_data() -> dict:
+    return {
+        "clip_id": "clip_001",
+        "person_track_id": "clip_001:person:3",
+        "tracker_track_id": 3,
+        "sample_index": 5,
+        "source_frame_index": 150,
+        "timestamp_s": 5.0,
+        "bbox_x1": 100.0,
+        "bbox_y1": 50.0,
+        "bbox_x2": 300.0,
+        "bbox_y2": 400.0,
+        "confidence": 0.85,
+        "is_stable": True,
+    }
+
+
+@pytest.fixture
+def valid_track_summary_data() -> dict:
+    return {
+        "clip_id": "clip_001",
+        "tracker_track_id": 3,
+        "first_seen_s": 5.0,
+        "last_seen_s": 10.0,
+        "visible_duration_s": 5.0,
+        "n_observations": 10,
+        "mean_confidence": 0.82,
+        "max_observation_gap_s": 1.0,
+        "is_stable": True,
+    }
+
+
+@pytest.fixture
+def valid_sampling_report_data() -> dict:
+    return {
+        "clip_id": "clip_001",
+        "decision": "person_detected",
+        "selected_for_qa": False,
+        "selection_reason": "person_detected",
+        "preview_path": "outputs/triage_previews/clip_001.mp4",
+        "source_duration_s": 30.0,
+        "target_fps": 1.0,
+        "effective_sample_fps": 1.0,
+        "n_raw_tracks": 2,
+        "n_stable_tracks": 1,
+        "n_observations": 25,
+        "review_status": "ok",
+    }
+
+
+@pytest.fixture
+def triage_config() -> dict:
+    return {
+        "model_path": "models/person_detector.pt",
+        "target_fps": 1.0,
+        "image_size": 640,
+        "device": "cpu",
+        "half": False,
+        "detector_confidence": 0.10,
+        "detector_iou_threshold": 0.70,
+        "max_detections": 100,
+        "minimum_track_confidence": 0.35,
+        "minimum_visible_duration_s": 0.75,
+        "minimum_observations": 2,
+        "max_track_observation_gap_s": 1.5,
+        "merge_gap_s": 1.0,
+        "preview_sample_rate": 0.10,
+        "sampling_seed": 42,
+        "tracker_config": "configs/bytetrack_triage.yaml",
+    }
