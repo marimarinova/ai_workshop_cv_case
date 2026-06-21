@@ -209,3 +209,4 @@ opencode.json
 .claude
 **.backup
 .local/
+models/
