@@ -1,5 +1,5 @@
 PYTHON := python3
-.PHONY: help install install-dev lint format format-check typecheck test compile clean
+.PHONY: help install install-dev lint format format-check typecheck test compile clean env-ingest ingest env-setup
 
 help: ## Show this help message
 	@echo "Usage: make [target]"
@@ -39,3 +39,39 @@ clean: ## Remove build artifacts and caches
 	find . -type d -name .pytest_cache -exec rm -rf {} +
 	find . -type d -name .ruff_cache -exec rm -rf {} +
 	find . -type d -name .mypy_cache -exec rm -rf {} +
+
+env-ingest: ## Prompt for S3 credentials and run ingest with them set in the environment
+	@read -rp "AWS Access Key ID: " ACCESS_KEY && \
+	read -p "AWS Secret Access Key: " SECRET_KEY && echo && \
+	AWS_ACCESS_KEY_ID="$$ACCESS_KEY" \
+	AWS_SECRET_ACCESS_KEY="$$SECRET_KEY" \
+	pickup-putdown --config configs/storage.yaml
+
+ingest: ## Run ingest using credentials already set in the environment
+	pickup-putdown --config configs/storage.yaml
+
+env-setup: ## Prompt for S3 credentials and print export commands to source in your shell
+	@read -rp "AWS Access Key ID: " ACCESS_KEY && \
+	read -p "AWS Secret Access Key: " SECRET_KEY && \
+	read -rp "S3 Bucket URI (s3://bucket/prefix): " BUCKET_URI && \
+	read -rp "S3 Region (e.g. us-east-1): " REGION && \
+	read -rp "Endpoint URL (leave empty for AWS default): " ENDPOINT && \
+	read -rp "Anonymous access (y/N): " ANON && \
+	echo && \
+	echo "Run the following commands to set up your environment:" && \
+	echo && \
+	echo "export AWS_ACCESS_KEY_ID=$$ACCESS_KEY" && \
+	echo "export AWS_SECRET_ACCESS_KEY=$$SECRET_KEY" && \
+	echo "export PICKUP_PUTDOWN_STORAGE_BUCKET_URI=$$BUCKET_URI" && \
+	echo "export PICKUP_PUTDOWN_STORAGE_REGION=$$REGION" && \
+	if [ -n "$$ENDPOINT" ]; then echo "export PICKUP_PUTDOWN_STORAGE_ENDPOINT_URL=$$ENDPOINT"; fi && \
+	if [ "$$ANON" = "y" ] || [ "$$ANON" = "Y" ]; then echo "export PICKUP_PUTDOWN_STORAGE_ANONYMOUS=true"; fi && \
+	echo && \
+	echo "Or copy-paste the block below:" && \
+	echo "----------------------------------------" && \
+	echo "export AWS_ACCESS_KEY_ID=$$ACCESS_KEY" && \
+	echo "export AWS_SECRET_ACCESS_KEY=$$SECRET_KEY" && \
+	echo "export PICKUP_PUTDOWN_STORAGE_BUCKET_URI=$$BUCKET_URI" && \
+	echo "export PICKUP_PUTDOWN_STORAGE_REGION=$$REGION" && \
+	if [ -n "$$ENDPOINT" ]; then echo "export PICKUP_PUTDOWN_STORAGE_ENDPOINT_URL=$$ENDPOINT"; fi && \
+	if [ "$$ANON" = "y" ] || [ "$$ANON" = "Y" ]; then echo "export PICKUP_PUTDOWN_STORAGE_ANONYMOUS=true"; fi

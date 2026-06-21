@@ -111,6 +111,12 @@ def ingest(
 
     typer.echo(f"Found {len(objects)} objects.")
 
+    # Extract bucket name for downloads
+    import re
+
+    bucket_match = re.match(r"^s3://([^/]+)/(.*)$", bucket_uri)
+    bucket_name = bucket_match.group(1) if bucket_match else ""
+
     # Step 2: Build registry and detect duplicates
     registry = ClipRegistry()
     seen_signatures: dict[tuple[str, int], str] = {}  # (etag, size) -> clip_id
@@ -161,7 +167,7 @@ def ingest(
 
         # Step 3: Download to cache (or skip if cache not configured)
         cache = DownloadCache(cache_dir, max_size_mb=max_cache_mb, max_count=max_cache_count)
-        cache.set_download_fn(_s3_download_fn)
+        cache.set_download_fn(lambda sk, lp, b=bucket_name: _s3_download_fn(sk, lp, b))
         try:
             local_path = cache.get(obj.key)
         except Exception as exc:
@@ -232,11 +238,17 @@ def ingest(
     typer.echo(f"  CSV:                 {csv_path}")
 
 
-def _s3_download_fn(s3_key: str, local_path: Path) -> None:
+def _s3_download_fn(s3_key: str, local_path: Path, bucket: str) -> None:
     """Download an object from S3.
 
-    This is the default download function used by DownloadCache.
-    Raises RuntimeError if boto3 is not available or download fails.
+    Parameters
+    ----------
+    s3_key : str
+        The S3 object key (without bucket prefix).
+    local_path : Path
+        Destination path on disk.
+    bucket : str
+        The S3 bucket name.
     """
     import boto3
 
@@ -255,21 +267,16 @@ def _s3_download_fn(s3_key: str, local_path: Path) -> None:
         client_kwargs["aws_secret_access_key"] = ""
         client_kwargs["aws_session_token"] = ""
 
-    bucket, key = _parse_s3_key(s3_key)
     client = boto3.client("s3", **client_kwargs)  # noqa: S301
 
     local_path.parent.mkdir(parents=True, exist_ok=True)
-    client.download_file(bucket, key, str(local_path))
-
-
-def _parse_s3_key(s3_key: str) -> tuple[str, str]:
-    """Parse s3://bucket/key into (bucket, key)."""
-    if s3_key.startswith("s3://"):
-        parts = s3_key[5:].split("/", 1)
-        return parts[0], parts[1] if len(parts) > 1 else ""
-    # Assume it's already a key; bucket must come from config
-    return "", s3_key
+    client.download_file(bucket, s3_key, str(local_path))
 
 
 if __name__ == "__main__":
+    app()
+
+
+def main() -> None:
+    """Entry point for the pickup-putdown CLI."""
     app()

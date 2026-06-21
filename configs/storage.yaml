@@ -7,8 +7,8 @@
 #   PICKUP_PUTDOWN_STORAGE_ANONYMOUS
 
 storage:
-  bucket_uri: "s3://your-bucket/path/prefix"
-  region: "us-east-1"
+  bucket_uri: "s3://chillnbite-cameras/anon/"
+  region: "eu-central-1"
   endpoint_url: null        # null = AWS default; set for S3-compatible services
   anonymous: false
 
