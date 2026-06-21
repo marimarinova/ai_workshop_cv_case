@@ -18,12 +18,12 @@ Create the implementation repository foundation, dependency management, shared c
 
 - Concepts-aligned implementation plan
 - Canonical schemas from the case: `clips.csv`, `events.csv`, and `predictions.csv`
-- Python 3.11 with `pyenv`
+- Python 3.12 (system or `pyenv`; no `pyenv` required if system Python is 3.12+)
 
 ## Deliverables
 
 - Installable `pickup_putdown` Python package
-- Locked dependencies using `uv` or equivalent
+- Pinned dependencies in `requirements.txt` (no `uv`, `poetry`, `pdm`, or any dependency-locking tool)
 - Configuration loader and environment override support
 - Pydantic models for clips, events, predictions, active spans, candidates, and ignore intervals
 - Structured run metadata and logging helpers
@@ -31,7 +31,7 @@ Create the implementation repository foundation, dependency management, shared c
 
 ## Expected Files or Modules
 
-- `pyproject.toml`, lock file, `.gitignore`, `Makefile`
+- `pyproject.toml`, `requirements.txt`, `.gitignore`, `Makefile`
 - `src/pickup_putdown/config.py`
 - `src/pickup_putdown/common/schemas.py`
 - `src/pickup_putdown/common/run_metadata.py`
@@ -39,7 +39,7 @@ Create the implementation repository foundation, dependency management, shared c
 
 ## Implementation Steps
 
-1. Create the package layout from the implementation plan and configure formatting, linting, typing, and tests.
+1. Create the package layout from the implementation plan and configure formatting, linting, typing, and tests. Install with `pip install -e .` (no `uv`, `poetry`, `pdm`, or dependency-locking tools).
 2. Implement configuration loading from YAML with explicit validation and optional environment-variable overrides for secrets and storage endpoints.
 3. Implement canonical field names exactly as required by the case. Internal schemas may contain extra fields, but canonical exporters must preserve the required columns.
 4. Add schema validators for `t_start < t_end`, non-negative timestamps, allowed event types, allowed confidence values (`high`, `med`, `low`), and score range `[0,1]`.
