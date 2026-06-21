@@ -238,3 +238,44 @@ Before committing, check:
 git status --short
 ```
 
+## Task 3 runtime and quality tuning
+
+The default Task 3 configuration is intended as a lightweight triage baseline:
+
+```yaml
+target_fps: 1.0
+image_size: 640
+model_path: models/person_detector.pt
+```
+
+A missed detection on an isolated sampled frame can be acceptable when:
+
+* the person is detected before and after;
+* the observations remain in one active span;
+* the clip still has `has_person=True`;
+* short person appearances are not lost.
+
+Tighten the pipeline only when clear person appearances are missed for several sampled seconds, active spans become fragmented, or person-containing clips risk being classified as no-person.
+
+Recommended tuning order:
+
+1. Increase `image_size` from `640` to `960`.
+2. Compare `target_fps: 1.0` with `2.0`.
+3. Replace YOLO11n with YOLO11s if more detector accuracy is needed.
+4. Tune ByteTrack thresholds only after detector recall is acceptable.
+
+Preview performance is improved by:
+
+* rendering at 1 FPS;
+* including exact observation frames;
+* downscaling previews to at most 1280×720;
+* rendering only active spans with context.
+
+GPU inference is used when the log reports:
+
+```text
+Loading YOLO model ... on cuda
+```
+
+Preview encoding remains primarily CPU-bound.
+

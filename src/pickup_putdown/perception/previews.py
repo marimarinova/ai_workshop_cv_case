@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import logging
+import math
+from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -22,10 +24,24 @@ class OverlayConfig:
     draw_timestamps: bool = True
     draw_confidence: bool = True
     draw_span_status: bool = True
+
     span_context_before_s: float = 2.0
     span_context_after_s: float = 2.0
+
+    # Preview frames are sampled from the source video. This avoids implying
+    # full-frame-rate tracking when detections were produced at a low rate.
+    preview_fps: float = 1.0
+    no_person_preview_duration_s: float = 10.0
+
+    # Downscale large source videos before encoding the preview.
+    max_output_width: int = 1280
+    max_output_height: int = 720
+
     box_color: tuple[int, int, int] = (0, 255, 0)  # BGR green
+    unstable_box_color: tuple[int, int, int] = (0, 0, 255)  # BGR red
     text_color: tuple[int, int, int] = (255, 255, 255)  # BGR white
+    status_background_color: tuple[int, int, int] = (0, 0, 0)
+
     text_scale: float = 0.5
     line_thickness: int = 1
 
@@ -35,90 +51,313 @@ def draw_overlay(
     observations: list[PersonObservation],
     spans: list[ActiveSpan],
     config: OverlayConfig,
+    *,
+    frame_timestamp_s: float | None = None,
+    source_frame_index: int | None = None,
+    scale_x: float = 1.0,
+    scale_y: float = 1.0,
 ) -> np.ndarray:
-    """Draw bounding boxes and metadata on a single frame (pure function).
+    """Draw observations belonging to one source frame.
+
+    The caller must pass only observations associated with the source frame
+    being rendered. The function does not filter observations by timestamp or
+    frame index itself.
 
     Parameters
     ----------
-    frame : np.ndarray
-        BGR frame (H, W, 3) as read by OpenCV.
-    observations : list[PersonObservation]
-        All observations for the clip.
-    spans : list[ActiveSpan]
+    frame:
+        BGR frame as read by OpenCV, optionally resized.
+    observations:
+        Observations belonging to the current source frame only.
+    spans:
         Active spans for the clip.
-    config : OverlayConfig
+    config:
         Overlay rendering configuration.
+    frame_timestamp_s:
+        Timestamp of the source frame currently being rendered.
+    source_frame_index:
+        Original source-video frame index.
+    scale_x:
+        Horizontal scale applied to bounding-box coordinates.
+    scale_y:
+        Vertical scale applied to bounding-box coordinates.
 
     Returns
     -------
     np.ndarray
-        New frame with overlays (does not modify input).
+        A copy of the frame containing the requested overlays.
     """
     import cv2
 
     out = frame.copy()
-    h, w = out.shape[:2]
+    height, width = out.shape[:2]
 
-    # Build span time ranges for quick lookup
-    span_ranges: list[tuple[float, float]] = [(s.t_start, s.t_end) for s in spans]
+    span_ranges = [(span.t_start, span.t_end) for span in spans]
 
-    # Group observations by source_frame_index for this frame
-    # We need to know which frame index this overlay corresponds to.
-    # Since this is a pure function, the caller must pass observations
-    # filtered to the relevant frame range.
-    for obs in observations:
-        if not config.draw_boxes:
-            break
+    if config.draw_boxes:
+        for observation in observations:
+            x1 = int(round(observation.bbox_x1 * scale_x))
+            y1 = int(round(observation.bbox_y1 * scale_y))
+            x2 = int(round(observation.bbox_x2 * scale_x))
+            y2 = int(round(observation.bbox_y2 * scale_y))
 
-        x1, y1, x2, y2 = int(obs.bbox_x1), int(obs.bbox_y1), int(obs.bbox_x2), int(obs.bbox_y2)
-        x1, y1 = max(0, x1), max(0, y1)
-        x2, y2 = min(w, x2), min(h, y2)
+            x1 = min(max(0, x1), max(0, width - 1))
+            y1 = min(max(0, y1), max(0, height - 1))
+            x2 = min(max(0, x2), max(0, width - 1))
+            y2 = min(max(0, y2), max(0, height - 1))
 
-        # Determine color: green for stable, red for unstable
-        color = config.box_color if obs.is_stable else (0, 0, 255)
+            if x2 <= x1 or y2 <= y1:
+                logger.debug(
+                    "Skipping invalid preview box for frame %s: (%d, %d, %d, %d)",
+                    source_frame_index,
+                    x1,
+                    y1,
+                    x2,
+                    y2,
+                )
+                continue
 
-        cv2.rectangle(out, (x1, y1), (x2, y2), color, config.line_thickness)
+            color = config.box_color if observation.is_stable else config.unstable_box_color
 
-        # Build label
-        label_parts: list[str] = []
-        if config.draw_track_ids and obs.tracker_track_id is not None:
-            label_parts.append(f"ID:{obs.tracker_track_id}")
-        if config.draw_confidence:
-            label_parts.append(f"{obs.confidence:.2f}")
-        if config.draw_timestamps:
-            label_parts.append(f"{obs.timestamp_s:.1f}s")
-        if config.draw_span_status:
-            in_span = _is_in_span(obs.timestamp_s, span_ranges)
-            label_parts.append("SPAN" if in_span else "idle")
-
-        if label_parts:
-            label = " ".join(label_parts)
-            (tw, th), _ = cv2.getTextSize(
-                label, cv2.FONT_HERSHEY_SIMPLEX, config.text_scale, config.line_thickness
-            )
             cv2.rectangle(
                 out,
-                (x1, y1 - th - 4),
-                (x1 + tw, y1),
+                (x1, y1),
+                (x2, y2),
                 color,
-                -1,
-            )
-            cv2.putText(
-                out,
-                label,
-                (x1, y1 - 2),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                config.text_scale,
-                config.text_color,
                 config.line_thickness,
             )
+
+            label_parts: list[str] = []
+
+            if config.draw_track_ids and observation.tracker_track_id is not None:
+                label_parts.append(f"ID:{observation.tracker_track_id}")
+
+            if config.draw_confidence:
+                label_parts.append(f"{observation.confidence:.2f}")
+
+            if config.draw_timestamps:
+                label_parts.append(f"{observation.timestamp_s:.1f}s")
+
+            if config.draw_span_status:
+                is_active = _is_in_span(
+                    observation.timestamp_s,
+                    span_ranges,
+                )
+                label_parts.append("SPAN" if is_active else "idle")
+
+            if label_parts:
+                _draw_label(
+                    out,
+                    " ".join(label_parts),
+                    x=x1,
+                    y=y1,
+                    background_color=color,
+                    text_color=config.text_color,
+                    text_scale=config.text_scale,
+                    line_thickness=config.line_thickness,
+                )
+
+    frame_status_parts: list[str] = []
+
+    # Draw frame-level status only when the caller provides frame metadata.
+    # This preserves the pure overlay behavior expected by callers that only
+    # request bounding-box drawing.
+    if frame_timestamp_s is not None or source_frame_index is not None:
+        if config.draw_timestamps and frame_timestamp_s is not None:
+            frame_status_parts.append(f"t={frame_timestamp_s:.2f}s")
+
+        if source_frame_index is not None:
+            frame_status_parts.append(f"frame={source_frame_index}")
+
+        if config.draw_span_status and frame_timestamp_s is not None:
+            is_active = _is_in_span(frame_timestamp_s, span_ranges)
+            frame_status_parts.append("ACTIVE" if is_active else "context")
+
+        frame_status_parts.append(f"detections={len(observations)}")
+
+    if frame_status_parts:
+        _draw_label(
+            out,
+            " | ".join(frame_status_parts),
+            x=8,
+            y=24,
+            background_color=config.status_background_color,
+            text_color=config.text_color,
+            text_scale=config.text_scale,
+            line_thickness=config.line_thickness,
+            label_below_anchor=True,
+        )
 
     return out
 
 
-def _is_in_span(timestamp_s: float, span_ranges: list[tuple[float, float]]) -> bool:
-    """Check if a timestamp falls within any active span."""
-    return any(lo <= timestamp_s <= hi for lo, hi in span_ranges)
+def _draw_label(
+    frame: np.ndarray,
+    label: str,
+    *,
+    x: int,
+    y: int,
+    background_color: tuple[int, int, int],
+    text_color: tuple[int, int, int],
+    text_scale: float,
+    line_thickness: int,
+    label_below_anchor: bool = False,
+) -> None:
+    """Draw a clipped text label with a filled background."""
+    import cv2
+
+    height, width = frame.shape[:2]
+
+    (text_width, text_height), baseline = cv2.getTextSize(
+        label,
+        cv2.FONT_HERSHEY_SIMPLEX,
+        text_scale,
+        line_thickness,
+    )
+
+    padding = 4
+    box_width = text_width + 2 * padding
+    box_height = text_height + baseline + 2 * padding
+
+    box_x1 = min(max(0, x), max(0, width - 1))
+    box_x2 = min(width, box_x1 + box_width)
+
+    if label_below_anchor:
+        box_y1 = min(max(0, y - text_height - padding), max(0, height - box_height))
+    else:
+        box_y1 = max(0, y - box_height)
+
+    box_y2 = min(height, box_y1 + box_height)
+
+    cv2.rectangle(
+        frame,
+        (box_x1, box_y1),
+        (box_x2, box_y2),
+        background_color,
+        -1,
+    )
+
+    text_x = min(width - 1, box_x1 + padding)
+    text_y = min(
+        height - 1,
+        box_y1 + padding + text_height,
+    )
+
+    cv2.putText(
+        frame,
+        label,
+        (text_x, text_y),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        text_scale,
+        text_color,
+        line_thickness,
+        cv2.LINE_AA,
+    )
+
+
+def _is_in_span(
+    timestamp_s: float,
+    span_ranges: list[tuple[float, float]],
+) -> bool:
+    """Return whether a timestamp falls within any active span."""
+    return any(start <= timestamp_s <= end for start, end in span_ranges)
+
+
+def _merge_frame_ranges(
+    ranges: list[tuple[int, int]],
+) -> list[tuple[int, int]]:
+    """Merge overlapping or directly adjacent half-open frame ranges."""
+    if not ranges:
+        return []
+
+    ordered = sorted(ranges)
+    merged = [ordered[0]]
+
+    for start, end in ordered[1:]:
+        previous_start, previous_end = merged[-1]
+
+        if start <= previous_end:
+            merged[-1] = (
+                previous_start,
+                max(previous_end, end),
+            )
+        else:
+            merged.append((start, end))
+
+    return merged
+
+
+def _frame_in_ranges(
+    frame_index: int,
+    ranges: list[tuple[int, int]],
+) -> bool:
+    """Return whether a source frame belongs to any half-open range."""
+    return any(start <= frame_index < end for start, end in ranges)
+
+
+def _compute_output_size(
+    source_width: int,
+    source_height: int,
+    config: OverlayConfig,
+) -> tuple[int, int]:
+    """Calculate a bounded output size while preserving aspect ratio."""
+    if source_width <= 0 or source_height <= 0:
+        raise ValueError(f"Invalid source dimensions: {source_width}x{source_height}")
+
+    width_scale = config.max_output_width / source_width
+    height_scale = config.max_output_height / source_height
+    scale = min(1.0, width_scale, height_scale)
+
+    output_width = max(2, int(round(source_width * scale)))
+    output_height = max(2, int(round(source_height * scale)))
+
+    # Some codecs require even dimensions.
+    if output_width % 2:
+        output_width -= 1
+    if output_height % 2:
+        output_height -= 1
+
+    return output_width, output_height
+
+
+def _build_preview_frame_indices(
+    *,
+    ranges: list[tuple[int, int]],
+    observations: list[PersonObservation],
+    source_fps: float,
+    preview_fps: float,
+    total_frames: int,
+) -> list[int]:
+    """Build deterministic source-frame indices for the QA preview.
+
+    Regularly sampled context frames are included, and every exact observation
+    frame inside a selected range is included. The union is sorted and
+    deduplicated.
+    """
+    if preview_fps <= 0:
+        raise ValueError("preview_fps must be greater than zero")
+
+    effective_preview_fps = min(preview_fps, source_fps)
+    sample_step = max(1, int(round(source_fps / effective_preview_fps)))
+
+    selected: set[int] = set()
+
+    for start, end in ranges:
+        bounded_start = min(max(0, start), total_frames)
+        bounded_end = min(max(bounded_start, end), total_frames)
+
+        selected.update(range(bounded_start, bounded_end, sample_step))
+
+        if bounded_end > bounded_start:
+            selected.add(bounded_end - 1)
+
+    for observation in observations:
+        frame_index = int(observation.source_frame_index)
+
+        if 0 <= frame_index < total_frames and _frame_in_ranges(frame_index, ranges):
+            selected.add(frame_index)
+
+    return sorted(selected)
 
 
 def render_triage_preview(
@@ -128,28 +367,14 @@ def render_triage_preview(
     output_path: Path,
     config: OverlayConfig | None = None,
 ) -> Path:
-    """Render a preview MP4 with track overlays.
+    """Render a sampled QA preview with frame-aligned track overlays.
 
-    For person-positive clips, renders active spans with context.
-    For no-person clips, renders a representative sample of the clip.
+    Person-positive previews contain all active spans with context. No-person
+    previews contain a regular sample from the beginning of the clip.
 
-    Parameters
-    ----------
-    video_path : Path
-        Path to the source video.
-    observations : list[PersonObservation]
-        All person observations for the clip.
-    spans : list[ActiveSpan]
-        Active spans for the clip.
-    output_path : Path
-        Destination MP4 path.
-    config : OverlayConfig | None
-        Overlay configuration. Defaults used if None.
-
-    Returns
-    -------
-    Path
-        The output file path.
+    Only observations whose ``source_frame_index`` matches the currently
+    rendered source frame are drawn. Historical observations are never carried
+    forward to later frames.
     """
     import cv2
 
@@ -158,79 +383,205 @@ def render_triage_preview(
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    cap = cv2.VideoCapture(str(video_path))
-    if not cap.isOpened():
+    capture = cv2.VideoCapture(str(video_path))
+    if not capture.isOpened():
         raise RuntimeError(f"Cannot open video: {video_path}")
 
-    src_fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
-    src_w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-    src_h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    writer = None
 
-    # Determine frame range to render
-    if spans:
-        # Render active spans with context
-        span_frames: list[tuple[int, int]] = []
-        for span in spans:
-            frame_start = max(0, int((span.t_start - config.span_context_before_s) * src_fps))
-            frame_end = min(
-                total_frames, int((span.t_end + config.span_context_after_s) * src_fps)
+    try:
+        source_fps = float(capture.get(cv2.CAP_PROP_FPS) or 0.0)
+        source_width = int(capture.get(cv2.CAP_PROP_FRAME_WIDTH))
+        source_height = int(capture.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        total_frames = int(capture.get(cv2.CAP_PROP_FRAME_COUNT))
+
+        if source_fps <= 0:
+            raise RuntimeError(f"Invalid source FPS for preview video: {video_path}")
+
+        if total_frames <= 0:
+            raise RuntimeError(f"Source video contains no readable frames: {video_path}")
+
+        output_width, output_height = _compute_output_size(
+            source_width,
+            source_height,
+            config,
+        )
+
+        scale_x = output_width / source_width
+        scale_y = output_height / source_height
+
+        if spans:
+            frame_ranges: list[tuple[int, int]] = []
+
+            for span in spans:
+                start_s = max(
+                    0.0,
+                    span.t_start - config.span_context_before_s,
+                )
+                end_s = max(
+                    start_s,
+                    span.t_end + config.span_context_after_s,
+                )
+
+                start_frame = max(
+                    0,
+                    int(math.floor(start_s * source_fps)),
+                )
+                end_frame = min(
+                    total_frames,
+                    int(math.ceil(end_s * source_fps)) + 1,
+                )
+
+                if end_frame > start_frame:
+                    frame_ranges.append((start_frame, end_frame))
+
+            merged_ranges = _merge_frame_ranges(frame_ranges)
+        else:
+            preview_duration_s = max(
+                0.0,
+                config.no_person_preview_duration_s,
             )
-            span_frames.append((frame_start, frame_end))
+            render_end = min(
+                total_frames,
+                max(
+                    1,
+                    int(math.ceil(preview_duration_s * source_fps)),
+                ),
+            )
+            merged_ranges = [(0, render_end)]
 
-        # Merge overlapping span ranges
-        span_frames.sort()
-        merged_ranges: list[tuple[int, int]] = [span_frames[0]]
-        for start, end in span_frames[1:]:
-            if start <= merged_ranges[-1][1]:
-                merged_ranges[-1] = (merged_ranges[-1][0], max(merged_ranges[-1][1], end))
-            else:
-                merged_ranges.append((start, end))
-    else:
-        # No-person clip: render a representative sample (first 10 seconds or full clip)
-        render_end = min(total_frames, int(10.0 * src_fps))
-        merged_ranges = [(0, render_end)]
+        if not merged_ranges:
+            raise RuntimeError(f"No valid preview ranges could be derived for {video_path}")
 
-    # Use first span's observations for overlay (or all if no spans)
-    if spans and observations:
-        # Filter observations near the first span for overlay
-        first_span = spans[0]
-        span_obs = [
-            o
-            for o in observations
-            if first_span.t_start - config.span_context_before_s
-            <= o.timestamp_s
-            <= first_span.t_end + config.span_context_after_s
-        ]
-    else:
-        span_obs = observations
+        observations_by_frame: dict[int, list[PersonObservation]] = defaultdict(list)
 
-    # Determine output codec
-    fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-    out_writer = cv2.VideoWriter(str(output_path), fourcc, min(src_fps, 15.0), (src_w, src_h))
+        for observation in observations:
+            observations_by_frame[int(observation.source_frame_index)].append(observation)
 
-    if not out_writer.isOpened():
-        # Fallback: try avc1
-        fourcc = cv2.VideoWriter_fourcc(*"avc1")
-        out_writer = cv2.VideoWriter(str(output_path), fourcc, min(src_fps, 15.0), (src_w, src_h))
+        for frame_observations in observations_by_frame.values():
+            frame_observations.sort(
+                key=lambda observation: (
+                    observation.tracker_track_id
+                    if observation.tracker_track_id is not None
+                    else -1,
+                    observation.bbox_x1,
+                    observation.bbox_y1,
+                )
+            )
 
-    if not out_writer.isOpened():
-        # Last resort: write without codec specification
-        out_writer = cv2.VideoWriter(str(output_path), -1, min(src_fps, 15.0), (src_w, src_h))
+        preview_frame_indices = _build_preview_frame_indices(
+            ranges=merged_ranges,
+            observations=observations,
+            source_fps=source_fps,
+            preview_fps=config.preview_fps,
+            total_frames=total_frames,
+        )
 
-    rendered_frames = 0
-    for start_frame, end_frame in merged_ranges:
-        for frame_idx in range(start_frame, end_frame):
-            cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
-            ret, frame = cap.read()
-            if not ret:
-                break
-            overlayed = draw_overlay(frame, span_obs, spans, config)
-            out_writer.write(overlayed)
+        if not preview_frame_indices:
+            raise RuntimeError(f"No frames selected for preview: {video_path}")
+
+        output_fps = min(config.preview_fps, source_fps)
+        if output_fps <= 0:
+            raise ValueError("Preview output FPS must be greater than zero")
+
+        writer = _open_video_writer(
+            output_path=output_path,
+            output_fps=output_fps,
+            output_size=(output_width, output_height),
+        )
+
+        rendered_frames = 0
+
+        for frame_index in preview_frame_indices:
+            capture.set(cv2.CAP_PROP_POS_FRAMES, frame_index)
+            success, frame = capture.read()
+
+            if not success:
+                logger.warning(
+                    "Failed to read preview frame %d from %s",
+                    frame_index,
+                    video_path,
+                )
+                continue
+
+            if frame.shape[1] != output_width or frame.shape[0] != output_height:
+                frame = cv2.resize(
+                    frame,
+                    (output_width, output_height),
+                    interpolation=cv2.INTER_AREA,
+                )
+
+            frame_timestamp_s = frame_index / source_fps
+            current_observations = observations_by_frame.get(
+                frame_index,
+                [],
+            )
+
+            overlayed = draw_overlay(
+                frame,
+                current_observations,
+                spans,
+                config,
+                frame_timestamp_s=frame_timestamp_s,
+                source_frame_index=frame_index,
+                scale_x=scale_x,
+                scale_y=scale_y,
+            )
+
+            writer.write(overlayed)
             rendered_frames += 1
 
-    cap.release()
-    out_writer.release()
+        if rendered_frames == 0:
+            raise RuntimeError(f"Could not render any preview frames from {video_path}")
 
-    logger.info("Preview rendered: %s (%d frames)", output_path, rendered_frames)
+    finally:
+        capture.release()
+
+        if writer is not None:
+            writer.release()
+
+    logger.info(
+        "Preview rendered: %s (%d sampled frames at %.2f FPS, %dx%d)",
+        output_path,
+        rendered_frames,
+        output_fps,
+        output_width,
+        output_height,
+    )
+
     return output_path
+
+
+def _open_video_writer(
+    *,
+    output_path: Path,
+    output_fps: float,
+    output_size: tuple[int, int],
+):
+    """Open an MP4 writer using the first supported codec."""
+    import cv2
+
+    codec_candidates = ("mp4v", "avc1")
+
+    for codec in codec_candidates:
+        fourcc = cv2.VideoWriter_fourcc(*codec)
+        writer = cv2.VideoWriter(
+            str(output_path),
+            fourcc,
+            output_fps,
+            output_size,
+        )
+
+        if writer.isOpened():
+            logger.debug(
+                "Using preview codec %s for %s",
+                codec,
+                output_path,
+            )
+            return writer
+
+        writer.release()
+
+    raise RuntimeError(
+        f"Could not open an MP4 video writer using codecs: {', '.join(codec_candidates)}"
+    )
