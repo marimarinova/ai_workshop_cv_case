@@ -211,3 +211,6 @@ opencode.json
 # Local data and generated artifacts
 data/
 artifacts/
+**.backup
+.local/
+models/

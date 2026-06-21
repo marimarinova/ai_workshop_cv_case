@@ -1,6 +1,6 @@
 {
   "$schema": "https://opencode.ai/config.json",
-  "model": "llamacpp/Qwen3.6-27B-UD-Q4_K_XL",
+  "model": "llamacpp/Qwen3.6-35B-A3B-UD-Q4_K_XL",
   "share": "disabled",
   "autoupdate": false,
   "permission": {
@@ -65,10 +65,10 @@
     "context-engine": {
       "type": "local",
       "command": [
-        "/home/naim/.local/bin/cce",
+        "/home/lubom/.local/bin/cce",
         "serve",
         "--project-dir",
-        "/home/naim/repos/ai_workshop_cv_case"
+        "/home/lubom/repos/ai_workshop_cv_case"
       ],
       "enabled": true
     }
@@ -76,13 +76,13 @@
   "provider": {
     "llamacpp": {
       "npm": "@ai-sdk/openai-compatible",
-      "name": "llama.cpp local Qwen3.6 27B Q4 MTP",
+      "name": "llama.cpp local Qwen3.6 35B A3B Q4",
       "options": {
         "baseURL": "http://127.0.0.1:8000/v1"
       },
       "models": {
-        "Qwen3.6-27B-UD-Q4_K_XL": {
-          "name": "Qwen3.6-27B-UD-Q4_K_XL",
+        "Qwen3.6-35B-A3B-UD-Q4_K_XL": {
+          "name": "Qwen3.6-35B-A3B-UD-Q4_K_XL",
           "limit": {
             "context": 262144,
             "output": 16384
@@ -125,7 +125,7 @@
     "build": {
       "description": "Primary implementation agent for the pickup/putdown temporal action detection repository.",
       "mode": "primary",
-      "model": "llamacpp/Qwen3.6-27B-UD-Q4_K_XL",
+      "model": "llamacpp/Qwen3.6-35B-A3B-UD-Q4_K_XL",
       "temperature": 0.1,
       "top_p": 0.8,
       "steps": 30,
@@ -207,7 +207,7 @@
     "plan": {
       "description": "Read-only planning agent for scoped changes in the pickup/putdown detection pipeline.",
       "mode": "primary",
-      "model": "llamacpp/Qwen3.6-27B-UD-Q4_K_XL",
+      "model": "llamacpp/Qwen3.6-35B-A3B-UD-Q4_K_XL",
       "temperature": 0.1,
       "top_p": 0.8,
       "steps": 20,
@@ -243,7 +243,7 @@
     "explorer": {
       "description": "Read-only codebase explorer for tracing ingestion, schemas, temporal logic, storage, and evaluation flows.",
       "mode": "subagent",
-      "model": "llamacpp/Qwen3.6-27B-UD-Q4_K_XL",
+      "model": "llamacpp/Qwen3.6-35B-A3B-UD-Q4_K_XL",
       "temperature": 0.1,
       "top_p": 0.8,
       "steps": 20,
@@ -272,7 +272,7 @@
     "implementer": {
       "description": "Implements small, targeted changes after the relevant files, schemas, and temporal-action constraints are understood.",
       "mode": "subagent",
-      "model": "llamacpp/Qwen3.6-27B-UD-Q4_K_XL",
+      "model": "llamacpp/Qwen3.6-35B-A3B-UD-Q4_K_XL",
       "temperature": 0.1,
       "top_p": 0.8,
       "steps": 25,
@@ -341,7 +341,7 @@
     "reviewer": {
       "description": "Reviews changes for correctness, temporal-label semantics, timestamp/frame alignment, regression risk, typing, and test coverage.",
       "mode": "subagent",
-      "model": "llamacpp/Qwen3.6-27B-UD-Q4_K_XL",
+      "model": "llamacpp/Qwen3.6-35B-A3B-UD-Q4_K_XL",
       "temperature": 0.1,
       "top_p": 0.8,
       "steps": 18,

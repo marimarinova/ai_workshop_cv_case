@@ -17,11 +17,34 @@ class StorageConfig(BaseModel):
     anonymous: bool = False
 
 
+class ByteTrackTriageConfig(BaseModel):
+    track_high_thresh: float = 0.5
+    track_low_thresh: float = 0.1
+    new_track_thresh: float = 0.6
+    track_buffer: int = 30
+    match_iou_threshold: float = 0.5
+    max_age: int = 30
+    min_hits: int = 3
+    object_threshold: float = 0.10
+
+
 class TriageConfig(BaseModel):
+    model_path: str = "models/person_detector.pt"
     target_fps: float = 1.0
+    image_size: int = 640
+    device: str = "auto"
+    half: bool = False
+    detector_confidence: float = 0.10
+    detector_iou_threshold: float = 0.70
+    max_detections: int = 100
+    minimum_track_confidence: float = 0.35
     minimum_visible_duration_s: float = 0.75
     minimum_observations: int = 2
-    minimum_person_confidence: float = 0.35
+    max_track_observation_gap_s: float = 1.5
+    merge_gap_s: float = 1.0
+    preview_sample_rate: float = 0.10
+    sampling_seed: int = 42
+    tracker_config: str = "configs/bytetrack_triage.yaml"
 
 
 class ProposalsConfig(BaseModel):
@@ -37,6 +60,7 @@ class ProposalsConfig(BaseModel):
 class AppConfig(BaseModel):
     storage: StorageConfig = Field(default_factory=StorageConfig)
     triage: TriageConfig = Field(default_factory=TriageConfig)
+    tracker: ByteTrackTriageConfig = Field(default_factory=ByteTrackTriageConfig)
     proposals: ProposalsConfig = Field(default_factory=ProposalsConfig)
     data_dir: str = "data"
     output_dir: str = "outputs"
@@ -71,7 +95,16 @@ def _build_env_overrides() -> dict[str, Any]:
         if len(parts) != 2:
             continue
         section, key = parts
-        if section not in ("storage", "triage", "proposals", "data", "output", "cache", "results"):
+        if section not in (
+            "storage",
+            "triage",
+            "tracker",
+            "proposals",
+            "data",
+            "output",
+            "cache",
+            "results",
+        ):
             continue
         if section not in overrides:
             overrides[section] = {}

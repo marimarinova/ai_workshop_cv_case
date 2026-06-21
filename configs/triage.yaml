@@ -1,0 +1,25 @@
+# Triage configuration for Layer 0A person detection and tracking.
+# Copy to configs/triage.yaml and adjust values as needed.
+
+triage:
+  model_path: "models/person_detector.pt"
+  target_fps: 1.0
+  image_size: 640
+  device: "auto"
+  half: false
+
+  detector_confidence: 0.10
+  detector_iou_threshold: 0.70
+  max_detections: 100
+
+  minimum_track_confidence: 0.35
+  minimum_visible_duration_s: 0.75
+  minimum_observations: 2
+  max_track_observation_gap_s: 1.5
+
+  merge_gap_s: 1.0
+
+  preview_sample_rate: 0.10
+  sampling_seed: 42
+
+  tracker_config: "configs/bytetrack_triage.yaml"
