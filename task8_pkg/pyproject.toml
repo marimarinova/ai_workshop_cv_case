@@ -1,0 +1,9 @@
+[project]
+name = "pickup-putdown-evaluation"
+version = "0.1.0"
+description = "task_8 shared temporal-action-detection evaluator"
+requires-python = ">=3.9"
+dependencies = ["numpy>=1.24", "scipy>=1.10"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]

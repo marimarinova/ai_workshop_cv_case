@@ -1,0 +1,69 @@
+{
+  "tiou@0.3": {
+    "precision": 0.5,
+    "recall": 0.5,
+    "f1": 0.5,
+    "tp": 1,
+    "fp": 1,
+    "fn": 1
+  },
+  "tiou@0.5": {
+    "precision": 0.5,
+    "recall": 0.5,
+    "f1": 0.5,
+    "tp": 1,
+    "fp": 1,
+    "fn": 1
+  },
+  "midpoint@1.0s": {
+    "precision": 0.5,
+    "recall": 0.5,
+    "f1": 0.5,
+    "tp": 1,
+    "fp": 1,
+    "fn": 1
+  },
+  "start_mae_s": 0.09999999999999964,
+  "end_mae_s": 0.10000000000000053,
+  "per_type": {
+    "pickup": {
+      "precision": 0.5,
+      "recall": 1.0,
+      "f1": 0.6666666666666666,
+      "tp": 1,
+      "fp": 1,
+      "fn": 0
+    },
+    "putdown": {
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0,
+      "tp": 0,
+      "fp": 0,
+      "fn": 1
+    }
+  },
+  "fp_per_hour": 30.0,
+  "runtime_per_video_minute": 4.0,
+  "event_count_error_per_clip": 0,
+  "event_count_error_absolute": 0,
+  "confusion": {
+    "pickup": {
+      "pickup": 1,
+      "putdown": 0
+    },
+    "putdown": {
+      "pickup": 1,
+      "putdown": 0
+    }
+  },
+  "confusion_tiou": 0.5,
+  "mAP": {
+    "mAP@0.3": 0.5,
+    "mAP@0.5": 0.5,
+    "mAP@0.7": 0.5,
+    "mAP_avg": 0.5
+  },
+  "multi_item_recall": null,
+  "multi_item_support": 0
+}
