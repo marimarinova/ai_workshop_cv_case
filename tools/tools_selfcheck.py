@@ -117,9 +117,17 @@ def main():
     )
     chk("acceptance config present", os.path.exists("configs/evaluation_acceptance.yaml"))
     chk("sample output present", os.path.exists("samples/sample_metrics.json"))
+
+    def _file_contains(path, needle):
+        try:
+            with open(path) as fh:
+                return needle in fh.read()
+        except OSError:
+            return False
+
     chk(
         "scipy declared",
-        os.path.exists("pyproject.toml") and os.path.exists("requirements.txt"),
+        _file_contains("pyproject.toml", "scipy") or _file_contains("requirements.txt", "scipy"),
     )
     print("\nALL CLEAR" if not fails else f"\n{len(fails)} FAILED: " + ", ".join(fails))
     return 1 if fails else 0

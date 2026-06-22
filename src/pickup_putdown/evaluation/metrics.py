@@ -90,6 +90,8 @@ def aggregate_metrics(
     """Full metric bundle for one model run. Ignore-filtered consistently."""
     if clip_durations and any((d is not None and d < 0) for d in clip_durations.values()):
         raise ValueError("clip_durations must be non-negative")
+    if not tiou_thresholds:
+        raise ValueError("tiou_thresholds must be a non-empty sequence")
     ev = drop_ignored(events, ignores)
     pr = drop_ignored(preds, ignores)
     out = {}
@@ -177,6 +179,8 @@ def slice_metrics(
     ev = drop_ignored(events, ignores)
     pr = drop_ignored(preds, ignores)
     tiou_thresholds = kw.get("tiou_thresholds", (0.3, 0.5))
+    if not tiou_thresholds:
+        raise ValueError("tiou_thresholds must be a non-empty sequence")
     slice_tiou = (
         slice_tiou_threshold
         if slice_tiou_threshold is not None
@@ -188,10 +192,10 @@ def slice_metrics(
     slices = {}
     if any(hasattr(e, "confidence") for e in ev):
         slices["high_med_only"] = [
-            e for e in ev if str(getattr(e, "confidence", "high")) in ("high", "med")
+            e for e in ev if type_name(getattr(e, "confidence", "high")) in ("high", "med")
         ]
         slices["low_confidence"] = [
-            e for e in ev if str(getattr(e, "confidence", "high")) == "low"
+            e for e in ev if type_name(getattr(e, "confidence", "high")) == "low"
         ]
     if any(hasattr(e, "hard_case") for e in ev):
         slices["hard_cases"] = [e for e in ev if getattr(e, "hard_case", False)]

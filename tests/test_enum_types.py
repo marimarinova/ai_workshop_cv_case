@@ -16,12 +16,8 @@ from pickup_putdown.evaluation import (
     evaluate_class_aware,
     evaluate_confusion,
 )
-from pickup_putdown.evaluation import (
-    EvaluationEvent as Event,
-)
-from pickup_putdown.evaluation import (
-    EvaluationPrediction as Prediction,
-)
+from pickup_putdown.evaluation import EvaluationEvent as Event
+from pickup_putdown.evaluation import EvaluationPrediction as Prediction
 
 
 class EventType(Enum):  # plain Enum -> str(EventType.pickup) == "EventType.pickup"

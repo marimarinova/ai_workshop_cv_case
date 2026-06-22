@@ -22,15 +22,9 @@ from pickup_putdown.evaluation import (
     slice_metrics,
     tiou,
 )
-from pickup_putdown.evaluation import (
-    EvaluationEvent as Event,
-)
-from pickup_putdown.evaluation import (
-    EvaluationIgnoreInterval as IgnoreInterval,
-)
-from pickup_putdown.evaluation import (
-    EvaluationPrediction as Prediction,
-)
+from pickup_putdown.evaluation import EvaluationEvent as Event
+from pickup_putdown.evaluation import EvaluationIgnoreInterval as IgnoreInterval
+from pickup_putdown.evaluation import EvaluationPrediction as Prediction
 
 
 # --- interval math ---
@@ -405,4 +399,16 @@ def test_unknown_matcher_raises_valueerror():
             [Prediction("c", "pickup", 1.0, 2.0)],
             Criterion("tiou", 0.5),
             matcher="bogus",
+        )
+
+
+def test_empty_tiou_thresholds_raises_valueerror():
+    import pytest
+
+    with pytest.raises(ValueError, match="tiou_thresholds must be a non-empty sequence"):
+        aggregate_metrics(
+            [Event("c", "pickup", 1.0, 2.0)],
+            [Prediction("c", "pickup", 1.0, 2.0)],
+            {"c": 10.0},
+            tiou_thresholds=(),
         )

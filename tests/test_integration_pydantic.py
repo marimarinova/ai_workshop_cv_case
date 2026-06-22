@@ -1,7 +1,6 @@
 """Integration test: the evaluator consumes canonical-style Pydantic models directly.
 
-Uses (str, Enum) to stand in for the Python 3.11 StrEnum of the real Task 1 schemas,
-so it runs on 3.9/3.10 too while exercising the duck-typed path.
+Uses StrEnum (Python 3.11+; repo requires >=3.12) to mirror the real Task 1 schemas.
 """
 
 from __future__ import annotations
