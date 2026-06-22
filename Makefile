@@ -61,7 +61,7 @@ VIDEO ?= $(TRIAGE_INPUT)
 	task_3 task_4 task_5 \
 	annotation-pull annotation-up annotation-down annotation-restart annotation-status annotation-logs \
 	annotation-config-validate annotation-test annotation-acceptance annotation-reset \
-	candidates-remote
+candidates-remote candidates-download candidates-upload
 
 # ---------------------------------------------------------------------------
 # General development targets
@@ -399,6 +399,32 @@ CANDIDATE_FAIL_FAST ?=
 CANDIDATE_OVERWRITE ?=
 CANDIDATE_DRY_RUN ?=
 
+CANDIDATE_DEFER_UPLOAD ?=
+CANDIDATE_LOCAL_SOURCE_DIR ?= .local/source_videos
+CANDIDATE_LOCAL_OUTPUT_DIR ?= .local/candidate_staging
+CANDIDATE_MIN_FREE_DISK_GB ?= 0
+CANDIDATE_REFRESH_CHANGED ?=
+
+candidates-download: ## Download source videos from S3 to local cache in batches
+	@echo "=== Source Video Download ==="
+	@echo "Storage config:    $(CANDIDATE_STORAGE_CONFIG)"
+	@echo "Target count:      $(CANDIDATE_TARGET_COUNT)"
+	@echo "Transfer workers:  $(CANDIDATE_TRANSFER_WORKERS)"
+	@echo "Source dir:        $(CANDIDATE_LOCAL_SOURCE_DIR)"
+	@echo "Output dir:        $(CANDIDATE_LOCAL_OUTPUT_DIR)"
+	@set -a && \
+	source "$(STORAGE_ENV)" && \
+	set +a && \
+	$(PICKUP_PUTDOWN) candidates-download \
+		--storage-config "$(CANDIDATE_STORAGE_CONFIG)" \
+		--target-count $(CANDIDATE_TARGET_COUNT) \
+		--transfer-workers $(CANDIDATE_TRANSFER_WORKERS) \
+		--local-source-dir "$(CANDIDATE_LOCAL_SOURCE_DIR)" \
+		--local-output-dir "$(CANDIDATE_LOCAL_OUTPUT_DIR)" \
+		--minimum-free-disk-gb $(CANDIDATE_MIN_FREE_DISK_GB) \
+		$(if $(CANDIDATE_REFRESH_CHANGED),--refresh-changed,) \
+		-v
+
 candidates-remote: ## Generate annotation candidates from remote S3 source videos
 	@echo "=== Remote Candidate Generation ==="
 	@echo "Storage config:    $(CANDIDATE_STORAGE_CONFIG)"
@@ -409,6 +435,8 @@ candidates-remote: ## Generate annotation candidates from remote S3 source video
 	@echo "GPU workers:       $(CANDIDATE_GPU_WORKERS)"
 	@echo "Encode workers:    $(CANDIDATE_ENCODE_WORKERS)"
 	@echo "Work dir:          $(CANDIDATE_WORK_DIR)"
+	@echo "Source dir:        $(CANDIDATE_LOCAL_SOURCE_DIR)"
+	@echo "Output dir:        $(CANDIDATE_LOCAL_OUTPUT_DIR)"
 	@set -a && \
 	source "$(STORAGE_ENV)" && \
 	set +a && \
@@ -421,9 +449,26 @@ candidates-remote: ## Generate annotation candidates from remote S3 source video
 		--gpu-workers $(CANDIDATE_GPU_WORKERS) \
 		--encode-workers $(CANDIDATE_ENCODE_WORKERS) \
 		--work-dir "$(CANDIDATE_WORK_DIR)" \
+		--local-source-dir "$(CANDIDATE_LOCAL_SOURCE_DIR)" \
+		--local-output-dir "$(CANDIDATE_LOCAL_OUTPUT_DIR)" \
 		$(if $(CANDIDATE_KEEP_LOCAL_FILES),--keep-local-files,) \
 		$(if $(CANDIDATE_FAIL_FAST),--fail-fast,) \
+		$(if $(CANDIDATE_DEFER_UPLOAD),--defer-upload,) \
 		$(if $(CANDIDATE_OVERWRITE),--overwrite,) \
 		$(if $(CANDIDATE_DRY_RUN),--dry-run,) \
+		-v
+
+candidates-upload: ## Upload locally staged candidates to S3
+	@echo "=== Candidate Upload ==="
+	@echo "Storage config:    $(CANDIDATE_STORAGE_CONFIG)"
+	@echo "Output dir:        $(CANDIDATE_LOCAL_OUTPUT_DIR)"
+	@echo "Target count:      $(CANDIDATE_TARGET_COUNT)"
+	@set -a && \
+	source "$(STORAGE_ENV)" && \
+	set +a && \
+	$(PICKUP_PUTDOWN) candidates-upload \
+		--storage-config "$(CANDIDATE_STORAGE_CONFIG)" \
+		--local-output-dir "$(CANDIDATE_LOCAL_OUTPUT_DIR)" \
+		--target-count $(CANDIDATE_TARGET_COUNT) \
 		-v
 
