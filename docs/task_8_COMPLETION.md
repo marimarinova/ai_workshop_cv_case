@@ -114,6 +114,10 @@ the task file 1:1:
 - **Implementation step 7 "slices … multiple-person"** — `slice_metrics` now emits a
   `multiple_person` slice wherever events carry an `n_person` attribute > 1
   ("where metadata is available", per §17.5). Test: `test_multiple_person_slice`.
+  The `multiple_person` slice activates only when a per-event person-count is supplied
+  (e.g. joined from `Clip.n_person_tracks`); the canonical `events.csv` schema (§5.3)
+  carries no person count, so on raw canonical events the slice is skipped and it applies
+  to synthetic/enriched data.
 
 Every Deliverable, Implementation Step (1–9), and Acceptance Criterion in
 `task_8_shared_evaluator_hard.md` is now satisfied and covered by tests

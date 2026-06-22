@@ -41,7 +41,7 @@ def _multi_item_events(events: list[Any], overlap_thr: float | None = None) -> l
         if overlap_thr is None:
             clusters: dict[tuple[Any, ...], list[Any]] = {}
             for e in group:
-                gid = getattr(e, "group_id", "") or ""
+                gid = getattr(e, "event_group_id", "") or getattr(e, "group_id", "") or ""
                 key: tuple[Any, ...] = (
                     ("gid", gid) if gid else ("dup", round(e.t_start, 6), round(e.t_end, 6))
                 )

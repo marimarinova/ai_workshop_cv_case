@@ -425,3 +425,37 @@ def test_empty_tiou_thresholds_raises_valueerror():
             {"c": 10.0},
             tiou_thresholds=(),
         )
+
+
+class _BadType:
+    """Duck-typed record with a type outside VALID_TYPES (bypasses dataclass guards)."""
+
+    def __init__(self, t):
+        self.clip_id, self.type, self.t_start, self.t_end = "c", t, 1.0, 2.0
+
+
+def test_invalid_event_type_raises_in_class_aware():
+    import pytest
+
+    with pytest.raises(ValueError, match="invalid event type 'walk'"):
+        evaluate_class_aware(
+            [_BadType("walk")], [Prediction("c", "pickup", 1.0, 2.0)], Criterion("tiou", 0.5)
+        )
+
+
+def test_invalid_prediction_type_raises_in_class_aware():
+    import pytest
+
+    with pytest.raises(ValueError, match="invalid prediction type 'jump'"):
+        evaluate_class_aware(
+            [Event("c", "pickup", 1.0, 2.0)], [_BadType("jump")], Criterion("tiou", 0.5)
+        )
+
+
+def test_invalid_type_raises_in_confusion():
+    import pytest
+
+    with pytest.raises(ValueError, match="invalid event type 'walk'"):
+        evaluate_confusion(
+            [_BadType("walk")], [Prediction("c", "pickup", 1.0, 2.0)], Criterion("tiou", 0.5)
+        )

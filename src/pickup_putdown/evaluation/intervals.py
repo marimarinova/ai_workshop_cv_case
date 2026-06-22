@@ -19,7 +19,7 @@ def tiou(a: Any, b: Any) -> float:
 
 def overlaps(a: Any, b: Any) -> bool:
     """True if intervals have any positive temporal overlap."""
-    return a.t_start < b.t_end and b.t_start < a.t_end  # type: ignore[no-any-return]
+    return bool(a.t_start < b.t_end and b.t_start < a.t_end)
 
 
 def midpoint_distance(a: Any, b: Any) -> float:

@@ -111,6 +111,20 @@ def by_clip(items: list[Any]) -> dict[str, list[Any]]:
     return d
 
 
+def validate_types(items: Any, *, kind: str = "record") -> None:
+    """Fail fast if any record's ``type_name`` is not in ``VALID_TYPES``.
+
+    Raises ``ValueError`` naming the offending type so a mislabeled input is
+    caught before matching instead of being silently dropped per (clip, type).
+    """
+    for it in items:
+        name = type_name(it.type)
+        if name not in VALID_TYPES:
+            raise ValueError(
+                f"invalid {kind} type {name!r}; expected one of {list(VALID_TYPES)}"
+            )
+
+
 def evaluate_class_aware(
     events: Any,
     preds: Any,
@@ -124,6 +138,8 @@ def evaluate_class_aware(
     match_fn = _MATCHERS[matcher]
     events = drop_ignored(events, ignores)
     preds = drop_ignored(preds, ignores)
+    validate_types(events, kind="event")
+    validate_types(preds, kind="prediction")
     ge, gp = by_clip(events), by_clip(preds)
     agg = MatchResult()
     for clip in sorted(set(ge) | set(gp)):
