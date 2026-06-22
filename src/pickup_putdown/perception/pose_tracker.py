@@ -1,21 +1,26 @@
 """Pose inference on person-active spans for Layer 0B.
 
 Runs a configured YOLO pose model over person-active spans at a configurable
-target FPS.  Preserves source timestamps, clamps to clip duration, and records
-missing or low-confidence keypoints rather than interpolating them silently.
+target FPS. Preserves source timestamps, clamps to clip duration, and records
+valid wrist observations without silently interpolating missing keypoints.
 """
 
 from __future__ import annotations
 
 import logging
+import math
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 from pickup_putdown.common.schemas import ActiveSpan, PoseObservation
 from pickup_putdown.config import PoseConfig
 from pickup_putdown.ingestion.video_probe import probe_video
 
 logger = logging.getLogger(__name__)
+
+_LEFT_WRIST_INDEX = 9
+_RIGHT_WRIST_INDEX = 10
 
 
 @dataclass
@@ -29,8 +34,8 @@ class PoseTracker:
     pose_cfg : PoseConfig
         Pose inference configuration.
     active_spans : list[ActiveSpan] | None
-        Active spans to restrict pose inference to.  When *None* the entire
-        clip is processed.
+        Active spans to restrict pose inference to. When ``None`` the entire
+        clip is processed. An explicitly empty list processes no frames.
     """
 
     video_path: Path
@@ -38,6 +43,7 @@ class PoseTracker:
     active_spans: list[ActiveSpan] | None = None
 
     _model: object | None = field(default=None, repr=False)
+    _device: str = field(default="cpu", repr=False)
     _source_fps: float = field(default=0.0, repr=False)
     _total_frames: int = field(default=0, repr=False)
     _clip_duration_s: float = field(default=0.0, repr=False)
@@ -45,21 +51,35 @@ class PoseTracker:
     _sample_frames: list[int] = field(default_factory=list, repr=False)
 
     def __post_init__(self) -> None:
+        self.video_path = Path(self.video_path)
         if not self.video_path.exists():
             raise FileNotFoundError(f"Video not found: {self.video_path}")
 
         self._source_fps = self._read_source_fps()
         self._total_frames = self._read_total_frames()
         self._clip_duration_s = self._total_frames / max(self._source_fps, 1e-9)
-        self._vid_stride = max(1, round(self._source_fps / max(self.pose_cfg.target_fps, 1e-9)))
-        self._sample_frames = self._compute_sample_frames(self._total_frames, self._vid_stride)
+        self._vid_stride = max(
+            1,
+            round(self._source_fps / max(float(self.pose_cfg.target_fps), 1e-9)),
+        )
+        self._sample_frames = self._compute_sample_frames(
+            total_frames=self._total_frames,
+            source_fps=self._source_fps,
+            target_fps=float(self.pose_cfg.target_fps),
+        )
+
+        effective_fps = (
+            len(self._sample_frames) / self._clip_duration_s if self._clip_duration_s > 0 else 0.0
+        )
         logger.info(
-            "Video %s: fps=%.2f, frames=%d, stride=%d, samples=%d",
+            "Video %s: fps=%.2f, frames=%d, nominal_stride=%d, "
+            "samples=%d, effective_sample_fps=%.2f",
             self.video_path,
             self._source_fps,
             self._total_frames,
             self._vid_stride,
             len(self._sample_frames),
+            effective_fps,
         )
 
     # ------------------------------------------------------------------
@@ -70,6 +90,7 @@ class PoseTracker:
         result = probe_video(self.video_path)
         if not result.decode_ok:
             raise RuntimeError(f"Cannot decode video: {result.probe_error}")
+
         fps = result.fps or result.probe_fps
         if fps is None or fps <= 0:
             raise RuntimeError(f"Could not determine FPS for {self.video_path}")
@@ -79,37 +100,114 @@ class PoseTracker:
         import cv2
 
         cap = cv2.VideoCapture(str(self.video_path))
-        total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-        cap.release()
+        try:
+            if not cap.isOpened():
+                raise RuntimeError(f"Could not open video: {self.video_path}")
+
+            total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        finally:
+            cap.release()
+
         if total <= 0:
             raise RuntimeError(f"Could not determine frame count for {self.video_path}")
         return total
 
     @staticmethod
-    def _compute_sample_frames(total_frames: int, vid_stride: int) -> list[int]:
-        return list(range(0, total_frames, vid_stride))
+    def _compute_sample_frames(
+        total_frames: int,
+        vid_stride: int | None = None,
+        *,
+        source_fps: float | None = None,
+        target_fps: float | None = None,
+    ) -> list[int]:
+        """Return deterministic sampled frame indices.
+
+        The legacy ``(total_frames, vid_stride)`` call remains supported for
+        compatibility with existing tests. Internal use supplies
+        ``source_fps`` and ``target_fps`` so sampling is timestamp-based and
+        avoids the 20 FPS / 8 FPS rounding problem.
+        """
+        if total_frames <= 0:
+            return []
+
+        if source_fps is None or target_fps is None:
+            if vid_stride is None or vid_stride <= 0:
+                raise ValueError("vid_stride must be positive")
+            return list(range(0, total_frames, vid_stride))
+
+        if source_fps <= 0:
+            raise ValueError("source_fps must be positive")
+        if target_fps <= 0:
+            raise ValueError("target_fps must be positive")
+
+        effective_target = min(target_fps, source_fps)
+        frame_step = source_fps / effective_target
+
+        frames: list[int] = []
+        position = 0.0
+        previous = -1
+
+        while True:
+            frame_index = int(round(position))
+            if frame_index >= total_frames:
+                break
+            if frame_index != previous:
+                frames.append(frame_index)
+                previous = frame_index
+            position += frame_step
+
+        return frames
 
     # ------------------------------------------------------------------
     # Active-span filtering
     # ------------------------------------------------------------------
 
     def _active_frame_indices(self) -> set[int]:
-        """Return source frame indices that fall within active spans."""
-        if not self.active_spans:
+        """Return sampled source-frame indices inside configured active spans."""
+        if self.active_spans is None:
             return set(self._sample_frames)
+        if not self.active_spans:
+            return set()
 
         active_frames: set[int] = set()
+        sampled = self._sample_frames
+
         for span in self.active_spans:
-            start_frame = max(0, int(span.t_start * self._source_fps))
-            end_frame = min(self._total_frames, int(span.t_end * self._source_fps) + 1)
-            for fi in self._sample_frames:
-                if start_frame <= fi < end_frame:
-                    active_frames.add(fi)
-        return active_frames if active_frames else set(self._sample_frames)
+            start_s = max(0.0, float(span.t_start))
+            end_s = min(self._clip_duration_s, float(span.t_end))
+            if end_s < start_s:
+                logger.warning(
+                    "Skipping invalid active span %.3f-%.3f for %s",
+                    start_s,
+                    end_s,
+                    self.video_path,
+                )
+                continue
+
+            start_frame = max(0, math.floor(start_s * self._source_fps))
+            end_frame = min(
+                self._total_frames - 1,
+                math.ceil(end_s * self._source_fps),
+            )
+
+            for frame_index in sampled:
+                if start_frame <= frame_index <= end_frame:
+                    active_frames.add(frame_index)
+
+        return active_frames
 
     # ------------------------------------------------------------------
     # Model loading
     # ------------------------------------------------------------------
+
+    def _resolve_device(self) -> str:
+        configured = str(self.pose_cfg.device)
+        if configured != "auto":
+            return configured
+
+        import torch
+
+        return "cuda" if torch.cuda.is_available() else "cpu"
 
     def _load_model(self) -> object:
         from ultralytics import YOLO
@@ -117,168 +215,213 @@ class PoseTracker:
         if self._model is not None:
             return self._model
 
-        device = self.pose_cfg.device
-        if device == "auto":
-            import torch
-
-            device = "cuda" if torch.cuda.is_available() else "cpu"
-
-        logger.info("Loading YOLO pose model from %s on %s", self.pose_cfg.model_path, device)
-        model = YOLO(self.pose_cfg.model_path)
-        self._model = model
-        return model
+        self._device = self._resolve_device()
+        logger.info(
+            "Loading YOLO pose model from %s on %s",
+            self.pose_cfg.model_path,
+            self._device,
+        )
+        self._model = YOLO(self.pose_cfg.model_path)
+        return self._model
 
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
 
     def run(self) -> list[PoseObservation]:
-        """Run pose inference and return timestamped wrist observations.
-
-        Returns
-        -------
-        list[PoseObservation]
-            One row per (actor, timestamp, hand_side).  Deterministically
-            sorted by (clip_id, timestamp_s, actor_id, hand_side).
-        """
+        """Run pose inference and return timestamped wrist observations."""
         import cv2
 
         model = self._load_model()
-        cap = cv2.VideoCapture(str(self.video_path))
-
         active_frames = self._active_frame_indices()
         clip_id = self._extract_clip_id()
 
+        if not active_frames:
+            logger.info("No active sample frames for %s", self.video_path)
+            return []
+
+        cap = cv2.VideoCapture(str(self.video_path))
+        if not cap.isOpened():
+            cap.release()
+            raise RuntimeError(f"Could not open video: {self.video_path}")
+
         all_observations: list[PoseObservation] = []
-        # Track which pose detections have been assigned to avoid duplicates.
-        # Key: (sample_index, pose_box_index)
-        assigned: set[tuple[int, int]] = set()
+        max_required_frame = max(active_frames)
+        processed_frames = 0
+        frame_index = 0
 
-        for si, src_frame_idx in enumerate(self._sample_frames):
-            if src_frame_idx not in active_frames:
-                continue
+        try:
+            # Sequential decoding is substantially faster than seeking with
+            # CAP_PROP_POS_FRAMES for every sampled frame.
+            while frame_index <= max_required_frame:
+                ret, frame = cap.read()
+                if not ret:
+                    logger.warning(
+                        "Video ended while reading frame %d of %s",
+                        frame_index,
+                        self.video_path,
+                    )
+                    break
 
-            cap.set(cv2.CAP_PROP_POS_FRAMES, src_frame_idx)
-            ret, frame = cap.read()
-            if not ret:
-                logger.warning("Failed to read frame %d of %s", src_frame_idx, self.video_path)
-                continue
-
-            timestamp_s = src_frame_idx / self._source_fps
-            timestamp_s = min(timestamp_s, self._clip_duration_s)
-
-            results = model.track(
-                frame,
-                persist=True,
-                conf=self.pose_cfg.pose_confidence,
-                max_det=self.pose_cfg.max_detections,
-                classes=[0],  # person class
-                verbose=False,
-                imgsz=self.pose_cfg.image_size,
-                half=self.pose_cfg.half,
-            )
-
-            boxes = results[0].boxes
-            if boxes is None:
-                continue
-
-            n_dets = len(boxes.xyxy) if boxes.xyxy is not None else 0
-            if n_dets == 0:
-                continue
-
-            for det_idx in range(n_dets):
-                track_id = int(boxes.id[det_idx].item()) if boxes.id is not None else None
-                conf = float(boxes.conf[det_idx].item())
-                xyxy = boxes.xyxy[det_idx].tolist()
-
-                pose_key = (si, det_idx)
-                if pose_key in assigned:
+                if frame_index not in active_frames:
+                    frame_index += 1
                     continue
 
-                keypoints = self._extract_keypoints(results[0], det_idx)
-                assigned.add(pose_key)
+                processed_frames += 1
+                timestamp_s = min(
+                    frame_index / self._source_fps,
+                    self._clip_duration_s,
+                )
 
-                actor_id = f"actor_{track_id}" if track_id is not None else "actor_untracked"
+                results = model.track(
+                    frame,
+                    persist=True,
+                    conf=self.pose_cfg.pose_confidence,
+                    max_det=self.pose_cfg.max_detections,
+                    classes=[0],
+                    verbose=False,
+                    imgsz=self.pose_cfg.image_size,
+                    half=(bool(self.pose_cfg.half) and self._device.startswith("cuda")),
+                    device=self._device,
+                )
 
-                for hand_side, kp_key in [("left", "left_wrist"), ("right", "right_wrist")]:
-                    kp = keypoints.get(kp_key)
-                    if kp is None:
-                        continue
-                    kx, ky, kconf = kp
-                    if kconf < self.pose_cfg.pose_confidence:
-                        continue
+                if not results:
+                    frame_index += 1
+                    continue
 
-                    obs = PoseObservation(
-                        clip_id=clip_id,
-                        timestamp_s=timestamp_s,
-                        source_frame_index=src_frame_idx,
-                        sample_index=si,
-                        actor_id=actor_id,
-                        hand_side=hand_side,
-                        wrist_x=kx,
-                        wrist_y=ky,
-                        wrist_confidence=kconf,
-                        person_bbox_x1=xyxy[0],
-                        person_bbox_y1=xyxy[1],
-                        person_bbox_x2=xyxy[2],
-                        person_bbox_y2=xyxy[3],
-                        pose_association_confidence=conf,
-                        is_valid=True,
+                result = results[0]
+                boxes = result.boxes
+                if boxes is None or boxes.xyxy is None:
+                    frame_index += 1
+                    continue
+
+                n_detections = len(boxes.xyxy)
+                for detection_index in range(n_detections):
+                    track_id = (
+                        int(boxes.id[detection_index].item()) if boxes.id is not None else None
                     )
-                    all_observations.append(obs)
+                    detection_confidence = float(boxes.conf[detection_index].item())
+                    x1, y1, x2, y2 = [
+                        float(value) for value in boxes.xyxy[detection_index].tolist()
+                    ]
 
-        cap.release()
+                    keypoints = self._extract_keypoints(
+                        result,
+                        detection_index,
+                    )
+                    actor_id = f"actor_{track_id}" if track_id is not None else "actor_untracked"
 
-        all_observations.sort(key=lambda o: (o.clip_id, o.timestamp_s, o.actor_id, o.hand_side))
+                    for hand_side, keypoint_name in (
+                        ("left", "left_wrist"),
+                        ("right", "right_wrist"),
+                    ):
+                        keypoint = keypoints.get(keypoint_name)
+                        if keypoint is None:
+                            continue
+
+                        wrist_x, wrist_y, wrist_confidence = keypoint
+                        if wrist_confidence < self.pose_cfg.pose_confidence:
+                            continue
+
+                        all_observations.append(
+                            PoseObservation(
+                                clip_id=clip_id,
+                                timestamp_s=timestamp_s,
+                                source_frame_index=frame_index,
+                                sample_index=processed_frames - 1,
+                                actor_id=actor_id,
+                                hand_side=hand_side,
+                                wrist_x=wrist_x,
+                                wrist_y=wrist_y,
+                                wrist_confidence=wrist_confidence,
+                                person_bbox_x1=x1,
+                                person_bbox_y1=y1,
+                                person_bbox_x2=x2,
+                                person_bbox_y2=y2,
+                                pose_association_confidence=(detection_confidence),
+                                is_valid=True,
+                            )
+                        )
+
+                frame_index += 1
+        finally:
+            cap.release()
+
+        all_observations.sort(
+            key=lambda observation: (
+                observation.clip_id,
+                observation.timestamp_s,
+                observation.actor_id,
+                observation.hand_side,
+            )
+        )
 
         logger.info(
-            "Pose complete: %d wrist observations from %d frames",
+            "Pose complete: %d wrist observations from %d processed frames",
             len(all_observations),
-            len(active_frames),
+            processed_frames,
         )
         return all_observations
 
     @staticmethod
-    def _extract_keypoints(results, det_idx: int) -> dict[str, tuple[float, float, float]]:
-        """Extract left/right wrist from YOLO pose keypoints.
+    def _extract_keypoints(
+        result: Any,
+        detection_index: int,
+    ) -> dict[str, tuple[float, float, float]]:
+        """Extract COCO left/right wrists from one Ultralytics result.
 
-        YOLO pose keypoints are stored as [x, y, conf] per keypoint.
-        We map the first two available keypoints to left/right wrists.
+        Ultralytics exposes pose keypoints on ``result.keypoints``. COCO
+        indices 9 and 10 correspond to the left and right wrist.
         """
-        keypoints_data = {}
-        try:
-            kpts = results[0].boxes.keypoints
-            if kpts is None:
-                return keypoints_data
+        extracted: dict[str, tuple[float, float, float]] = {}
 
-            kp_tensor = kpts.x if hasattr(kpts, "x") else None
-            conf_tensor = kpts.conf if hasattr(kpts, "conf") else None
+        keypoints = getattr(result, "keypoints", None)
+        if keypoints is None or keypoints.xy is None:
+            return extracted
 
-            if kp_tensor is None or det_idx >= len(kp_tensor):
-                return keypoints_data
+        if detection_index < 0 or detection_index >= len(keypoints.xy):
+            return extracted
 
-            kp_x = kp_tensor[det_idx].cpu().numpy().tolist()
-            kp_y = kpts.y[det_idx].cpu().numpy().tolist() if hasattr(kpts, "y") else kp_x
-            kp_conf = (
-                conf_tensor[det_idx].cpu().numpy().tolist()
-                if conf_tensor is not None
-                else [1.0] * len(kp_x)
+        coordinates = keypoints.xy[detection_index]
+        confidences = keypoints.conf[detection_index] if keypoints.conf is not None else None
+
+        wrist_indices = {
+            _LEFT_WRIST_INDEX: "left_wrist",
+            _RIGHT_WRIST_INDEX: "right_wrist",
+        }
+
+        for keypoint_index, keypoint_name in wrist_indices.items():
+            if keypoint_index >= len(coordinates):
+                continue
+
+            wrist_x = float(coordinates[keypoint_index][0].item())
+            wrist_y = float(coordinates[keypoint_index][1].item())
+            wrist_confidence = (
+                float(confidences[keypoint_index].item()) if confidences is not None else 1.0
             )
 
-            # YOLO pose: index 0 = nose, 5 = left_wrist, 6 = right_wrist
-            wrist_map = {5: "left_wrist", 6: "right_wrist"}
-            for idx, side in wrist_map.items():
-                if idx < len(kp_x):
-                    keypoints_data[side] = (
-                        float(kp_x[idx]),
-                        float(kp_y[idx]) if len(kp_y) > idx else 0.0,
-                        float(kp_conf[idx]) if len(kp_conf) > idx else 0.0,
-                    )
-        except Exception:
-            pass
+            if not all(
+                math.isfinite(value)
+                for value in (
+                    wrist_x,
+                    wrist_y,
+                    wrist_confidence,
+                )
+            ):
+                logger.debug(
+                    "Ignoring non-finite %s keypoint for detection %d",
+                    keypoint_name,
+                    detection_index,
+                )
+                continue
 
-        return keypoints_data
+            extracted[keypoint_name] = (
+                wrist_x,
+                wrist_y,
+                wrist_confidence,
+            )
+
+        return extracted
 
     def _extract_clip_id(self) -> str:
-        stem = self.video_path.stem
-        return f"clip_{stem}"
+        return f"clip_{self.video_path.stem}"
