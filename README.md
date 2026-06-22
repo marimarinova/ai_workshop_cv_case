@@ -279,3 +279,45 @@ Loading YOLO model ... on cuda
 
 Preview encoding remains primarily CPU-bound.
 
+
+# Reproducing the results from task_3-5
+The reproducible team command is:
+
+```bash
+make tasks-3-5 VIDEO=/absolute/path/to/video.mp4
+```
+
+This creates one dated run:
+
+```bash
+.local/task_runs/<timestamp>/
+├── task_3/
+│   ├── tracks_person.parquet
+│   ├── active_spans.parquet
+│   ├── clips.parquet
+│   └── task_3.log
+├── task_4/
+│   ├── shelf_validation.json
+│   └── task_4.log
+└── task_5/
+    ├── tracks_pose.parquet
+    ├── candidates.parquet
+    ├── candidate_previews/
+    ├── propose_run_metadata.json
+    └── task_5.log
+```
+
+The three named targets can also run in one invocation while sharing the same timestamp:
+
+```bash
+make task_3 task_4 task_5 VIDEO=/absolute/path/to/video.mp4
+```
+
+For a Task 5 run without previews:
+
+```bash
+make tasks-3-5 \
+  VIDEO=/absolute/path/to/video.mp4 \
+  RENDER_PREVIEWS=0
+```
+
