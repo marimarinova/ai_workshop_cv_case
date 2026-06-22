@@ -279,9 +279,7 @@ class AnnotationEvent(BaseModel):
         """Require item counts for events, but not for ignore intervals."""
         if self.label in {EventLabel.PICKUP, EventLabel.PUTDOWN}:
             if self.item_count is None:
-                raise ValueError(
-                    "item_count is required for pickup and putdown annotations"
-                )
+                raise ValueError("item_count is required for pickup and putdown annotations")
         elif self.label is EventLabel.IGNORE and self.item_count is not None:
             raise ValueError("item_count must be omitted for ignore intervals")
         return self

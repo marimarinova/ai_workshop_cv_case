@@ -60,7 +60,7 @@ VIDEO ?= $(TRIAGE_INPUT)
 	show-run models task-3 task-4 task-5 tasks-3-5 \
 	task_3 task_4 task_5 \
 	annotation-pull annotation-up annotation-down annotation-restart annotation-status annotation-logs \
-	annotation-config-validate annotation-test annotation-reset
+	annotation-config-validate annotation-test annotation-acceptance annotation-reset
 
 # ---------------------------------------------------------------------------
 # General development targets
@@ -384,6 +384,9 @@ annotation-config-validate: ## Validate that the shared XML exists, is well-form
 
 annotation-test: ## Run annotation schema and import/export tests
 	$(PYTHON) -m pytest tests/test_annotation_export.py -v
+
+annotation-acceptance: ## Run Task 6 annotation acceptance scenarios
+	$(PYTHON) -m pytest -m annotation_acceptance -q
 
 annotation-reset: ## ⚠️  DESTRUCTIVE: Delete local Label Studio state (database, annotations)
 	@echo "⚠️  WARNING: This will DELETE all local Label Studio state including"

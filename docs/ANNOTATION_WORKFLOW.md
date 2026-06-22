@@ -100,13 +100,7 @@ intervals. The export will produce N canonical rows sharing one
 **Low-confidence visible events remain in `events.csv`.** Ignore intervals
 never appear as official events.
 
-## 10. Visible Restocking
-
-Visible restocking is **not putdown**. It is background or a hard-negative
-example. Do not create an ignore interval for restocking — it is a labelable
-negative, not an unlabelable gap.
-
-## 11. Review Status
+## 10. Review Status
 
 Set per-region review status:
 - `draft` — initial annotation
@@ -114,7 +108,7 @@ Set per-region review status:
 - `accepted` — finalized
 - `needs_adjudication` — disagreement between annotators
 
-## 12. Exporting Label Studio JSON
+## 11. Exporting Label Studio JSON
 
 After annotation, export from Label Studio:
 1. Go to **Exports** → select format.
@@ -122,7 +116,7 @@ After annotation, export from Label Studio:
 
 The export must include the `complete_active_span_reviewed` metadata field.
 
-## 13. Generating Canonical Outputs
+## 12. Generating Canonical Outputs
 
 Convert the Label Studio export to canonical repository formats:
 
@@ -155,7 +149,7 @@ export_ignore_intervals_parquet(data, "ignore_intervals.parquet")
 - Only `ignore`-label regions.
 - Used for excluding occluded/out-of-frame spans from negative sampling.
 
-## 14. Acceptance Round Trip
+## 13. Acceptance Round Trip
 
 Verify timestamp fidelity after export:
 
@@ -170,7 +164,7 @@ assert round_trip_check(original, export_data, fps=30.0)
 
 Tolerance is 1 frame by default.
 
-## 15. Files That Must NOT Be Committed
+## 14. Files That Must NOT Be Committed
 
 | Artifact | Reason |
 |----------|--------|
@@ -216,6 +210,30 @@ make annotation-config-validate
 ```
 Checks that `label_studio_config.xml` exists, is well-formed, and contains
 required controls and labels.
+
+### Export validation failure
+
+## Task 6 Acceptance Matrix
+
+| Requirement | Automated proof |
+|---|---|
+| Exact canonical columns and values | `TestTask6Acceptance::test_01_exact_canonical_columns_and_values` |
+| Immediate pickup followed by putdown | `TestTask6Acceptance::test_02_immediate_pickup_then_putdown` |
+| Two-item pickup | `TestTask6Acceptance::test_03_two_item_pickup` |
+| Ignore intervals excluded from events | `TestTask6Acceptance::test_04_ignore_intervals_excluded` |
+| Candidate correction (human overrides) | `TestTask6Acceptance::test_05_candidate_correction` |
+| Candidate deletion (no event) | `TestTask6Acceptance::test_06_candidate_deletion` |
+| Candidate supplementation (manually added) | `TestTask6Acceptance::test_07_candidate_supplementation` |
+| Unconfirmed clip emits no events | `TestTask6Acceptance::test_08a_unconfirmed_no_events` |
+| Confirmed zero-event clip valid | `TestTask6Acceptance::test_08b_confirmed_zero_events` |
+| Timestamp round-trip fidelity | `TestTask6Acceptance::test_09_timestamp_round_trip` |
+| Deterministic export | `TestTask6Acceptance::test_10_deterministic_export` |
+
+Run all acceptance tests:
+
+```bash
+make annotation-acceptance
+```
 
 ### Export validation failure
 ```bash

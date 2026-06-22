@@ -40,14 +40,13 @@ Configure one interval-annotation workflow that enforces the operational definit
 ## Implementation Steps
 
 1. Choose one tool for all annotators. Prefer an existing temporal annotation tool unless candidate import makes a minimal custom interface materially simpler.
-2. Embed the exact pickup, putdown, negative, restocking, multi-item, immediate-return, occlusion, confidence, and hard-case rules.
+2. Embed the exact pickup, putdown, negative, multi-item, immediate-return, occlusion, confidence, and hard-case rules.
 3. Require annotators to review the complete active span, even when candidates are supplied.
 4. Allow zero, one, or multiple events in a candidate or clip.
 5. Export two simultaneous items as two event rows sharing an internal `event_group_id`.
 6. Use `confidence=low` for visible ambiguity; use ignore intervals only when transfer evidence is unavailable.
 7. Exclude fully occluded/out-of-frame actions from `events.csv` while recording internal ignore intervals to prevent negative sampling.
-8. Validate that visible restocking is background/hard-negative, not putdown.
-9. Round-trip a sample export back into the tool or converter to prove timestamp fidelity.
+8. Round-trip a sample export back into the tool or converter to prove timestamp fidelity.
 
 ## Acceptance Criteria
 

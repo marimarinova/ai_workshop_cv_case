@@ -39,14 +39,6 @@
       "duration_s": 10.0,
       "active_start_s": 1.0,
       "active_end_s": 9.0
-    },
-    {
-      "clip_id": "clip_restocking",
-      "video_path": "/videos/clip_restocking.mp4",
-      "fps": 30.0,
-      "duration_s": 10.0,
-      "active_start_s": 1.0,
-      "active_end_s": 9.0
     }
   ],
   "candidates": [

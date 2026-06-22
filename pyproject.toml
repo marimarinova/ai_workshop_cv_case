@@ -53,6 +53,9 @@ known-first-party = ["pickup_putdown"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-ra -q"
+markers = [
+    "annotation_acceptance: Task 6 annotation workflow acceptance tests",
+]
 
 [tool.mypy]
 python_version = "3.12"

@@ -582,13 +582,9 @@ def _annotation_to_canonical_events(
 ) -> list[CanonicalEvent]:
     """Expand one validated annotation into canonical event rows."""
     if annotation.label not in {EventLabel.PICKUP, EventLabel.PUTDOWN}:
-        raise ValueError(
-            f"Cannot convert {annotation.label!s} to an official canonical event."
-        )
+        raise ValueError(f"Cannot convert {annotation.label!s} to an official canonical event.")
     if annotation.item_count is None:
-        raise ValueError(
-            "Validated pickup/putdown annotation is missing item_count."
-        )
+        raise ValueError("Validated pickup/putdown annotation is missing item_count.")
 
     events: list[CanonicalEvent] = []
     for item_idx in range(annotation.item_count):
@@ -626,7 +622,6 @@ def export_events_csv(
 
     - Low-confidence visible events remain as official events.
     - Ignore intervals never appear in events.csv.
-    - Visible restocking does not appear as putdown.
     - Multi-item events expand to N rows with shared event_group_id.
 
     Parameters
@@ -754,9 +749,7 @@ def export_events_csv(
                     continue
 
                 group_id = _generate_group_id(clip_id, region.region_id)
-                all_canonical.extend(
-                    _annotation_to_canonical_events(region, group_id)
-                )
+                all_canonical.extend(_annotation_to_canonical_events(region, group_id))
 
     # Sort chronologically within each clip
     all_canonical.sort(key=lambda e: (e.clip_id, e.t_start, e.type))

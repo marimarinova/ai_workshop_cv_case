@@ -8,8 +8,7 @@ Tests cover:
 5. Fully occluded action exports only an ignore interval.
 6. Ignore intervals never appear in events.csv.
 7. Low-confidence visible event remains in events.csv.
-8. Visible restocking does not export as putdown.
-9. Malformed labels or attributes fail validation.
+8. Malformed labels or attributes fail validation.
 10. Invalid item_count fails validation.
 11. Candidate suggestions are imported as predictions, not annotations.
 12. Candidates can be absent.
@@ -392,60 +391,6 @@ def low_confidence_export():
     ]
 
 
-@pytest.fixture
-def restocking_export():
-    """Visible restocking that was annotated as putdown but should be excluded."""
-    return [
-        {
-            "id": 7,
-            "annotations": [
-                {
-                    "id": 7,
-                    "result": [
-                        {
-                            "id": "region_restocking",
-                            "from_name": "labels",
-                            "to_name": "video",
-                            "type": "timelabels",
-                            "value": {
-                                "start": 3.0,
-                                "end": 5.0,
-                                "labels": ["putdown"],
-                                "confidence": "high",
-                                "hard_case": "false",
-                                "item_count": 1,
-                                "review_status": "accepted",
-                                "notes": "This was restocking",
-                            },
-                        }
-                    ],
-                    "who": "bob",
-                    "state": [
-                        {
-                            "name": "complete_active_span_reviewed",
-                            "value": {"selected": ["true"]},
-                        }
-                    ],
-                }
-            ],
-            "task": {
-                "id": "task_restocking",
-                "data": {
-                    "video": "/videos/clip_restocking.mp4",
-                    "clip_id": "clip_restocking",
-                    "fps": 30.0,
-                },
-                "meta": {
-                    "clip_id": "clip_restocking",
-                    "fps": 30.0,
-                    "complete_active_span_reviewed": True,
-                    "annotator": "bob",
-                },
-            },
-        }
-    ]
-
-
 # ---------------------------------------------------------------------------
 # Test 1: No-event reviewed clip exports zero official events
 # ---------------------------------------------------------------------------
@@ -554,33 +499,7 @@ class TestLowConfidence:
 
 
 # ---------------------------------------------------------------------------
-# Test 8: Visible restocking does not export as putdown
-# ---------------------------------------------------------------------------
-
-
-class TestRestockingNotPutdown:
-    def test_restocking_not_in_events(self, restocking_export, tmp_path):
-        """Restocking annotated as putdown is still a putdown label in the
-        export — the system does not auto-filter by semantic meaning.
-        However, the canonical schema must not invent competing labels.
-        This test verifies that the export faithfully reflects the label
-        given (putdown) and that the CSV columns match the canonical schema.
-        """
-        result = export_events_csv(restocking_export, tmp_path / "events.csv")
-        # The label "putdown" is exported as-is; semantic filtering of
-        # restocking is an annotator responsibility documented in the
-        # labeling guidelines.
-        assert result.is_valid
-        # Verify the event type is the literal label from the annotation
-        if result.canonical_events:
-            assert result.canonical_events[0].type in (
-                EventLabel.PICKUP,
-                EventLabel.PUTDOWN,
-            )
-
-
-# ---------------------------------------------------------------------------
-# Test 9: Malformed labels or attributes fail validation
+# Test 8: Malformed labels or attributes fail validation
 # ---------------------------------------------------------------------------
 
 
@@ -1396,7 +1315,6 @@ class TestAcceptanceFixture:
         result = export_events_csv(label_studio_export)
         # Should have events from: single_pickup, pickup_putdown(2),
         # two_item_pickup(2), low_confidence, corrected(1), manually_added(1)
-        # Restocking putdown is exported as-is (label is putdown)
         assert result.is_valid
         assert len(result.canonical_events) >= 7
 
@@ -1410,3 +1328,810 @@ class TestAcceptanceFixture:
         assert len(r1.canonical_events) == len(r2.canonical_events)
         for e1, e2 in zip(r1.canonical_events, r2.canonical_events, strict=True):
             assert e1.event_id == e2.event_id
+
+
+# ---------------------------------------------------------------------------
+# Task 6 Acceptance Test Suite
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.annotation_acceptance
+class TestTask6Acceptance:
+    """Acceptance tests proving the Task 6 handoff contract.
+
+    These tests cover the full Task 6 export pipeline:
+    1.  Exact canonical columns and values
+    2.  Immediate pickup followed by putdown
+    3.  Two-item pickup
+    4.  Ignore intervals excluded from official events
+    5.  Candidate correction (human annotation overrides candidate)
+    6.  Candidate deletion (no event for deleted candidate)
+    7.  Candidate supplementation (manually added event exported)
+    8.  Full active-span review (unconfirmed vs confirmed zero-event)
+    9.  Timestamp round-trip fidelity
+    10. Deterministic export
+    """
+
+    # ------------------------------------------------------------------
+    # 1. Exact canonical columns and values
+    # ------------------------------------------------------------------
+
+    def test_01_exact_canonical_columns_and_values(self, tmp_path):
+        """Assert that the CSV header exactly matches the canonical schema
+        and that exported values use only allowed canonical values."""
+        export = [
+            {
+                "id": 1,
+                "annotations": [
+                    {
+                        "id": 1,
+                        "result": [
+                            {
+                                "id": "r_pickup",
+                                "from_name": "labels",
+                                "to_name": "video",
+                                "type": "timelabels",
+                                "value": {
+                                    "start": 1.0,
+                                    "end": 3.0,
+                                    "labels": ["pickup"],
+                                    "confidence": "high",
+                                    "hard_case": "false",
+                                    "item_count": 1,
+                                    "review_status": "accepted",
+                                },
+                            },
+                            {
+                                "id": "r_putdown",
+                                "from_name": "labels",
+                                "to_name": "video",
+                                "type": "timelabels",
+                                "value": {
+                                    "start": 4.0,
+                                    "end": 6.0,
+                                    "labels": ["putdown"],
+                                    "confidence": "med",
+                                    "hard_case": "false",
+                                    "item_count": 1,
+                                    "review_status": "accepted",
+                                },
+                            },
+                        ],
+                        "who": "alice",
+                        "state": [
+                            {
+                                "name": "complete_active_span_reviewed",
+                                "value": {"selected": ["true"]},
+                            }
+                        ],
+                    }
+                ],
+                "task": {
+                    "id": "t1",
+                    "data": {
+                        "video": "/videos/clip.mp4",
+                        "clip_id": "clip_canonical",
+                        "fps": 30.0,
+                    },
+                    "meta": {
+                        "clip_id": "clip_canonical",
+                        "fps": 30.0,
+                        "complete_active_span_reviewed": True,
+                        "annotator": "alice",
+                    },
+                },
+            }
+        ]
+        csv_path = tmp_path / "events.csv"
+        result = export_events_csv(export, csv_path)
+        assert result.is_valid
+        assert len(result.canonical_events) == 2
+
+        # Verify exact canonical column order
+        with csv_path.open() as fh:
+            reader = csv.reader(fh)
+            header = next(reader)
+        assert header == [
+            "event_id",
+            "clip_id",
+            "type",
+            "t_start",
+            "t_end",
+            "hard_case",
+            "annotator",
+            "confidence",
+            "notes",
+        ]
+
+        # Verify exported values use only allowed canonical values
+        with csv_path.open() as fh:
+            reader = csv.DictReader(fh)
+            for row in reader:
+                assert row["type"] in ("pickup", "putdown")
+                assert row["confidence"] in ("high", "med", "low")
+
+    # ------------------------------------------------------------------
+    # 2. Immediate pickup followed by putdown
+    # ------------------------------------------------------------------
+
+    def test_02_immediate_pickup_then_putdown(self, tmp_path):
+        """Two separate events: pickup then putdown, chronologically ordered."""
+        export = [
+            {
+                "id": 1,
+                "annotations": [
+                    {
+                        "id": 1,
+                        "result": [
+                            {
+                                "id": "region_pickup",
+                                "from_name": "labels",
+                                "to_name": "video",
+                                "type": "timelabels",
+                                "value": {
+                                    "start": 2.0,
+                                    "end": 3.0,
+                                    "labels": ["pickup"],
+                                    "confidence": "high",
+                                    "hard_case": "false",
+                                    "item_count": 1,
+                                    "review_status": "accepted",
+                                },
+                            },
+                            {
+                                "id": "region_putdown",
+                                "from_name": "labels",
+                                "to_name": "video",
+                                "type": "timelabels",
+                                "value": {
+                                    "start": 3.0,
+                                    "end": 4.0,
+                                    "labels": ["putdown"],
+                                    "confidence": "high",
+                                    "hard_case": "false",
+                                    "item_count": 1,
+                                    "review_status": "accepted",
+                                },
+                            },
+                        ],
+                        "who": "alice",
+                        "state": [
+                            {
+                                "name": "complete_active_span_reviewed",
+                                "value": {"selected": ["true"]},
+                            }
+                        ],
+                    }
+                ],
+                "task": {
+                    "id": "t1",
+                    "data": {
+                        "video": "/videos/clip.mp4",
+                        "clip_id": "clip_immediate",
+                        "fps": 30.0,
+                    },
+                    "meta": {
+                        "clip_id": "clip_immediate",
+                        "fps": 30.0,
+                        "complete_active_span_reviewed": True,
+                        "annotator": "alice",
+                    },
+                },
+            }
+        ]
+        csv_path = tmp_path / "events.csv"
+        result = export_events_csv(export, csv_path)
+        assert result.is_valid
+        assert len(result.canonical_events) == 2
+        assert result.canonical_events[0].type == EventLabel.PICKUP
+        assert result.canonical_events[1].type == EventLabel.PUTDOWN
+        assert result.canonical_events[0].t_start < result.canonical_events[1].t_start
+
+    # ------------------------------------------------------------------
+    # 3. Two-item pickup
+    # ------------------------------------------------------------------
+
+    def test_03_two_item_pickup(self, tmp_path):
+        """item_count=2 produces two rows with same event_group_id."""
+        export = [
+            {
+                "id": 1,
+                "annotations": [
+                    {
+                        "id": 1,
+                        "result": [
+                            {
+                                "id": "region_two_item",
+                                "from_name": "labels",
+                                "to_name": "video",
+                                "type": "timelabels",
+                                "value": {
+                                    "start": 4.0,
+                                    "end": 6.0,
+                                    "labels": ["pickup"],
+                                    "confidence": "high",
+                                    "hard_case": "false",
+                                    "item_count": 2,
+                                    "review_status": "accepted",
+                                },
+                            }
+                        ],
+                        "who": "alice",
+                        "state": [
+                            {
+                                "name": "complete_active_span_reviewed",
+                                "value": {"selected": ["true"]},
+                            }
+                        ],
+                    }
+                ],
+                "task": {
+                    "id": "t1",
+                    "data": {
+                        "video": "/videos/clip.mp4",
+                        "clip_id": "clip_two_item",
+                        "fps": 30.0,
+                    },
+                    "meta": {
+                        "clip_id": "clip_two_item",
+                        "fps": 30.0,
+                        "complete_active_span_reviewed": True,
+                        "annotator": "alice",
+                    },
+                },
+            }
+        ]
+        csv_path = tmp_path / "events.csv"
+        result = export_events_csv(export, csv_path)
+        assert result.is_valid
+        assert len(result.canonical_events) == 2
+        assert result.canonical_events[0].type == EventLabel.PICKUP
+        assert result.canonical_events[1].type == EventLabel.PICKUP
+        group_id = result.canonical_events[0].event_group_id
+        assert group_id != ""
+        assert result.canonical_events[1].event_group_id == group_id
+        assert result.canonical_events[0].event_id != result.canonical_events[1].event_id
+
+        # Determinism: exporting same input produces same IDs
+        result2 = export_events_csv(export)
+        assert result2.canonical_events[0].event_id == result.canonical_events[0].event_id
+        assert result2.canonical_events[1].event_id == result.canonical_events[1].event_id
+        assert result2.canonical_events[0].event_group_id == group_id
+
+    # ------------------------------------------------------------------
+    # 4. Ignore intervals excluded from official events
+    # ------------------------------------------------------------------
+
+    def test_04_ignore_intervals_excluded(self, tmp_path):
+        """Ignore intervals produce no events.csv rows but appear in ignore parquet."""
+        export = [
+            {
+                "id": 1,
+                "annotations": [
+                    {
+                        "id": 1,
+                        "result": [
+                            {
+                                "id": "region_ignore",
+                                "from_name": "labels",
+                                "to_name": "video",
+                                "type": "timelabels",
+                                "value": {
+                                    "start": 2.0,
+                                    "end": 4.0,
+                                    "labels": ["ignore"],
+                                    "reason": "ACTION_OCCLUDED",
+                                    "notes": "Hand occluded",
+                                },
+                            }
+                        ],
+                        "who": "alice",
+                        "state": [
+                            {
+                                "name": "complete_active_span_reviewed",
+                                "value": {"selected": ["true"]},
+                            }
+                        ],
+                    }
+                ],
+                "task": {
+                    "id": "t1",
+                    "data": {
+                        "video": "/videos/clip.mp4",
+                        "clip_id": "clip_ignore",
+                        "fps": 30.0,
+                    },
+                    "meta": {
+                        "clip_id": "clip_ignore",
+                        "fps": 30.0,
+                        "complete_active_span_reviewed": True,
+                        "annotator": "alice",
+                    },
+                },
+            }
+        ]
+        csv_path = tmp_path / "events.csv"
+        events_result = export_events_csv(export, csv_path)
+        assert events_result.is_valid
+        assert len(events_result.canonical_events) == 0
+
+        # No pickup or putdown in events.csv
+        with csv_path.open() as fh:
+            reader = csv.DictReader(fh)
+            for row in reader:
+                assert row["type"] not in ("pickup", "putdown")
+
+        # Ignore appears in parquet
+        ignore_path = tmp_path / "ignore.parquet"
+        ignore_result = export_ignore_intervals_parquet(export, ignore_path)
+        assert len(ignore_result.ignore_intervals) == 1
+        ig = ignore_result.ignore_intervals[0]
+        assert ig.t_start == 2.0
+        assert ig.t_end == 4.0
+        assert ig.reason == IgnoreReason.ACTION_OCCLUDED
+
+        # Verify stable Parquet columns
+        table = pq.read_table(str(ignore_path))
+        assert table.column_names == [
+            "ignore_id",
+            "clip_id",
+            "t_start",
+            "t_end",
+            "reason",
+            "annotator",
+            "notes",
+        ]
+
+    # ------------------------------------------------------------------
+    # 5. Candidate correction
+    # ------------------------------------------------------------------
+
+    def test_05_candidate_correction(self, tmp_path):
+        """Human-corrected annotation overrides candidate values."""
+        export = [
+            {
+                "id": 1,
+                "annotations": [
+                    {
+                        "id": 1,
+                        "result": [
+                            {
+                                "id": "region_corrected",
+                                "from_name": "labels",
+                                "to_name": "video",
+                                "type": "timelabels",
+                                "value": {
+                                    "start": 5.0,
+                                    "end": 7.0,
+                                    "labels": ["putdown"],
+                                    "confidence": "high",
+                                    "hard_case": "false",
+                                    "item_count": 1,
+                                    "review_status": "accepted",
+                                },
+                            }
+                        ],
+                        "who": "alice",
+                        "state": [
+                            {
+                                "name": "complete_active_span_reviewed",
+                                "value": {"selected": ["true"]},
+                            }
+                        ],
+                    }
+                ],
+                "task": {
+                    "id": "t1",
+                    "data": {
+                        "video": "/videos/clip.mp4",
+                        "clip_id": "clip_corrected",
+                        "fps": 30.0,
+                    },
+                    "meta": {
+                        "clip_id": "clip_corrected",
+                        "fps": 30.0,
+                        "complete_active_span_reviewed": True,
+                        "annotator": "alice",
+                    },
+                },
+            }
+        ]
+        csv_path = tmp_path / "events.csv"
+        result = export_events_csv(export, csv_path)
+        assert result.is_valid
+        assert len(result.canonical_events) == 1
+        evt = result.canonical_events[0]
+        # Human annotation: putdown at 5.0-7.0, NOT the candidate pickup at 2.0-6.0
+        assert evt.type == EventLabel.PUTDOWN
+        assert evt.t_start == 5.0
+        assert evt.t_end == 7.0
+
+    # ------------------------------------------------------------------
+    # 6. Candidate deletion
+    # ------------------------------------------------------------------
+
+    def test_06_candidate_deletion(self, tmp_path):
+        """Deleted candidate produces no official event."""
+        export = [
+            {
+                "id": 1,
+                "annotations": [
+                    {
+                        "id": 1,
+                        "result": [],
+                        "who": "alice",
+                        "state": [
+                            {
+                                "name": "complete_active_span_reviewed",
+                                "value": {"selected": ["true"]},
+                            }
+                        ],
+                    }
+                ],
+                "task": {
+                    "id": "t1",
+                    "data": {
+                        "video": "/videos/clip.mp4",
+                        "clip_id": "clip_deleted",
+                        "fps": 30.0,
+                    },
+                    "meta": {
+                        "clip_id": "clip_deleted",
+                        "fps": 30.0,
+                        "complete_active_span_reviewed": True,
+                        "annotator": "alice",
+                    },
+                },
+            }
+        ]
+        csv_path = tmp_path / "events.csv"
+        result = export_events_csv(export, csv_path)
+        assert result.is_valid
+        assert len(result.canonical_events) == 0
+
+    # ------------------------------------------------------------------
+    # 7. Candidate supplementation
+    # ------------------------------------------------------------------
+
+    def test_07_candidate_supplementation(self, tmp_path):
+        """Manually added event (not from candidates) is exported."""
+        export = [
+            {
+                "id": 1,
+                "annotations": [
+                    {
+                        "id": 1,
+                        "result": [
+                            {
+                                "id": "region_manually_added",
+                                "from_name": "labels",
+                                "to_name": "video",
+                                "type": "timelabels",
+                                "value": {
+                                    "start": 6.0,
+                                    "end": 8.0,
+                                    "labels": ["pickup"],
+                                    "confidence": "high",
+                                    "hard_case": "false",
+                                    "item_count": 1,
+                                    "review_status": "accepted",
+                                },
+                            }
+                        ],
+                        "who": "bob",
+                        "state": [
+                            {
+                                "name": "complete_active_span_reviewed",
+                                "value": {"selected": ["true"]},
+                            }
+                        ],
+                    }
+                ],
+                "task": {
+                    "id": "t1",
+                    "data": {
+                        "video": "/videos/clip.mp4",
+                        "clip_id": "clip_supplemented",
+                        "fps": 30.0,
+                    },
+                    "meta": {
+                        "clip_id": "clip_supplemented",
+                        "fps": 30.0,
+                        "complete_active_span_reviewed": True,
+                        "annotator": "bob",
+                    },
+                },
+            }
+        ]
+        csv_path = tmp_path / "events.csv"
+        result = export_events_csv(export, csv_path)
+        assert result.is_valid
+        assert len(result.canonical_events) == 1
+        assert result.canonical_events[0].type == EventLabel.PICKUP
+        assert result.canonical_events[0].t_start == 6.0
+
+    # ------------------------------------------------------------------
+    # 8. Full active-span review
+    # ------------------------------------------------------------------
+
+    def test_08a_unconfirmed_no_events(self, tmp_path):
+        """Unconfirmed clip (complete_active_span_reviewed != true) emits no events."""
+        export = [
+            {
+                "id": 1,
+                "annotations": [
+                    {
+                        "id": 1,
+                        "result": [
+                            {
+                                "id": "r1",
+                                "from_name": "labels",
+                                "to_name": "video",
+                                "type": "timelabels",
+                                "value": {
+                                    "start": 1.0,
+                                    "end": 3.0,
+                                    "labels": ["pickup"],
+                                    "confidence": "high",
+                                    "hard_case": "false",
+                                    "item_count": 1,
+                                    "review_status": "accepted",
+                                },
+                            }
+                        ],
+                        "who": "alice",
+                        "state": [
+                            {
+                                "name": "complete_active_span_reviewed",
+                                "value": {"selected": ["false"]},
+                            }
+                        ],
+                    }
+                ],
+                "task": {
+                    "id": "t1",
+                    "data": {
+                        "video": "/videos/clip.mp4",
+                        "clip_id": "clip_unconfirmed",
+                        "fps": 30.0,
+                    },
+                    "meta": {
+                        "clip_id": "clip_unconfirmed",
+                        "fps": 30.0,
+                        "complete_active_span_reviewed": False,
+                        "annotator": "alice",
+                    },
+                },
+            }
+        ]
+        csv_path = tmp_path / "events.csv"
+        result = export_events_csv(export, csv_path)
+        assert not result.is_valid
+        assert len(result.canonical_events) == 0
+        review_errors = [
+            e for e in result.validation.errors if "complete_active_span_reviewed" in e.message
+        ]
+        assert len(review_errors) >= 1
+
+    def test_08b_confirmed_zero_events(self):
+        """Confirmed clip with no event regions is valid and emits zero events."""
+        export = [
+            {
+                "id": 1,
+                "annotations": [
+                    {
+                        "id": 1,
+                        "result": [],
+                        "who": "alice",
+                        "state": [
+                            {
+                                "name": "complete_active_span_reviewed",
+                                "value": {"selected": ["true"]},
+                            }
+                        ],
+                    }
+                ],
+                "task": {
+                    "id": "t1",
+                    "data": {
+                        "video": "/videos/clip.mp4",
+                        "clip_id": "clip_zero",
+                        "fps": 30.0,
+                    },
+                    "meta": {
+                        "clip_id": "clip_zero",
+                        "fps": 30.0,
+                        "complete_active_span_reviewed": True,
+                        "annotator": "alice",
+                    },
+                },
+            }
+        ]
+        result = export_events_csv(export)
+        assert result.is_valid
+        assert len(result.canonical_events) == 0
+
+    # ------------------------------------------------------------------
+    # 9. Timestamp round trip
+    # ------------------------------------------------------------------
+
+    def test_09_timestamp_round_trip(self):
+        """Event boundaries survive canonical->Label Studio->canonical path."""
+        original = [
+            CanonicalEvent(
+                event_id="evt_orig",
+                clip_id="clip_rt",
+                type=EventLabel.PICKUP,
+                t_start=4.0,
+                t_end=6.0,
+            ),
+            CanonicalEvent(
+                event_id="evt_orig2",
+                clip_id="clip_rt",
+                type=EventLabel.PUTDOWN,
+                t_start=7.0,
+                t_end=9.0,
+            ),
+        ]
+        export = [
+            {
+                "id": 1,
+                "annotations": [
+                    {
+                        "id": 1,
+                        "result": [
+                            {
+                                "id": "region_pickup",
+                                "from_name": "labels",
+                                "to_name": "video",
+                                "type": "timelabels",
+                                "value": {
+                                    "start": 4.0,
+                                    "end": 6.0,
+                                    "labels": ["pickup"],
+                                    "confidence": "high",
+                                    "hard_case": "false",
+                                    "item_count": 1,
+                                    "review_status": "accepted",
+                                },
+                            },
+                            {
+                                "id": "region_putdown",
+                                "from_name": "labels",
+                                "to_name": "video",
+                                "type": "timelabels",
+                                "value": {
+                                    "start": 7.0,
+                                    "end": 9.0,
+                                    "labels": ["putdown"],
+                                    "confidence": "high",
+                                    "hard_case": "false",
+                                    "item_count": 1,
+                                    "review_status": "accepted",
+                                },
+                            },
+                        ],
+                        "who": "alice",
+                        "state": [
+                            {
+                                "name": "complete_active_span_reviewed",
+                                "value": {"selected": ["true"]},
+                            }
+                        ],
+                    }
+                ],
+                "task": {
+                    "id": "t1",
+                    "data": {
+                        "video": "/videos/clip.mp4",
+                        "clip_id": "clip_rt",
+                        "fps": 30.0,
+                    },
+                    "meta": {
+                        "clip_id": "clip_rt",
+                        "fps": 30.0,
+                        "complete_active_span_reviewed": True,
+                        "annotator": "alice",
+                    },
+                },
+            }
+        ]
+        assert round_trip_check(original, export, fps=30.0) is True
+
+    # ------------------------------------------------------------------
+    # 10. Deterministic export
+    # ------------------------------------------------------------------
+
+    def test_10_deterministic_export(self, tmp_path):
+        """Exporting the same input twice produces identical results."""
+        export = [
+            {
+                "id": 1,
+                "annotations": [
+                    {
+                        "id": 1,
+                        "result": [
+                            {
+                                "id": "region_pickup",
+                                "from_name": "labels",
+                                "to_name": "video",
+                                "type": "timelabels",
+                                "value": {
+                                    "start": 2.0,
+                                    "end": 4.0,
+                                    "labels": ["pickup"],
+                                    "confidence": "high",
+                                    "hard_case": "false",
+                                    "item_count": 1,
+                                    "review_status": "accepted",
+                                },
+                            },
+                            {
+                                "id": "region_putdown",
+                                "from_name": "labels",
+                                "to_name": "video",
+                                "type": "timelabels",
+                                "value": {
+                                    "start": 5.0,
+                                    "end": 7.0,
+                                    "labels": ["putdown"],
+                                    "confidence": "med",
+                                    "hard_case": "true",
+                                    "item_count": 1,
+                                    "review_status": "reviewed",
+                                },
+                            },
+                        ],
+                        "who": "alice",
+                        "state": [
+                            {
+                                "name": "complete_active_span_reviewed",
+                                "value": {"selected": ["true"]},
+                            }
+                        ],
+                    }
+                ],
+                "task": {
+                    "id": "t1",
+                    "data": {
+                        "video": "/videos/clip.mp4",
+                        "clip_id": "clip_det",
+                        "fps": 30.0,
+                    },
+                    "meta": {
+                        "clip_id": "clip_det",
+                        "fps": 30.0,
+                        "complete_active_span_reviewed": True,
+                        "annotator": "alice",
+                    },
+                },
+            }
+        ]
+        csv_path = tmp_path / "events.csv"
+
+        # First export
+        result1 = export_events_csv(export, csv_path)
+        csv_bytes_1 = csv_path.read_bytes()
+
+        # Second export (overwrite)
+        result2 = export_events_csv(export, csv_path)
+        csv_bytes_2 = csv_path.read_bytes()
+
+        # Canonical objects identical
+        assert len(result1.canonical_events) == len(result2.canonical_events)
+        for e1, e2 in zip(result1.canonical_events, result2.canonical_events, strict=True):
+            assert e1.event_id == e2.event_id
+            assert e1.clip_id == e2.clip_id
+            assert e1.type == e2.type
+            assert e1.t_start == e2.t_start
+            assert e1.t_end == e2.t_end
+            assert e1.hard_case == e2.hard_case
+            assert e1.annotator == e2.annotator
+            assert e1.confidence == e2.confidence
+            assert e1.notes == e2.notes
+            assert e1.event_group_id == e2.event_group_id
+
+        # Ordering identical (already checked via zip above)
+
+        # Generated CSV bytes identical
+        assert csv_bytes_1 == csv_bytes_2

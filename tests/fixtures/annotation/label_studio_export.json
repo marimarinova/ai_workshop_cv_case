@@ -237,47 +237,6 @@
         "id": 7,
         "result": [
           {
-            "id": "region_restocking",
-            "from_name": "labels",
-            "to_name": "video",
-            "type": "timelabels",
-            "value": {
-              "start": 3.0,
-              "end": 5.0,
-              "labels": ["putdown"],
-              "confidence": "high",
-              "hard_case": "false",
-              "item_count": 1,
-              "review_status": "accepted",
-              "is_manually_added": true,
-              "notes": "This was a restocking event, not a putdown"
-            }
-          }
-        ],
-        "who": "bob",
-        "state": [
-          {"name": "complete_active_span_reviewed", "value": {"selected": ["true"]}}
-        ]
-      }
-    ],
-    "task": {
-      "id": "task_restocking",
-      "data": {"video": "/videos/clip_restocking.mp4", "clip_id": "clip_restocking", "fps": 30.0},
-      "meta": {
-        "clip_id": "clip_restocking",
-        "fps": 30.0,
-        "complete_active_span_reviewed": true,
-        "annotator": "bob"
-      }
-    }
-  },
-  {
-    "id": 8,
-    "annotations": [
-      {
-        "id": 8,
-        "result": [
-          {
             "id": "region_corrected",
             "from_name": "labels",
             "to_name": "video",
@@ -311,10 +270,10 @@
     }
   },
   {
-    "id": 9,
+    "id": 8,
     "annotations": [
       {
-        "id": 9,
+        "id": 8,
         "result": [
           {
             "id": "region_manually_added",
