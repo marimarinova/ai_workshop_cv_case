@@ -44,7 +44,7 @@ def ledger_path(tmp_ledger_dir: Path) -> Path:
 def mock_storage() -> MagicMock:
     storage = MagicMock()
     storage.bucket = "test-bucket"
-    storage.prefix = "annon"
+    storage.prefix = "anon"
     storage.endpoint_url = None
     storage.region = "us-east-1"
     storage.anonymous = False
@@ -54,13 +54,13 @@ def mock_storage() -> MagicMock:
 @pytest.fixture
 def sample_s3_objects() -> list[dict]:
     return [
-        {"key": "annon/camera_01/video_001.mp4", "size": 1000, "etag": "abc001"},
-        {"key": "annon/camera_01/video_002.mp4", "size": 2000, "etag": "abc002"},
-        {"key": "annon/camera_01/video_003.mp4", "size": 3000, "etag": "abc003"},
-        {"key": "annon/camera_02/video_001.mp4", "size": 4000, "etag": "def001"},
-        {"key": "annon/camera_02/video_002.mp4", "size": 5000, "etag": "def002"},
-        {"key": "annon/candidates/videos/x.mp4", "size": 100, "etag": "cand001"},
-        {"key": "annon/process_for_candidates.csv", "size": 50, "etag": "ledger001"},
+        {"key": "anon/camera_01/video_001.mp4", "size": 1000, "etag": "abc001"},
+        {"key": "anon/camera_01/video_002.mp4", "size": 2000, "etag": "abc002"},
+        {"key": "anon/camera_01/video_003.mp4", "size": 3000, "etag": "abc003"},
+        {"key": "anon/camera_02/video_001.mp4", "size": 4000, "etag": "def001"},
+        {"key": "anon/camera_02/video_002.mp4", "size": 5000, "etag": "def002"},
+        {"key": "anon/candidates/videos/x.mp4", "size": 100, "etag": "cand001"},
+        {"key": "anon/process_for_candidates.csv", "size": 50, "etag": "ledger001"},
     ]
 
 
@@ -526,7 +526,7 @@ class TestDownloadReport:
 class TestRunSourceDownload:
     def test_no_undownloaded_returns_empty(self, mock_storage: MagicMock, tmp_path: Path) -> None:
         mock_storage.list_objects.return_value = []
-        mock_storage.relative_key = lambda k: k.replace("annon/", "")
+        mock_storage.relative_key = lambda k: k.replace("anon/", "")
         from pickup_putdown.remote.s3_storage import S3Storage
 
         mock_storage.is_video = S3Storage.is_video
@@ -558,13 +558,13 @@ class TestRunSourceDownload:
         for i in range(20):
             objects.append(
                 {
-                    "key": f"annon/cam/video_{i:03d}.mp4",
+                    "key": f"anon/cam/video_{i:03d}.mp4",
                     "size": 1000 + i,
                     "etag": f"etag{i:03d}",
                 }
             )
         mock_storage.list_objects.return_value = objects
-        mock_storage.relative_key = lambda k: k.replace("annon/", "")
+        mock_storage.relative_key = lambda k: k.replace("anon/", "")
         from pickup_putdown.remote.s3_storage import S3Storage
 
         mock_storage.is_video = S3Storage.is_video
@@ -597,11 +597,11 @@ class TestRunSourceDownload:
 
     def test_failed_download_remains_false(self, mock_storage: MagicMock, tmp_path: Path) -> None:
         objects = [
-            {"key": "annon/a.mp4", "size": 100, "etag": "e1"},
-            {"key": "annon/b.mp4", "size": 200, "etag": "e2"},
+            {"key": "anon/a.mp4", "size": 100, "etag": "e1"},
+            {"key": "anon/b.mp4", "size": 200, "etag": "e2"},
         ]
         mock_storage.list_objects.return_value = objects
-        mock_storage.relative_key = lambda k: k.replace("annon/", "")
+        mock_storage.relative_key = lambda k: k.replace("anon/", "")
         from pickup_putdown.remote.s3_storage import S3Storage
 
         mock_storage.is_video = S3Storage.is_video
@@ -643,11 +643,11 @@ class TestRunSourceDownload:
         self, mock_storage: MagicMock, tmp_path: Path
     ) -> None:
         objects = [
-            {"key": "annon/a.mp4", "size": 100, "etag": "e1"},
-            {"key": "annon/b.mp4", "size": 200, "etag": "e2"},
+            {"key": "anon/a.mp4", "size": 100, "etag": "e1"},
+            {"key": "anon/b.mp4", "size": 200, "etag": "e2"},
         ]
         mock_storage.list_objects.return_value = objects
-        mock_storage.relative_key = lambda k: k.replace("annon/", "")
+        mock_storage.relative_key = lambda k: k.replace("anon/", "")
         from pickup_putdown.remote.s3_storage import S3Storage
 
         mock_storage.is_video = S3Storage.is_video
@@ -709,7 +709,7 @@ class TestPartialFileSafety:
         part = Path(f"{final}.part")
         part.write_bytes(b"stale")
 
-        mock_storage.full_key.return_value = "annon/v.mp4"
+        mock_storage.full_key.return_value = "anon/v.mp4"
         mock_storage.download.side_effect = RuntimeError("fail")
 
         result = _download_single_source("v.mp4", mock_storage, source_dir, {})

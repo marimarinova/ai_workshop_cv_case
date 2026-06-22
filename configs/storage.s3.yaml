@@ -14,7 +14,7 @@
 #   s3:PutObject
 
 storage:
-  bucket_uri: "s3://chillnbite-cameras/annon/"
+  bucket_uri: "s3://chillnbite-cameras/anon/"
   region: "eu-central-1"
   endpoint_url: null
   anonymous: false

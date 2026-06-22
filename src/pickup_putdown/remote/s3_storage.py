@@ -102,7 +102,7 @@ class S3Storage:
     # ------------------------------------------------------------------
 
     def relative_key(self, full_key: str) -> str:
-        """Return key relative to the configured prefix (annon/)."""
+        """Return key relative to the configured prefix (anon/)."""
         expected = self.prefix
         if expected and not expected.endswith("/"):
             expected += "/"

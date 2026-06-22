@@ -18,13 +18,13 @@ Implement a remote batch-processing workflow that:
 2. Discovers source videos under:
 
    ```text
-   s3://chillinbite-cameras/annon/
+   s3://chillnbite-cameras/anon/
    ```
 
 3. Creates and maintains:
 
    ```text
-   s3://chillinbite-cameras/annon/process_for_candidates.csv
+   s3://chillnbite-cameras/anon/process_for_candidates.csv
    ```
 
 4. Automatically selects a requested number of unprocessed source videos.
@@ -48,7 +48,7 @@ The existing Tasks 3–5 implementations must be reused rather than reimplemente
 The existing source videos remain under the current prefix.
 
 ```text
-s3://chillinbite-cameras/annon/
+s3://chillnbite-cameras/anon/
 ├── <existing source videos and source subdirectories>
 │
 ├── process_for_candidates.csv
@@ -70,14 +70,14 @@ s3://chillinbite-cameras/annon/
 Label Studio source storage should point only to:
 
 ```text
-s3://chillinbite-cameras/annon/candidates/videos/
+s3://chillnbite-cameras/anon/candidates/videos/
 ```
 
 The source discovery process must exclude:
 
 ```text
-annon/candidates/
-annon/process_for_candidates.csv
+anon/candidates/
+anon/process_for_candidates.csv
 ```
 
 S3 folders are object-key prefixes rather than physical directories.
@@ -89,7 +89,7 @@ S3 folders are object-key prefixes rather than physical directories.
 Create the following file in the same S3 prefix as the source videos:
 
 ```text
-s3://chillinbite-cameras/annon/process_for_candidates.csv
+s3://chillnbite-cameras/anon/process_for_candidates.csv
 ```
 
 Required schema:
@@ -106,7 +106,7 @@ camera_02/video_003.mp4,false
 `file_name` must contain the complete object key relative to:
 
 ```text
-s3://chillinbite-cameras/annon/
+s3://chillnbite-cameras/anon/
 ```
 
 Do not store only the basename because different source directories may contain files with identical names.
@@ -135,7 +135,7 @@ If processing or upload fails, the value remains `false`.
 
 When the command starts, it must:
 
-1. List supported source-video objects under `annon/`.
+1. List supported source-video objects under `anon/`.
 2. Exclude generated candidates and non-video artifacts.
 3. Create the CSV if it does not exist.
 4. Add newly discovered source videos with `processed=false`.
@@ -392,7 +392,7 @@ candidates/videos/<source_video_id>/<candidate_id>.mp4
 Example:
 
 ```text
-annon/candidates/videos/camera_01_video_001/
+anon/candidates/videos/camera_01_video_001/
     camera_01_video_001_candidate_0001.mp4
     camera_01_video_001_candidate_0002.mp4
 ```
@@ -411,21 +411,21 @@ It may be derived from:
 Upload one metadata document per processed source video:
 
 ```text
-annon/candidates/metadata/<source_video_id>.json
+anon/candidates/metadata/<source_video_id>.json
 ```
 
 Minimum content:
 
 ```json
 {
-  "source_bucket": "chillinbite-cameras",
-  "source_key": "annon/camera_01/video_001.mp4",
+  "source_bucket": "chillnbite-cameras",
+  "source_key": "anon/camera_01/video_001.mp4",
   "source_video_id": "camera_01_video_001",
   "candidate_count": 2,
   "candidates": [
     {
       "candidate_id": "camera_01_video_001_candidate_0001",
-      "candidate_key": "annon/candidates/videos/camera_01_video_001/camera_01_video_001_candidate_0001.mp4",
+      "candidate_key": "anon/candidates/videos/camera_01_video_001/camera_01_video_001_candidate_0001.mp4",
       "source_start_s": 34.2,
       "source_end_s": 49.8,
       "duration_s": 15.6,
@@ -445,7 +445,7 @@ The metadata must allow annotations made against candidate-local timestamps to b
 Upload one run report to:
 
 ```text
-annon/candidates/runs/<run_id>.json
+anon/candidates/runs/<run_id>.json
 ```
 
 It should include:
@@ -487,14 +487,14 @@ s3:PutObject
 
 The remote process requires:
 
-* read access to `annon/`;
-* write access to `annon/process_for_candidates.csv`;
-* write access to `annon/candidates/`.
+* read access to `anon/`;
+* write access to `anon/process_for_candidates.csv`;
+* write access to `anon/candidates/`.
 
 Local Label Studio participants require read access only to:
 
 ```text
-annon/candidates/videos/
+anon/candidates/videos/
 ```
 
 ---
@@ -548,8 +548,8 @@ final batch summary
 
 Automated tests must cover:
 
-* source discovery under `annon/`;
-* exclusion of `annon/candidates/`;
+* source discovery under `anon/`;
+* exclusion of `anon/candidates/`;
 * creation of `process_for_candidates.csv`;
 * preservation of existing processed flags;
 * addition of newly discovered source videos;
@@ -575,7 +575,7 @@ Use mocked S3 storage or an S3-compatible local test service for automated tests
 
 The task is complete when:
 
-1. The remote server can connect to `s3://chillinbite-cameras/annon/`.
+1. The remote server can connect to `s3://chillnbite-cameras/anon/`.
 2. Source videos are discovered without including generated outputs.
 3. `process_for_candidates.csv` is created and synchronized with the source objects.
 4. A target count can be supplied from the CLI and Makefile.
@@ -583,7 +583,7 @@ The task is complete when:
 6. The existing Tasks 3–5 pipeline runs against downloaded source videos.
 7. Multiple source videos can be processed concurrently.
 8. Network, GPU, and encoding concurrency are independently configurable.
-9. Candidate clips are uploaded under `annon/candidates/videos/`.
+9. Candidate clips are uploaded under `anon/candidates/videos/`.
 10. Every uploaded candidate is H.264 MP4 with `yuv420p` and fast-start metadata.
 11. Candidate metadata maps each candidate back to the original source video and timeline.
 12. A source video is marked processed only after successful candidate and metadata publication.

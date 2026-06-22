@@ -38,6 +38,9 @@ class WorkerConfig:
     proposals_config: str = "configs/proposals.yaml"
     shelves_config: str = "configs/shelves.yaml"
     camera_id: str = "store_camera_01"
+    defer_upload: bool = False
+    local_source_dir: str = ".local/source_videos"
+    local_output_dir: str = ".local/candidate_staging"
 
 
 def run_source_video(
@@ -46,15 +49,16 @@ def run_source_video(
     run_id: str,
     worker_cfg: WorkerConfig,
     storage: Any,
+    local_source_dir: str | None = None,
 ) -> WorkerResult:
     """Process one source video through the full pipeline.
 
     Steps:
-    1. Download source video
+    1. Download source video (or use local copy in defer_upload mode)
     2. Run Tasks 3-5 (triage + propose)
     3. Encode candidates to H.264 MP4
     4. Validate encoded candidates
-    5. Upload candidates and metadata
+    5. Upload candidates and metadata (or stage locally in defer_upload mode)
     6. Return result for ledger update
     """
     t_start = datetime.now(UTC)
@@ -70,9 +74,16 @@ def run_source_video(
     source_path = source_dir / f"{source_video_id}.mp4"
 
     try:
-        # 1. Download source video
-        logger.info("Downloading %s -> %s", source_rel_key, source_path)
-        storage.download(storage.full_key(source_rel_key), source_path)
+        # 1. Download source video or use local copy
+        if worker_cfg.defer_upload and local_source_dir:
+            src_path = Path(local_source_dir) / source_rel_key
+            if not src_path.exists():
+                raise RuntimeError(f"Local source not found: {src_path}")
+            shutil.copy2(src_path, source_path)
+            logger.info("Copied local source %s -> %s", src_path, source_path)
+        else:
+            logger.info("Downloading %s -> %s", source_rel_key, source_path)
+            storage.download(storage.full_key(source_rel_key), source_path)
 
         # 2. Run Tasks 3-5
         logger.info("Running Tasks 3-5 for %s", source_video_id)
@@ -102,16 +113,27 @@ def run_source_video(
                     f"Candidate {enc['candidate_id']} validation failed: {validation.error}"
                 )
 
-        # 5. Upload candidates and metadata
-        logger.info("Uploading %d candidate(s) for %s", len(encoded_candidates), source_video_id)
-        upload_candidates_and_metadata(
-            storage=storage,
-            source_rel_key=source_rel_key,
-            source_video_id=source_video_id,
-            encoded_candidates=encoded_candidates,
-            candidates_dir=candidates_dir,
-            metadata_dir=metadata_dir,
-        )
+        # 5. Upload candidates and metadata (or stage locally)
+        if worker_cfg.defer_upload:
+            _stage_candidates_locally(
+                source_video_id=source_video_id,
+                encoded_candidates=encoded_candidates,
+                candidates_dir=candidates_dir,
+                metadata_dir=metadata_dir,
+                local_output_dir=worker_cfg.local_output_dir,
+            )
+        else:
+            logger.info(
+                "Uploading %d candidate(s) for %s", len(encoded_candidates), source_video_id
+            )
+            upload_candidates_and_metadata(
+                storage=storage,
+                source_rel_key=source_rel_key,
+                source_video_id=source_video_id,
+                encoded_candidates=encoded_candidates,
+                candidates_dir=candidates_dir,
+                metadata_dir=metadata_dir,
+            )
 
         t_end = datetime.now(UTC)
         duration = (t_end - t_start).total_seconds()
@@ -310,7 +332,7 @@ def upload_candidates_and_metadata(
     for enc in encoded_candidates:
         candidate_id = enc["candidate_id"]
         local_path = enc["local_path"]
-        dest_key = f"annon/candidates/videos/{source_video_id}/{candidate_id}.mp4"
+        dest_key = f"anon/candidates/videos/{source_video_id}/{candidate_id}.mp4"
         logger.info("Uploading candidate %s -> %s", candidate_id, dest_key)
         storage.upload(local_path, dest_key)
 
@@ -330,9 +352,39 @@ def upload_candidates_and_metadata(
     metadata_path = metadata_dir / f"{source_video_id}.json"
     metadata_path.write_text(json.dumps(metadata, indent=2))
 
-    metadata_dest = f"annon/candidates/metadata/{source_video_id}.json"
+    metadata_dest = f"anon/candidates/metadata/{source_video_id}.json"
     logger.info("Uploading metadata -> %s", metadata_dest)
     storage.upload(metadata_path, metadata_dest)
+
+
+def _stage_candidates_locally(
+    source_video_id: str,
+    encoded_candidates: list[dict[str, Any]],
+    candidates_dir: Path,
+    metadata_dir: Path,
+    local_output_dir: str,
+) -> None:
+    """Copy encoded candidates and metadata to local staging directory."""
+    staging_candidates = Path(local_output_dir) / "candidates" / source_video_id
+    staging_candidates.mkdir(parents=True, exist_ok=True)
+
+    for enc in encoded_candidates:
+        candidate_id = enc["candidate_id"]
+        local_path = Path(enc["local_path"])
+        dest = staging_candidates / f"{candidate_id}.mp4"
+        shutil.copy2(local_path, dest)
+        enc["metadata"]["candidate_key"] = str(dest)
+        logger.info("Staged candidate %s -> %s", candidate_id, dest)
+
+    metadata = {
+        "source_video_id": source_video_id,
+        "candidate_count": len(encoded_candidates),
+        "candidates": [enc["metadata"] for enc in encoded_candidates],
+        "processed_at": datetime.now(UTC).isoformat(),
+    }
+    metadata_path = staging_candidates / f"{source_video_id}.json"
+    metadata_path.write_text(json.dumps(metadata, indent=2))
+    logger.info("Staged metadata -> %s", metadata_path)
 
 
 def _cleanup_work_dir(work_dir: Path) -> None:

@@ -321,3 +321,70 @@ make tasks-3-5 \
   RENDER_PREVIEWS=0
 ```
 
+## Batch candidate generation with deferred upload
+
+When S3 write permissions are not available, download source videos and process them locally. The ledger tracks state in `.local/candidate_staging/local_processing.csv`.
+
+### Workflow
+
+```bash
+# 1. Download a batch of source videos (S3 read only)
+python scripts/download_s3_sample.py --count 10 --offset 0
+
+# 2. Process downloaded videos locally (GPU sequential, CPU parallel)
+make candidates-process-local CANDIDATE_TARGET_COUNT=10
+
+# 3. Repeat steps 1–2 for additional batches
+python scripts/download_s3_sample.py --count 10 --offset 10
+make candidates-process-local CANDIDATE_TARGET_COUNT=10
+
+# 4. When S3 write access is available, upload staged candidates
+make candidates-upload CANDIDATE_TARGET_COUNT=0
+```
+
+### Download script options
+
+```bash
+# Download first 10 clips
+python scripts/download_s3_sample.py --count 10 --offset 0
+
+# Download next 10 clips
+python scripts/download_s3_sample.py --count 10 --offset 10
+
+# Lower minimum size threshold
+python scripts/download_s3_sample.py --count 5 --min-size-mb 20
+```
+
+The script downloads deterministically (sorted by key), excludes already-downloaded files, and updates the local ledger after each download.
+
+### Ledger states
+
+Each source video progresses through three states in the local ledger:
+
+| State | Command | Description |
+|---|---|---|
+| `downloaded` | `download_s3_sample.py` | Video cached in `.local/source_videos/` |
+| `generated` | `candidates-process-local` | Candidates staged in `.local/candidate_staging/candidates/` |
+| `uploaded` | `candidates-upload` | Candidates pushed to `s3://.../anon/candidates/` |
+
+### Processing architecture
+
+`candidates-process-local` uses a two-stage pipeline:
+
+* **Stage 1 (GPU, sequential):** Runs triage + pose inference one video at a time.
+* **Stage 2 (CPU, parallel):** Encodes candidates to H.264 MP4 in parallel. A queue between stages lets CPU encoding overlap with GPU inference.
+
+Control CPU parallelism with `CANDIDATE_ENCODE_WORKERS` (default: 4).
+
+### CLI equivalents
+
+```bash
+# Process locally
+pickup-putdown candidates-process-local --target-count 10 --encode-workers 4
+
+# Upload when ready
+pickup-putdown candidates-upload --target-count 0
+```
+
+Set `CANDIDATE_TARGET_COUNT=0` for upload to process all ready candidates. Use `--keep-local-files` to retain intermediate work directories for debugging.
+

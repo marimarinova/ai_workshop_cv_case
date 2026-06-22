@@ -38,8 +38,8 @@ def tmp_work(tmp_path: Path) -> Path:
 @pytest.fixture
 def mock_storage() -> MagicMock:
     storage = MagicMock()
-    storage.bucket = "chillinbite-cameras"
-    storage.prefix = "annon"
+    storage.bucket = "chillnbite-cameras"
+    storage.prefix = "anon"
     storage.endpoint_url = None
     storage.region = "eu-central-1"
     storage.anonymous = False
@@ -189,10 +189,10 @@ class TestProcessingLedger:
             uploaded[key] = local
 
         mock_storage.upload = fake_upload
-        mock_storage.full_key = lambda k: f"annon/{k}"
+        mock_storage.full_key = lambda k: f"anon/{k}"
         mock_ledger.save()
 
-        assert "annon/process_for_candidates.csv" in uploaded
+        assert "anon/process_for_candidates.csv" in uploaded
 
     def test_preserves_true_never_resets(self, mock_ledger: ProcessingLedger) -> None:
         mock_ledger.entries["v.mp4"] = LedgerEntry("v.mp4", True)
@@ -214,13 +214,13 @@ class TestProcessingLedger:
 class TestDiscovery:
     def test_discovers_videos_excludes_candidates(self, mock_storage: MagicMock) -> None:
         mock_storage.list_objects.return_value = [
-            {"key": "annon/camera_01/video_001.mp4"},
-            {"key": "annon/camera_01/video_002.mp4"},
-            {"key": "annon/candidates/videos/x.mp4"},
-            {"key": "annon/process_for_candidates.csv"},
-            {"key": "annon/readme.txt"},
+            {"key": "anon/camera_01/video_001.mp4"},
+            {"key": "anon/camera_01/video_002.mp4"},
+            {"key": "anon/candidates/videos/x.mp4"},
+            {"key": "anon/process_for_candidates.csv"},
+            {"key": "anon/readme.txt"},
         ]
-        mock_storage.relative_key = lambda k: k.replace("annon/", "")
+        mock_storage.relative_key = lambda k: k.replace("anon/", "")
         from pickup_putdown.remote.s3_storage import S3Storage
 
         mock_storage.is_video = S3Storage.is_video
@@ -235,10 +235,10 @@ class TestDiscovery:
 
     def test_duplicate_basenames_different_dirs(self, mock_storage: MagicMock) -> None:
         mock_storage.list_objects.return_value = [
-            {"key": "annon/cam_a/video.mp4"},
-            {"key": "annon/cam_b/video.mp4"},
+            {"key": "anon/cam_a/video.mp4"},
+            {"key": "anon/cam_b/video.mp4"},
         ]
-        mock_storage.relative_key = lambda k: k.replace("annon/", "")
+        mock_storage.relative_key = lambda k: k.replace("anon/", "")
         from pickup_putdown.remote.s3_storage import S3Storage
 
         mock_storage.is_video = S3Storage.is_video
@@ -250,11 +250,11 @@ class TestDiscovery:
 
     def test_sorted_order(self, mock_storage: MagicMock) -> None:
         mock_storage.list_objects.return_value = [
-            {"key": "annon/z.mp4"},
-            {"key": "annon/a.mp4"},
-            {"key": "annon/m.mp4"},
+            {"key": "anon/z.mp4"},
+            {"key": "anon/a.mp4"},
+            {"key": "anon/m.mp4"},
         ]
-        mock_storage.relative_key = lambda k: k.replace("annon/", "")
+        mock_storage.relative_key = lambda k: k.replace("anon/", "")
         from pickup_putdown.remote.s3_storage import S3Storage
 
         mock_storage.is_video = S3Storage.is_video
