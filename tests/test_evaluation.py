@@ -248,6 +248,19 @@ def test_slice_metrics_recall_oriented():
     assert sl["low_confidence"]["recall"] == 1.0 and sl["low_confidence"]["support"] == 1
 
 
+def test_multiple_person_slice():
+    gts = [
+        Event("c", "pickup", 1.0, 2.0, "g1", n_person=2),
+        Event("c", "putdown", 5.0, 6.0, "g2", n_person=2),
+        Event("c", "pickup", 9.0, 10.0, "g3", n_person=1),
+    ]
+    pr = [Prediction("c", "pickup", 1.0, 2.0)]
+    sl = slice_metrics(gts, pr, {"c": 600.0})
+    assert "multiple_person" in sl
+    assert sl["multiple_person"]["support"] == 2  # only the two n_person>1 events
+    assert sl["multiple_person"]["tp"] == 1 and sl["multiple_person"]["recall"] == 0.5
+
+
 def test_io_preserves_zero_score_and_column_map():
     rows = [{"clip": "c", "label": "pickup", "start": "1.0", "end": "2.0"}]
     cmap = {"clip_id": "clip", "type": "label", "t_start": "start", "t_end": "end"}

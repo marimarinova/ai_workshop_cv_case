@@ -182,8 +182,10 @@ def slice_metrics(
 
     The slice criterion and matcher are derived from the SAME resolved configuration
     as the overall run (never hardcoded), honouring the threshold-input contract.
-    Metadata is read defensively; a slice family is only emitted when at least one
-    event actually carries that metadata. Precision is not reported per slice.
+    Metadata-gated slices (confidence, hard_case, n_person) are emitted only when at
+    least one event carries that metadata; the duration-based slices (short_events /
+    long_events) are always emitted since start/end are always present. Empty slices
+    are skipped and precision is not reported per slice.
     """
     out: dict[str, Any] = {"all": aggregate_metrics(events, preds, clip_durations, ignores, **kw)}
     ev = drop_ignored(events, ignores)

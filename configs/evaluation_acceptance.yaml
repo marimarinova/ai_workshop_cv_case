@@ -8,4 +8,4 @@ evaluation:
   confusion_tiou: 0.5
   multi_item_overlap_thr: null  # null => group_id / exact-duplicate default (overlap opt-in)
   short_max_s: 1.0
-  ignore_rule: any_positive_overlap   # confirm vs manifest/labeling-guidelines.md
+  ignore_rule: any_positive_overlap   # official labeling guidelines: case repo Marchev-Science/case-pickup-putdown-event-detection

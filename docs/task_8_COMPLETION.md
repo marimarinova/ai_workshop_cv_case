@@ -6,7 +6,7 @@
 
 **Task ID:** `task_8`
 **Difficulty:** `hard`
-**Status:** implementation complete; verified by the test suite (39 passed, 1 skipped). Real-data run pending `events.csv` (task_7) and a model `predictions.csv`.
+**Status:** implementation complete; verified by the test suite (42 passed in-repo; 39 passed, 1 skipped standalone). Real-data run pending `events.csv` (task_7) and a model `predictions.csv`.
 **Dependencies:** Task 1 schemas (`pickup_putdown.common.schemas`). Synthetic fixtures used to build; the evaluator is duck-typed and consumes the canonical Pydantic `Event`/`Prediction` directly.
 **Branch:** `feature/task-8-evaluation-framework`
 
@@ -40,7 +40,7 @@ model-specific code.
 | `evaluation/confusion_matching.py` | `confusion_matching.py` — `evaluate_confusion` |
 | `evaluation/metrics.py` | `metrics.py` — `aggregate_metrics`, `slice_metrics` |
 | `evaluation/report.py` | `report.py` — `render_markdown`, `render_html`, `metrics_to_json`, `failure_gallery` |
-| `tests/test_evaluation.py` | `tests/test_evaluation.py` — 39 passed, 1 skipped + `tests/test_enum_types.py` (plain-Enum pipeline guard) + `tests/test_integration_pydantic.py` + `tests/test_integration_real_schemas.py` (1 skipped: runs in-repo) |
+| `tests/test_evaluation.py` | `tests/test_evaluation.py` — 42 passed in-repo (39 passed, 1 skipped standalone) + `tests/test_enum_types.py` (plain-Enum pipeline guard) + `tests/test_integration_pydantic.py` + `tests/test_integration_real_schemas.py` (1 skipped: runs in-repo) |
 | (supporting) | `intervals.py` (tIoU/midpoint/Criterion), `ap.py` (mAP), `io.py` (CSV adapter), `contracts.py` (test-only dataclasses), `__init__.py` |
 
 ## Implementation Steps (done)
@@ -91,7 +91,7 @@ model-specific code.
 
 ```bash
 pip install numpy scipy pytest
-PYTHONPATH=src pytest -q          # -> 39 passed, 1 skipped
+PYTHONPATH=src pytest -q          # -> 42 passed in-repo (39 passed, 1 skipped standalone)
 ```
 
 ```python
@@ -117,7 +117,7 @@ the task file 1:1:
 
 Every Deliverable, Implementation Step (1–9), and Acceptance Criterion in
 `task_8_shared_evaluator_hard.md` is now satisfied and covered by tests
-(**39 passed, 1 skipped**). The only item still produced outside this module is Stage B
+(**42 passed in-repo; 39 passed, 1 skipped standalone**). The only item still produced outside this module is Stage B
 proposal recall, which by spec belongs to Layer 0B / task_7.
 
 ## Repository integration notes (at merge time)
@@ -126,7 +126,7 @@ proposal recall, which by spec belongs to Layer 0B / task_7.
   repository root `pyproject.toml`; instead add `scipy>=1.10` (and `numpy`) to the
   repository's existing dependencies/requirements and keep its `requires-python >= 3.12`.
 - Run the repository's own `make` lint/type/test targets, not only `pytest -q`.
-- `configs/evaluation_acceptance.yaml` sets `ignore_rule: any_positive_overlap` — confirm
-  against `manifest/labeling-guidelines.md`; once confirmed, drop the inline "confirm" note.
+- `configs/evaluation_acceptance.yaml` sets `ignore_rule: any_positive_overlap`. The official
+  labeling guidelines live in the case repository `Marchev-Science/case-pickup-putdown-event-detection`.
 - `tests/test_integration_real_schemas.py` runs against the real `pickup_putdown.common.schemas`
   in-repo (skips standalone).

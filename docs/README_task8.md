@@ -18,7 +18,7 @@ are comparable. Works on the canonical `events` / `predictions` tables — no vi
 ## Run
 
 ```bash
-PYTHONPATH=src pytest -q     # 39 passed, 1 skipped
+PYTHONPATH=src pytest -q     # 42 passed in-repo (39 passed, 1 skipped standalone)
 ```
 
 See `task_8_COMPLETION.md` for the full handoff and plan-§17 coverage.
