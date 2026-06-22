@@ -10,7 +10,7 @@ are comparable. Works on the canonical `events` / `predictions` tables — no vi
 - `confusion_matching.py`   — class-agnostic pass → pickup/putdown confusion
 - `ap.py`                   — average precision + `mean_ap` (mAP@tIoU)
 - `metrics.py`              — `aggregate_metrics`, `slice_metrics`
-- `report.py`               — `render_markdown`, `failure_gallery`
+- `report.py`               — `render_markdown`, `render_html`, `metrics_to_json`, `failure_gallery`
 - `io.py`                   — CSV → objects adapter (with `column_map`)
 - `contracts.py`            — lightweight dataclasses for self-contained tests
 - `__init__.py`             — public API

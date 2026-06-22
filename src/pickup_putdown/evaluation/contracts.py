@@ -10,13 +10,24 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
+from typing import Any, Protocol, runtime_checkable
 
-VALID_TYPES = ("pickup", "putdown")
+VALID_TYPES: tuple[str, ...] = ("pickup", "putdown")
 
 
-def type_name(t):
+def type_name(t: object) -> str:
     """Normalize an event type to its string value (StrEnum, Enum, or str)."""
     return t.value if isinstance(t, Enum) else str(t)
+
+
+@runtime_checkable
+class IntervalLike(Protocol):
+    """Duck-typed interval accepted by the evaluator."""
+
+    clip_id: str
+    t_start: float
+    t_end: float
+    type: object
 
 
 @dataclass(frozen=True)
@@ -24,7 +35,7 @@ class EvaluationEvent:
     """A ground-truth event interval (mirrors canonical `events` fields)."""
 
     clip_id: str
-    type: str
+    type: str | Enum
     t_start: float
     t_end: float
     event_id: str = ""
@@ -49,7 +60,7 @@ class EvaluationPrediction:
     """A predicted event interval (mirrors canonical `predictions` fields)."""
 
     clip_id: str
-    type: str
+    type: str | Enum
     t_start: float
     t_end: float
     pred_id: str = ""
@@ -84,18 +95,18 @@ class EvaluationIgnoreInterval:
 
 @dataclass
 class MatchResult:
-    matched: list = field(default_factory=list)
-    unmatched_gt: list = field(default_factory=list)
-    unmatched_pred: list = field(default_factory=list)
+    matched: list[tuple[Any, Any]] = field(default_factory=list)
+    unmatched_gt: list[Any] = field(default_factory=list)
+    unmatched_pred: list[Any] = field(default_factory=list)
 
     @property
-    def tp(self):
+    def tp(self) -> int:
         return len(self.matched)
 
     @property
-    def fp(self):
+    def fp(self) -> int:
         return len(self.unmatched_pred)
 
     @property
-    def fn(self):
+    def fn(self) -> int:
         return len(self.unmatched_gt)

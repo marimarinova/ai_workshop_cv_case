@@ -11,14 +11,16 @@ overlap with an ignore interval, applied consistently before every official metr
 
 from __future__ import annotations
 
+from typing import Any
+
 import numpy as np
-from scipy.optimize import linear_sum_assignment
+from scipy.optimize import linear_sum_assignment  # type: ignore[import-untyped]
 
 from .contracts import VALID_TYPES, MatchResult, type_name
-from .intervals import overlaps
+from .intervals import Criterion, overlaps
 
 
-def _canonical(items):
+def _canonical(items: list[Any]) -> list[Any]:
     return sorted(
         items,
         key=lambda x: (
@@ -31,14 +33,12 @@ def _canonical(items):
     )
 
 
-def match_one_to_one(gts, preds, criterion):
+def match_one_to_one(gts: list[Any], preds: list[Any], criterion: Criterion) -> MatchResult:
     """Maximum-cardinality accepted matching, tie-broken by quality. Order-invariant."""
     gts = _canonical(list(gts))
     preds = _canonical(list(preds))
     if not gts or not preds:
         return MatchResult([], list(gts), list(preds))
-    # Cardinality-safe bonus: one extra accepted match must outweigh all quality
-    # differences in the rest of the assignment (quality per pair is bounded by 1.0).
     accept_bonus = min(len(gts), len(preds)) + 1.0
     s = np.zeros((len(gts), len(preds)))
     for i, g in enumerate(gts):
@@ -46,7 +46,9 @@ def match_one_to_one(gts, preds, criterion):
             if criterion.accepts(g, p):
                 s[i, j] = accept_bonus + criterion.score(g, p)
     rows, cols = linear_sum_assignment(s, maximize=True)
-    matched, ug, up = [], set(), set()
+    matched: list[tuple[Any, Any]] = []
+    ug: set[int] = set()
+    up: set[int] = set()
     for i, j in zip(rows, cols, strict=True):
         if criterion.accepts(gts[i], preds[j]):
             matched.append((gts[i], preds[j]))
@@ -59,7 +61,7 @@ def match_one_to_one(gts, preds, criterion):
     )
 
 
-def match_ranked(gts, preds, criterion):
+def match_ranked(gts: list[Any], preds: list[Any], criterion: Criterion) -> MatchResult:
     """Score-ranked greedy matching (mAP convention). Order-invariant."""
     gts = _canonical(list(gts))
     preds = sorted(
@@ -73,7 +75,8 @@ def match_ranked(gts, preds, criterion):
         ),
     )
     used = [False] * len(gts)
-    matched, up = [], []
+    matched: list[tuple[Any, Any]] = []
+    up: list[Any] = []
     for p in preds:
         best, best_score = -1, -1.0
         for i, g in enumerate(gts):
@@ -90,25 +93,31 @@ def match_ranked(gts, preds, criterion):
     return MatchResult(matched, [g for i, g in enumerate(gts) if not used[i]], up)
 
 
-_MATCHERS = {"hungarian": match_one_to_one, "greedy": match_ranked}
+_MATCHERS: dict[str, Any] = {"hungarian": match_one_to_one, "greedy": match_ranked}
 
 
-def drop_ignored(items, ignores):
+def drop_ignored(items: list[Any], ignores: Any) -> list[Any]:
     """Exclude items with ANY positive temporal overlap with an ignore interval."""
-    by = {}
+    by: dict[str, list[Any]] = {}
     for ig in ignores:
         by.setdefault(ig.clip_id, []).append(ig)
     return [it for it in items if not any(overlaps(it, sp) for sp in by.get(it.clip_id, []))]
 
 
-def by_clip(items):
-    d = {}
+def by_clip(items: list[Any]) -> dict[str, list[Any]]:
+    d: dict[str, list[Any]] = {}
     for it in items:
         d.setdefault(it.clip_id, []).append(it)
     return d
 
 
-def evaluate_class_aware(events, preds, criterion, ignores=(), matcher="hungarian"):
+def evaluate_class_aware(
+    events: Any,
+    preds: Any,
+    criterion: Criterion,
+    ignores: Any = (),
+    matcher: str = "hungarian",
+) -> MatchResult:
     """Match within each (clip, type) block; aggregate one MatchResult."""
     if matcher not in _MATCHERS:
         raise ValueError(f"unknown matcher {matcher!r}; expected one of {sorted(_MATCHERS)}")
@@ -119,7 +128,7 @@ def evaluate_class_aware(events, preds, criterion, ignores=(), matcher="hungaria
     agg = MatchResult()
     for clip in set(ge) | set(gp):
         for t in VALID_TYPES:
-            r = match_fn(
+            r: MatchResult = match_fn(
                 [e for e in ge.get(clip, []) if type_name(e.type) == t],
                 [p for p in gp.get(clip, []) if type_name(p.type) == t],
                 criterion,

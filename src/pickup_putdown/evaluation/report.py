@@ -4,19 +4,21 @@ from __future__ import annotations
 
 import html
 import json
+from typing import Any
 
 from .class_aware_matching import by_clip, drop_ignored, evaluate_class_aware, match_one_to_one
 from .contracts import VALID_TYPES, type_name
 from .intervals import Criterion
 
 
-def _fmt(v):
+def _fmt(v: object) -> str:
     return f"{v:.3f}" if isinstance(v, float) else str(v)
 
 
-def render_markdown(metrics, model_name="model"):
+def render_markdown(metrics: dict[str, Any], model_name: str = "model") -> str:
     """Render an aggregate_metrics dict as markdown."""
-    lines = [f"# Evaluation report - {model_name}", ""]
+    safe_name = html.escape(str(model_name))
+    lines = [f"# Evaluation report - {safe_name}", ""]
     for k, v in metrics.items():
         if k == "confusion":
             lines += [
@@ -42,7 +44,7 @@ def render_markdown(metrics, model_name="model"):
     return "\n".join(lines)
 
 
-def render_html(metrics, model_name="model"):
+def render_html(metrics: dict[str, Any], model_name: str = "model") -> str:
     """Render an aggregate_metrics dict as standalone HTML (values escaped)."""
     esc = html.escape
     parts = [f"<h1>Evaluation report &mdash; {esc(str(model_name))}</h1>"]
@@ -75,12 +77,14 @@ def render_html(metrics, model_name="model"):
     )
 
 
-def metrics_to_json(metrics, **kw):
+def metrics_to_json(metrics: dict[str, Any], **kw: Any) -> str:
     """Serialize a metrics dict to a JSON string (all keys are strings)."""
     return json.dumps(metrics, **kw)
 
 
-def failure_gallery(events, preds, criterion=None, ignores=()):
+def failure_gallery(
+    events: Any, preds: Any, criterion: Criterion | None = None, ignores: Any = ()
+) -> dict[str, Any]:
     """False positives, false negatives, and type-confusion pairs for review."""
     criterion = criterion or Criterion("tiou", 0.5)
     r = evaluate_class_aware(events, preds, criterion, ignores)
@@ -88,7 +92,7 @@ def failure_gallery(events, preds, criterion=None, ignores=()):
     ev = drop_ignored(events, ignores)
     pr = drop_ignored(preds, ignores)
     ge, gp = by_clip(ev), by_clip(pr)
-    type_confusions = []
+    type_confusions: list[dict[str, Any]] = []
     for clip in set(ge) | set(gp):
         m = match_one_to_one(ge.get(clip, []), gp.get(clip, []), criterion)
         for g, p in m.matched:

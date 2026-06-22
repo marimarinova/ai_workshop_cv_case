@@ -8,26 +8,29 @@ score of ``0.0`` (a value the old ``x or default`` idiom silently lost).
 from __future__ import annotations
 
 import csv
+from typing import Any
 
 from .contracts import EvaluationEvent, EvaluationIgnoreInterval, EvaluationPrediction
 
 
-def _get(row, key, cm, default=None):
+def _get(row: dict[str, Any], key: str, cm: dict[str, str], default: Any = None) -> Any:
     return row.get(cm.get(key, key), default)
 
 
-def _to_bool(v):
+def _to_bool(v: Any) -> bool:
     return str(v).strip().lower() in ("1", "true", "yes", "y", "t")
 
 
-def _num(v, default):
+def _num(v: Any, default: float) -> float:
     """Parse a number, preserving 0/0.0 (only fall back when missing/blank)."""
     if v is None or (isinstance(v, str) and v.strip() == ""):
         return default
     return float(v)
 
 
-def events_from_rows(rows, column_map=None):
+def events_from_rows(
+    rows: list[dict[str, Any]], column_map: dict[str, str] | None = None
+) -> list[EvaluationEvent]:
     cm = column_map or {}
     return [
         EvaluationEvent(
@@ -47,7 +50,9 @@ def events_from_rows(rows, column_map=None):
     ]
 
 
-def predictions_from_rows(rows, column_map=None):
+def predictions_from_rows(
+    rows: list[dict[str, Any]], column_map: dict[str, str] | None = None
+) -> list[EvaluationPrediction]:
     cm = column_map or {}
     return [
         EvaluationPrediction(
@@ -63,7 +68,9 @@ def predictions_from_rows(rows, column_map=None):
     ]
 
 
-def ignores_from_rows(rows, column_map=None):
+def ignores_from_rows(
+    rows: list[dict[str, Any]], column_map: dict[str, str] | None = None
+) -> list[EvaluationIgnoreInterval]:
     cm = column_map or {}
     return [
         EvaluationIgnoreInterval(
@@ -75,14 +82,16 @@ def ignores_from_rows(rows, column_map=None):
     ]
 
 
-def read_csv(path):
+def read_csv(path: str) -> list[dict[str, Any]]:
     with open(path, newline="", encoding="utf-8") as f:
         return list(csv.DictReader(f))
 
 
-def load_events_csv(path, column_map=None):
+def load_events_csv(path: str, column_map: dict[str, str] | None = None) -> list[EvaluationEvent]:
     return events_from_rows(read_csv(path), column_map)
 
 
-def load_predictions_csv(path, column_map=None):
+def load_predictions_csv(
+    path: str, column_map: dict[str, str] | None = None
+) -> list[EvaluationPrediction]:
     return predictions_from_rows(read_csv(path), column_map)

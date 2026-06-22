@@ -16,6 +16,7 @@ cubically in events-per-block, so pre-filter by time window if needed.
 from __future__ import annotations
 
 import logging
+from typing import Any
 
 import numpy as np
 
@@ -28,18 +29,21 @@ from .intervals import Criterion, tiou
 logger = logging.getLogger(__name__)
 
 
-def _multi_item_events(events, overlap_thr=None):
+def _multi_item_events(events: list[Any], overlap_thr: float | None = None) -> list[Any]:
     """Events in a multi-item action. Default: shared group_id, else exact-duplicate
     clip/type/start/end. ``overlap_thr`` enables transitive overlap clustering."""
-    out, bucket = [], {}
+    out: list[Any] = []
+    bucket: dict[tuple[str, str], list[Any]] = {}
     for e in events:
         bucket.setdefault((e.clip_id, type_name(e.type)), []).append(e)
     for group in bucket.values():
         if overlap_thr is None:
-            clusters = {}
+            clusters: dict[tuple[Any, ...], list[Any]] = {}
             for e in group:
                 gid = getattr(e, "group_id", "") or ""
-                key = ("gid", gid) if gid else ("dup", round(e.t_start, 6), round(e.t_end, 6))
+                key: tuple[Any, ...] = (
+                    ("gid", gid) if gid else ("dup", round(e.t_start, 6), round(e.t_end, 6))
+                )
                 clusters.setdefault(key, []).append(e)
             for c in clusters.values():
                 if len(c) > 1:
@@ -48,7 +52,7 @@ def _multi_item_events(events, overlap_thr=None):
             n = len(group)
             parent = list(range(n))
 
-            def find(x, _p=parent):
+            def find(x: int, _p: list[int] = parent) -> int:
                 while _p[x] != x:
                     _p[x] = _p[_p[x]]
                     x = _p[x]
@@ -58,7 +62,7 @@ def _multi_item_events(events, overlap_thr=None):
                 for j in range(i + 1, n):
                     if tiou(group[i], group[j]) >= overlap_thr:
                         parent[find(i)] = find(j)
-            comps = {}
+            comps: dict[int, list[Any]] = {}
             for i in range(n):
                 comps.setdefault(find(i), []).append(group[i])
             for c in comps.values():
@@ -67,7 +71,7 @@ def _multi_item_events(events, overlap_thr=None):
     return out
 
 
-def _prf(tp, fp, fn):
+def _prf(tp: int, fp: int, fn: int) -> dict[str, Any]:
     p = tp / (tp + fp) if (tp + fp) else 0.0
     r = tp / (tp + fn) if (tp + fn) else 0.0
     f1 = 2 * p * r / (p + r) if (p + r) else 0.0
@@ -75,18 +79,18 @@ def _prf(tp, fp, fn):
 
 
 def aggregate_metrics(
-    events,
-    preds,
-    clip_durations,
-    ignores=(),
-    tiou_thresholds=(0.3, 0.5),
-    midpoint_tol_s=1.0,
-    matcher="hungarian",
-    map_thresholds=(0.3, 0.5, 0.7),
-    multi_item_overlap_thr=None,
-    runtime_s=None,
-    confusion_tiou=0.5,
-):
+    events: Any,
+    preds: Any,
+    clip_durations: dict[str, float],
+    ignores: Any = (),
+    tiou_thresholds: tuple[float, ...] = (0.3, 0.5),
+    midpoint_tol_s: float = 1.0,
+    matcher: str = "hungarian",
+    map_thresholds: tuple[float, ...] = (0.3, 0.5, 0.7),
+    multi_item_overlap_thr: float | None = None,
+    runtime_s: float | None = None,
+    confusion_tiou: float = 0.5,
+) -> dict[str, Any]:
     """Full metric bundle for one model run. Ignore-filtered consistently."""
     if clip_durations and any((d is not None and d < 0) for d in clip_durations.values()):
         raise ValueError("clip_durations must be non-negative")
@@ -94,7 +98,7 @@ def aggregate_metrics(
         raise ValueError("tiou_thresholds must be a non-empty sequence")
     ev = drop_ignored(events, ignores)
     pr = drop_ignored(preds, ignores)
-    out = {}
+    out: dict[str, Any] = {}
 
     for thr in tiou_thresholds:
         r = evaluate_class_aware(ev, pr, Criterion("tiou", tiou_threshold=thr), (), matcher)
@@ -166,8 +170,14 @@ def aggregate_metrics(
 
 
 def slice_metrics(
-    events, preds, clip_durations, ignores=(), short_max_s=1.0, slice_tiou_threshold=None, **kw
-):
+    events: Any,
+    preds: Any,
+    clip_durations: dict[str, float],
+    ignores: Any = (),
+    short_max_s: float = 1.0,
+    slice_tiou_threshold: float | None = None,
+    **kw: Any,
+) -> dict[str, Any]:
     """Full metrics on ``all``; recall/TP/FN/support on GT-metadata slices.
 
     The slice criterion and matcher are derived from the SAME resolved configuration
@@ -175,10 +185,10 @@ def slice_metrics(
     Metadata is read defensively; a slice family is only emitted when at least one
     event actually carries that metadata. Precision is not reported per slice.
     """
-    out = {"all": aggregate_metrics(events, preds, clip_durations, ignores, **kw)}
+    out: dict[str, Any] = {"all": aggregate_metrics(events, preds, clip_durations, ignores, **kw)}
     ev = drop_ignored(events, ignores)
     pr = drop_ignored(preds, ignores)
-    tiou_thresholds = kw.get("tiou_thresholds", (0.3, 0.5))
+    tiou_thresholds: tuple[float, ...] = kw.get("tiou_thresholds", (0.3, 0.5))
     if not tiou_thresholds:
         raise ValueError("tiou_thresholds must be a non-empty sequence")
     slice_tiou = (
@@ -186,10 +196,10 @@ def slice_metrics(
         if slice_tiou_threshold is not None
         else (0.5 if 0.5 in tiou_thresholds else min(tiou_thresholds))
     )
-    matcher = kw.get("matcher", "hungarian")
+    matcher: str = kw.get("matcher", "hungarian")
     crit = Criterion("tiou", tiou_threshold=slice_tiou)
 
-    slices = {}
+    slices: dict[str, list[Any]] = {}
     if any(hasattr(e, "confidence") for e in ev):
         slices["high_med_only"] = [
             e for e in ev if type_name(getattr(e, "confidence", "high")) in ("high", "med")

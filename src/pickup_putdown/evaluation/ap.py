@@ -7,6 +7,8 @@ score ties break deterministically regardless of input row order.
 
 from __future__ import annotations
 
+from typing import Any
+
 import numpy as np
 
 from .class_aware_matching import _canonical, by_clip, drop_ignored
@@ -14,16 +16,18 @@ from .contracts import VALID_TYPES, type_name
 from .intervals import tiou
 
 
-def _scored_hits(events, preds, etype, tiou_thr, ignores):
+def _scored_hits(
+    events: Any, preds: Any, etype: str, tiou_thr: float, ignores: Any
+) -> tuple[list[tuple[float, int, float, float]], int]:
     """Per type: list of (score, is_tp, t_start, t_end) over all clips + GT count."""
     events = drop_ignored(events, ignores)
     preds = drop_ignored(preds, ignores)
     ge = by_clip([e for e in events if type_name(e.type) == etype])
     gp = by_clip([p for p in preds if type_name(p.type) == etype])
     n_gt = sum(len(v) for v in ge.values())
-    scored = []
-    for clip in sorted(set(ge) | set(gp)):  # deterministic clip order
-        gts = _canonical(list(ge.get(clip, [])))  # canonical GT order
+    scored: list[tuple[float, int, float, float]] = []
+    for clip in sorted(set(ge) | set(gp)):
+        gts = _canonical(list(ge.get(clip, [])))
         ps = sorted(
             gp.get(clip, []),
             key=lambda x: (
@@ -48,7 +52,13 @@ def _scored_hits(events, preds, etype, tiou_thr, ignores):
     return scored, n_gt
 
 
-def average_precision(events, preds, etype, tiou_thr=0.5, ignores=()):
+def average_precision(
+    events: Any,
+    preds: Any,
+    etype: str,
+    tiou_thr: float = 0.5,
+    ignores: Any = (),
+) -> float | None:
     """All-points AP for one type at one tIoU threshold (order-invariant).
 
     ``None`` when no GT of this type; ``0.0`` when GT exists but no predictions.
@@ -58,9 +68,10 @@ def average_precision(events, preds, etype, tiou_thr=0.5, ignores=()):
         return None
     if not scored:
         return 0.0
-    scored.sort(key=lambda x: (-x[0], x[2], x[3]))  # deterministic tie-break
+    scored.sort(key=lambda x: (-x[0], x[2], x[3]))
     tp = fp = 0
-    prec, rec = [], []
+    prec: list[float] = []
+    rec: list[float] = []
     for _score, is_tp, _ts, _te in scored:
         tp += is_tp
         fp += 1 - is_tp
@@ -74,13 +85,18 @@ def average_precision(events, preds, etype, tiou_thr=0.5, ignores=()):
     return float(np.sum((mrec[idx + 1] - mrec[idx]) * mpre[idx + 1]))
 
 
-def mean_ap(events, preds, tiou_thresholds=(0.3, 0.5, 0.7), ignores=()):
+def mean_ap(
+    events: Any,
+    preds: Any,
+    tiou_thresholds: tuple[float, ...] = (0.3, 0.5, 0.7),
+    ignores: Any = (),
+) -> dict[str, float | None]:
     """mAP@tIoU at each threshold plus the average across thresholds."""
-    out = {}
+    out: dict[str, float | None] = {}
     for thr in tiou_thresholds:
         aps = [average_precision(events, preds, t, thr, ignores) for t in VALID_TYPES]
-        aps = [a for a in aps if a is not None]
-        out[f"mAP@{thr}"] = float(sum(aps) / len(aps)) if aps else None
+        valid = [a for a in aps if a is not None]
+        out[f"mAP@{thr}"] = float(sum(valid) / len(valid)) if valid else None
     vals = [v for v in out.values() if v is not None]
     out["mAP_avg"] = float(sum(vals) / len(vals)) if vals else None
     return out

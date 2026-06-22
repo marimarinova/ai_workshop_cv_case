@@ -39,7 +39,7 @@ model-specific code.
 | `evaluation/class_aware_matching.py` | `class_aware_matching.py` — `match_one_to_one`, `match_ranked`, `evaluate_class_aware` |
 | `evaluation/confusion_matching.py` | `confusion_matching.py` — `evaluate_confusion` |
 | `evaluation/metrics.py` | `metrics.py` — `aggregate_metrics`, `slice_metrics` |
-| `evaluation/report.py` | `report.py` — `render_markdown`, `failure_gallery` |
+| `evaluation/report.py` | `report.py` — `render_markdown`, `render_html`, `metrics_to_json`, `failure_gallery` |
 | `tests/test_evaluation.py` | `tests/test_evaluation.py` — 39 passed, 1 skipped + `tests/test_enum_types.py` (plain-Enum pipeline guard) + `tests/test_integration_pydantic.py` + `tests/test_integration_real_schemas.py` (1 skipped: runs in-repo) |
 | (supporting) | `intervals.py` (tIoU/midpoint/Criterion), `ap.py` (mAP), `io.py` (CSV adapter), `contracts.py` (test-only dataclasses), `__init__.py` |
 
