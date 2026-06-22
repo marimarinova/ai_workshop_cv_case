@@ -8,7 +8,7 @@
 **Difficulty:** `hard`
 **Status:** implementation complete; verified by the test suite (39 passed, 1 skipped). Real-data run pending `events.csv` (task_7) and a model `predictions.csv`.
 **Dependencies:** Task 1 schemas (`pickup_putdown.common.schemas`). Synthetic fixtures used to build; the evaluator is duck-typed and consumes the canonical Pydantic `Event`/`Prediction` directly.
-**Branch:** `feature/task-8-shared-evaluator`
+**Branch:** `feature/task-8-evaluation-framework`
 
 ## Objective
 
@@ -81,7 +81,7 @@ model-specific code.
 
 ## Handoff Contract
 
-- PR `feature/task-8-shared-evaluator` → `main` (UI review/merge; not merged locally).
+- PR `feature/task-8-evaluation-framework` → `master` (UI review/merge; not merged locally).
 - Resolved config used for the acceptance run: defaults — `tiou_thresholds=(0.3,0.5)`, `midpoint_tol_s=1.0`, `map_thresholds=(0.3,0.5,0.7)`, `matcher="hungarian"`.
 - Sample output / fixture: `samples/sample_metrics.json` (machine-readable), regenerable from code.
 - Assumptions / limitations: multi-item detected by shared `group_id` or exact-duplicate rows (overlap clustering is explicit opt-in); real-data validation pending.
@@ -110,7 +110,7 @@ the task file 1:1:
   now accepts `runtime_s` and reports `runtime_per_video_minute` (alongside `fp_per_hour`).
   Test: `test_runtime_per_video_minute`.
 - **Deliverable "Markdown/HTML report"** — `report.render_html` added next to
-  `render_markdown`. Test: `test_render_html_and_markdown`.
+  `render_markdown`. Tests: `test_reports_and_json_serializable`, `test_html_report_escapes_model_name`.
 - **Implementation step 7 "slices … multiple-person"** — `slice_metrics` now emits a
   `multiple_person` slice wherever events carry an `n_person` attribute > 1
   ("where metadata is available", per §17.5). Test: `test_multiple_person_slice`.
