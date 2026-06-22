@@ -10,9 +10,9 @@ going through the explicit conversion layer.
 from __future__ import annotations
 
 from enum import StrEnum
-from typing import Any
+from typing import Any, Self
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 # ---------------------------------------------------------------------------
 # Enums
@@ -66,7 +66,7 @@ class AnnotationRegion(BaseModel):
     labels: list[EventLabel] = Field(min_length=1)
     confidence: ConfidenceLevel = ConfidenceLevel.HIGH
     hard_case: HardCaseFlag = HardCaseFlag.FALSE
-    item_count: int | None = None
+    item_count: int | None = Field(default=None, ge=1)
     notes: str | None = None
 
     @field_validator("end_frame")
@@ -252,7 +252,7 @@ class AnnotationEvent(BaseModel):
     end_time: float
     confidence: ConfidenceLevel = ConfidenceLevel.HIGH
     hard_case: HardCaseFlag = HardCaseFlag.FALSE
-    item_count: int = Field(ge=1)
+    item_count: int | None = Field(default=None, ge=1)
     review_status: ReviewStatus = ReviewStatus.DRAFT
     annotator: str = ""
     notes: str | None = None
@@ -273,6 +273,18 @@ class AnnotationEvent(BaseModel):
         if start is not None and v <= start:
             raise ValueError("end_time must be greater than start_time")
         return v
+
+    @model_validator(mode="after")
+    def validate_item_count_for_label(self) -> Self:
+        """Require item counts for events, but not for ignore intervals."""
+        if self.label in {EventLabel.PICKUP, EventLabel.PUTDOWN}:
+            if self.item_count is None:
+                raise ValueError(
+                    "item_count is required for pickup and putdown annotations"
+                )
+        elif self.label is EventLabel.IGNORE and self.item_count is not None:
+            raise ValueError("item_count must be omitted for ignore intervals")
+        return self
 
 
 # ---------------------------------------------------------------------------
