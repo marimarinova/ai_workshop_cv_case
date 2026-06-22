@@ -20,7 +20,7 @@ def evaluate_confusion(
     preds = drop_ignored(preds, ignores)
     ge, gp = by_clip(events), by_clip(preds)
     conf: dict[str, dict[str, int]] = {a: dict.fromkeys(VALID_TYPES, 0) for a in VALID_TYPES}
-    for clip in set(ge) | set(gp):
+    for clip in sorted(set(ge) | set(gp)):
         r = match_one_to_one(ge.get(clip, []), gp.get(clip, []), criterion)
         for g, p in r.matched:
             conf[type_name(g.type)][type_name(p.type)] += 1

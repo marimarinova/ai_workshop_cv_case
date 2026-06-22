@@ -17,7 +17,7 @@ VALID_TYPES: tuple[str, ...] = ("pickup", "putdown")
 
 def type_name(t: object) -> str:
     """Normalize an event type to its string value (StrEnum, Enum, or str)."""
-    return t.value if isinstance(t, Enum) else str(t)
+    return str(t.value) if isinstance(t, Enum) else str(t)
 
 
 @runtime_checkable

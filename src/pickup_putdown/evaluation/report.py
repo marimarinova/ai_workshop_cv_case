@@ -93,7 +93,7 @@ def failure_gallery(
     pr = drop_ignored(preds, ignores)
     ge, gp = by_clip(ev), by_clip(pr)
     type_confusions: list[dict[str, Any]] = []
-    for clip in set(ge) | set(gp):
+    for clip in sorted(set(ge) | set(gp)):
         m = match_one_to_one(ge.get(clip, []), gp.get(clip, []), criterion)
         for g, p in m.matched:
             if type_name(g.type) != type_name(p.type):

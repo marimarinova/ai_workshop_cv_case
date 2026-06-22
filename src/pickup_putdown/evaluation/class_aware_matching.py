@@ -126,7 +126,7 @@ def evaluate_class_aware(
     preds = drop_ignored(preds, ignores)
     ge, gp = by_clip(events), by_clip(preds)
     agg = MatchResult()
-    for clip in set(ge) | set(gp):
+    for clip in sorted(set(ge) | set(gp)):
         for t in VALID_TYPES:
             r: MatchResult = match_fn(
                 [e for e in ge.get(clip, []) if type_name(e.type) == t],

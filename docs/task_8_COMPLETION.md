@@ -123,7 +123,7 @@ proposal recall, which by spec belongs to Layer 0B / task_7.
 ## Repository integration notes (at merge time)
 
 - This package's `pyproject.toml` is for standalone testing. Do NOT replace the
-  repository root `pyproject.toml`; instead add `scipy>=1.10` (and `numpy`) to the
+  repository root `pyproject.toml`; instead add `scipy>=1.12` (and `numpy>=1.26`) to the
   repository's existing dependencies/requirements and keep its `requires-python >= 3.12`.
 - Run the repository's own `make` lint/type/test targets, not only `pytest -q`.
 - `configs/evaluation_acceptance.yaml` sets `ignore_rule: any_positive_overlap`. The official
