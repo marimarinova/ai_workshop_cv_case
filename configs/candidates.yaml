@@ -1,0 +1,74 @@
+# Pipeline configuration for remote candidate generation.
+# Used by: pickup-putdown candidates-remote
+#
+# This file extends the base triage and proposals configuration
+# with settings specific to the remote candidate generation workflow.
+
+# Inherit from configs/triage.yaml for Task 3 settings
+triage:
+  model_path: "models/person_detector.pt"
+  target_fps: 1.0
+  image_size: 640
+  device: "auto"
+  half: false
+  detector_confidence: 0.10
+  detector_iou_threshold: 0.70
+  max_detections: 100
+  minimum_track_confidence: 0.35
+  minimum_visible_duration_s: 0.75
+  minimum_observations: 2
+  max_track_observation_gap_s: 1.5
+  merge_gap_s: 1.0
+  preview_sample_rate: 0.10
+  sampling_seed: 42
+  tracker_config: "configs/bytetrack_triage.yaml"
+
+# Inherit from configs/proposals.yaml for Task 5 settings
+pose:
+  model_path: "models/pose_detector.pt"
+  target_fps: 8
+  image_size: 640
+  device: "auto"
+  half: false
+  pose_confidence: 0.30
+  max_detections: 100
+  process_active_spans_only: true
+
+actor_association:
+  min_actor_confidence: 0.30
+  match_iou_threshold: 0.15
+  max_gap_s: 0.5
+  allow_unmatched: true
+
+region_measurements:
+  expanded_margin_override: null
+  min_wrist_confidence: 0.30
+  min_dwell_duration_s: 0.25
+  velocity_window_frames: 5
+  reversal_threshold: 0.30
+  gap_tolerance_s: 0.5
+
+proposals:
+  target_fps: 8
+  minimum_wrist_confidence: 0.30
+  minimum_interaction_duration_s: 0.25
+  merge_gap_s: 1.0
+  context_before_s: 2.0
+  context_after_s: 2.0
+  maximum_candidate_duration_s: 10.0
+  trajectory_smoothing: false
+  smoothing_window: 3
+
+# Candidate encoding configuration
+candidate_encoding:
+  codec: libx264
+  pixel_format: yuv420p
+  preset: fast
+  crf: 23
+  faststart: true
+  retain_audio: false
+  keyframe_interval_s: 2
+
+# Camera and shelf configuration
+camera_id: "store_camera_01"
+shelves_config: "configs/shelves.yaml"

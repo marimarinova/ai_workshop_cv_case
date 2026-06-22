@@ -1473,5 +1473,200 @@ def annotation_roundtrip(
         raise SystemExit(1)
 
 
+@app.command("candidates-remote")
+def candidates_remote(
+    storage_config: str = typer.Option(
+        "configs/storage.s3.yaml",
+        "--storage-config",
+        "-s",
+        help="Path to S3 storage configuration YAML file.",
+    ),
+    pipeline_config: str = typer.Option(
+        "configs/candidates.yaml",
+        "--pipeline-config",
+        "-p",
+        help="Path to candidate pipeline configuration YAML file.",
+    ),
+    target_count: int = typer.Option(
+        5,
+        "--target-count",
+        "-t",
+        help="Number of unprocessed videos to select for candidate generation.",
+    ),
+    workers: int = typer.Option(
+        4,
+        "--workers",
+        "-w",
+        help="Maximum concurrent source-video processing jobs.",
+    ),
+    transfer_workers: int = typer.Option(
+        4,
+        "--transfer-workers",
+        help="Maximum concurrent S3 download/upload operations.",
+    ),
+    gpu_workers: int = typer.Option(
+        1,
+        "--gpu-workers",
+        help="Maximum concurrent GPU inference jobs.",
+    ),
+    encode_workers: int = typer.Option(
+        4,
+        "--encode-workers",
+        help="Maximum concurrent H.264 encoding jobs.",
+    ),
+    work_dir: str = typer.Option(
+        ".local/remote_candidates",
+        "--work-dir",
+        help="Local working directory for intermediate files.",
+    ),
+    keep_local_files: bool = typer.Option(
+        False,
+        "--keep-local-files",
+        help="Keep local intermediate files after successful upload.",
+    ),
+    fail_fast: bool = typer.Option(
+        False,
+        "--fail-fast",
+        help="Stop all processing on first source video failure.",
+    ),
+    overwrite: bool = typer.Option(
+        False,
+        "--overwrite",
+        help="Re-process videos already marked as processed.",
+    ),
+    dry_run: bool = typer.Option(
+        False,
+        "--dry-run",
+        "-n",
+        help="Synchronize ledger and report selections without processing.",
+    ),
+    verbose: bool = typer.Option(
+        False,
+        "--verbose",
+        "-v",
+        help="Enable debug logging.",
+    ),
+) -> None:
+    """Generate annotation candidates from remote S3 source videos.
+
+    Downloads unprocessed source videos from S3, runs the Tasks 3-5
+    candidate-generation pipeline, encodes candidates as H.264 MP4 files,
+    and uploads them back to S3 for Label Studio annotation.
+    """
+    _setup_logging(verbose)
+
+    from pathlib import Path
+
+    from pickup_putdown.config import load_config
+    from pickup_putdown.remote.coordinator import (
+        CoordinationConfig,
+        run_candidate_generation,
+    )
+    from pickup_putdown.remote.ledger import ProcessingLedger
+    from pickup_putdown.remote.s3_storage import S3Storage
+    from pickup_putdown.remote.worker import WorkerConfig
+
+    # Load storage config
+    cfg = load_config(Path(storage_config))
+    storage_cfg = cfg.storage
+
+    if not storage_cfg.bucket_uri:
+        typer.echo("Error: storage.bucket_uri is required.", err=True)
+        raise SystemExit(1)
+
+    typer.echo(f"Storage: {storage_cfg.bucket_uri}")
+    typer.echo(f"Target count: {target_count}")
+    typer.echo(
+        f"Workers: {workers} (transfer={transfer_workers}, gpu={gpu_workers}, encode={encode_workers})"
+    )
+
+    # Initialize S3 storage
+    storage = S3Storage(
+        bucket_uri=storage_cfg.bucket_uri,
+        endpoint_url=storage_cfg.endpoint_url,
+        region=storage_cfg.region,
+        anonymous=storage_cfg.anonymous,
+    )
+
+    # Initialize ledger
+    ledger = ProcessingLedger(storage)
+
+    # Load pipeline config for encoding settings
+    pipeline_cfg = load_config(Path(pipeline_config))
+
+    # Build coordination config
+    coord_cfg = CoordinationConfig(
+        target_count=target_count,
+        workers=workers,
+        transfer_workers=transfer_workers,
+        gpu_workers=gpu_workers,
+        encode_workers=encode_workers,
+        work_dir=work_dir,
+        keep_local_files=keep_local_files,
+        fail_fast=fail_fast,
+        overwrite=overwrite,
+        dry_run=dry_run,
+    )
+
+    # Build worker config
+    worker_cfg = WorkerConfig(
+        storage_config=Path(storage_config),
+        pipeline_config=Path(pipeline_config),
+        work_dir=Path(work_dir),
+        keep_local_files=keep_local_files,
+        triage_config=cfg.triage.model_dump()
+        .get("model_path", "models/person_detector.pt")
+        .rsplit("/", 1)[0]
+        + "/triage.yaml"
+        if False
+        else "configs/triage.yaml",
+        proposals_config="configs/proposals.yaml",
+        shelves_config="configs/shelves.yaml",
+        camera_id="store_camera_01",
+    )
+
+    # Override from pipeline config if present
+    if hasattr(pipeline_cfg, "triage"):
+        worker_cfg.triage_config = "configs/triage.yaml"
+    if hasattr(pipeline_cfg, "proposals"):
+        worker_cfg.proposals_config = "configs/proposals.yaml"
+
+    try:
+        report = run_candidate_generation(
+            storage=storage,
+            ledger=ledger,
+            config=coord_cfg,
+            worker_cfg=worker_cfg,
+        )
+    except KeyboardInterrupt as kb_exc:
+        typer.echo("\nInterrupted by user.", err=True)
+        raise SystemExit(130) from kb_exc
+    except Exception as exc:
+        typer.echo(f"Fatal error: {exc}", err=True)
+        raise SystemExit(1) from exc
+
+    # Print summary
+    typer.echo("")
+    typer.echo("=== Candidate Generation Summary ===")
+    typer.echo(f"  Run ID:              {report.run_id}")
+    typer.echo(f"  Requested:           {report.requested_count}")
+    typer.echo(f"  Selected:            {report.selected_count}")
+    typer.echo(f"  Completed:           {report.completed_count}")
+    typer.echo(f"  Failed:              {report.failed_count}")
+    typer.echo(f"  Skipped:             {report.skipped_count}")
+    typer.echo(f"  Total candidates:    {report.total_candidates}")
+    typer.echo(f"  Start:               {report.start_time}")
+    typer.echo(f"  End:                 {report.end_time}")
+
+    if report.failed_sources:
+        typer.echo("")
+        typer.echo("Failed sources:")
+        for fs in report.failed_sources:
+            typer.echo(f"  {fs['source_key']}: {fs['error'][:120]}")
+
+    if report.failed_count > 0:
+        raise SystemExit(1)
+
+
 if __name__ == "__main__":
     app()
