@@ -76,10 +76,11 @@
     <Label value="ignore" background="#FF9800" />
   </TimelineLabels>
 
-  <!-- Attributes required for pickup and putdown regions -->
+  <!-- Pickup and putdown attributes -->
 
 <View
 visibleWhen="region-selected"
+whenTagName="labels"
 whenLabelValue="pickup,putdown"
 style="padding: 12px; margin-top: 12px; border: 1px solid #ddd;"
 
@@ -96,6 +97,9 @@ style="padding: 12px; margin-top: 12px; border: 1px solid #ddd;"
   perRegion="true"
   choice="single-radio"
   showInline="true"
+  visibleWhen="region-selected"
+  whenTagName="labels"
+  whenLabelValue="pickup,putdown"
   required="true"
   requiredMessage="Select confidence for this event."
 >
@@ -110,6 +114,9 @@ style="padding: 12px; margin-top: 12px; border: 1px solid #ddd;"
   perRegion="true"
   choice="single-radio"
   showInline="true"
+  visibleWhen="region-selected"
+  whenTagName="labels"
+  whenLabelValue="pickup,putdown"
   required="true"
   requiredMessage="Specify whether this is a hard case."
 >
@@ -124,6 +131,9 @@ style="padding: 12px; margin-top: 12px; border: 1px solid #ddd;"
   min="1"
   step="1"
   defaultValue="1"
+  visibleWhen="region-selected"
+  whenTagName="labels"
+  whenLabelValue="pickup,putdown"
   required="true"
   requiredMessage="Enter an item count of at least 1."
 />
@@ -131,10 +141,11 @@ style="padding: 12px; margin-top: 12px; border: 1px solid #ddd;"
 
   </View>
 
-  <!-- Attributes required for ignore regions -->
+  <!-- Ignore interval attributes -->
 
 <View
 visibleWhen="region-selected"
+whenTagName="labels"
 whenLabelValue="ignore"
 style="padding: 12px; margin-top: 12px; border: 1px solid #ddd;"
 
@@ -150,8 +161,9 @@ style="padding: 12px; margin-top: 12px; border: 1px solid #ddd;"
   toName="video"
   perRegion="true"
   choice="single-radio"
-  required="true"
-  requiredMessage="Select why this interval is ignored."
+  visibleWhen="region-selected"
+  whenTagName="labels"
+  whenLabelValue="ignore"
 >
   <Choice value="ACTION_OCCLUDED" />
   <Choice value="ACTION_OUT_OF_FRAME" />
@@ -167,6 +179,7 @@ style="padding: 12px; margin-top: 12px; border: 1px solid #ddd;"
 
 <View
 visibleWhen="region-selected"
+whenTagName="labels"
 style="padding: 12px; margin-top: 12px; border: 1px solid #ddd;"
 
 >
@@ -182,6 +195,8 @@ style="padding: 12px; margin-top: 12px; border: 1px solid #ddd;"
   perRegion="true"
   choice="single-radio"
   showInline="true"
+  visibleWhen="region-selected"
+  whenTagName="labels"
   required="true"
   requiredMessage="Select a review status for this region."
 >
@@ -199,6 +214,8 @@ style="padding: 12px; margin-top: 12px; border: 1px solid #ddd;"
   maxSubmissions="1"
   rows="2"
   placeholder="Optional notes for this region"
+  visibleWhen="region-selected"
+  whenTagName="labels"
 />
 ```
 

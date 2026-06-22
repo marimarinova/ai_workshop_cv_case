@@ -1,43 +1,41 @@
 [
   {
     "data": {
-      "video": "/resources/annotations/clip_001.mp4",
+      "video": "/data/local-files/?d=samples/clip_002.h264.mp4",
       "clip_id": "clip_001",
-      "fps": 34.0,
+      "fps": 3.0,
       "active_start_s": 0.0,
       "active_end_s": 27.750
     },
     "predictions": [
       {
+        "model_version": "stage_b_sample",
+        "score": 0.72,
         "result": [
           {
             "id": "pred_001",
             "from_name": "labels",
             "to_name": "video",
-            "type": "timelabels",
+            "type": "timelinelabels",
             "value": {
-              "start": 8.0,
-              "end": 10.5,
-              "labels": ["pickup"],
-              "item_count": 1,
-              "confidence": "high",
-              "hard_case": "false"
+              "ranges": [
+                {
+                  "start": 32,
+                  "end": 42
+                }
+              ],
+              "timelinelabels": ["pickup"]
             }
           }
-        ],
-        "score": 0.72,
-        "model_source": "wrist_entered_region",
-        "candidate_id": "cand_001",
-        "candidate_source": "wrist_entered_region",
-        "candidate_score": 0.72
+        ]
       }
     ]
   },
   {
     "data": {
-      "video": "/resources/annotations/clip_002.mp4",
+      "video": "/data/local-files/?d=samples/clip_002.h264.mp4",
       "clip_id": "clip_002",
-      "fps": 34.0,
+      "fps": 4.0,
       "active_start_s": 0.0,
       "active_end_s": 26.750
     },
