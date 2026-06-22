@@ -1,108 +1,230 @@
 <!--
-  Label Studio labeling configuration for pickup/putdown temporal event annotation.
+  Shared Label Studio configuration for pickup/putdown temporal annotation.
 
-  This is the single shared configuration used by every annotator.
-  See docs/ANNOTATION_WORKFLOW.md and annotation/README.md for operating procedure.
+  Main regions:
+    - pickup
+    - putdown
+    - ignore
 
-  Controls:
-    - TimelineLabels (pickup, putdown, ignore) for interval annotation
-    - Per-region confidence, hard_case, item_count, review_status
-    - Task-level complete_active_span_reviewed confirmation
+  Region attributes:
+    - confidence
+    - hard_case
+    - item_count for pickup/putdown
+    - ignore_reason for ignore intervals
+    - review_status
+    - notes
+
+  Task attribute:
+    - complete_active_span_reviewed
 -->
 
 <View>
-  <!-- Task metadata (hidden from annotator, carried in export) -->
   <Header value="Pickup/Putdown Annotation" />
-  <Text name="clip_info" value="$clip_id" visible="false" />
-  <Text name="fps_info" value="$fps" visible="false" />
-  <Text name="active_span_info" value="$active_start_s-$active_end_s" visible="false" />
 
-  <!-- Annotation guidance -->
-  <Header value="Guidance" visible="true">
-    <p>
-      <strong>Pickup:</strong> Person removes an item from a shelf/surface and takes it into hand(s).
-    </p>
-    <p>
-      <strong>Putdown:</strong> Person places an item back onto a shelf/surface and releases it.
-    </p>
-    <p>
-      <strong>Ignore:</strong> Transfer evidence is unavailable (fully occluded or out-of-frame).
-      Do NOT use ignore for low-confidence visible events or visible restocking.
-    </p>
-    <p>
-      <strong>Restocking:</strong> Visible restocking is NOT putdown. Mark as background/hard negative.
-    </p>
-    <p>
-      <strong>Two items at once:</strong> Create two separate events with the same interval.
-    </p>
-    <p>
-      <strong>Immediate pickup then putdown:</strong> Create two ordered events.
-    </p>
-    <p>
-      <strong>Confidence:</strong> high = clear, med = likely, low = visible but uncertain.
-    </p>
-    <p>
-      <strong>Hard case:</strong> Set to true for difficult but labelable cases.
-    </p>
-    <p>
-      <strong>Review the complete active span</strong> even when candidate suggestions are present.
-      Candidates are suggestions only — they must never be imported as ground truth.
-    </p>
-  </Header>
+  <View style="padding: 12px; margin-bottom: 12px; border: 1px solid #ddd;">
+    <Header value="Annotation guidance" />
 
-  <!-- Video timeline for interval annotation -->
-  <TimelineLabels name="labels" toName="video" per_region="true">
+```
+<Text
+  name="guidance_pickup"
+  value="Pickup: The person removes an item from a shelf or surface and takes control of it."
+/>
+
+<Text
+  name="guidance_putdown"
+  value="Putdown: The person places an item onto a shelf or surface and releases control of it."
+/>
+
+<Text
+  name="guidance_ignore"
+  value="Ignore: Use only when transfer evidence is unavailable, such as a fully occluded or out-of-frame interaction."
+/>
+
+<Text
+  name="guidance_low_confidence"
+  value="A visible but ambiguous event remains pickup or putdown with confidence set to low. Do not mark it as ignore."
+/>
+
+<Text
+  name="guidance_multi_item"
+  value="For simultaneous items, create one interval and enter the number of transferred items in Item count."
+/>
+
+<Text
+  name="guidance_immediate_return"
+  value="For an immediate pickup followed by putdown, create two separate ordered intervals."
+/>
+
+<Text
+  name="guidance_candidates"
+  value="Candidate regions are suggestions only. Review the complete active span and correct, delete, or add regions as needed."
+/>
+```
+
+  </View>
+
+<Video
+ name="video"
+ value="$video"
+ frameRate="$fps"
+ timelineHeight="120"
+/>
+
+  <TimelineLabels name="labels" toName="video">
     <Label value="pickup" background="#4CAF50" />
     <Label value="putdown" background="#2196F3" />
     <Label value="ignore" background="#FF9800" />
   </TimelineLabels>
 
-  <Video name="video" value="$video" framerate="$fps" />
+  <!-- Attributes required for pickup and putdown regions -->
 
-  <!-- Per-region controls (appear when a region is selected) -->
-  <RectangleLabels name="confidence" toName="video" per_region="true">
-    <Label value="high" background="#4CAF50" />
-    <Label value="med" background="#FFC107" />
-    <Label value="low" background="#F44336" />
-  </RectangleLabels>
+<View
+visibleWhen="region-selected"
+whenLabelValue="pickup,putdown"
+style="padding: 12px; margin-top: 12px; border: 1px solid #ddd;"
 
-  <RectangleLabels name="hard_case" toName="video" per_region="true">
-    <Label value="true" background="#9C27B0" />
-    <Label value="false" background="#607D8B" />
-  </RectangleLabels>
+>
 
-  <Choices name="item_count" toName="video" per_region="true" choice="single-radio">
-    <Label value="1" />
-    <Label value="2" />
-    <Label value="3" />
-    <Label value="4+" />
-  </Choices>
+```
+<Header value="Event attributes" />
+```
 
-  <Choices name="review_status" toName="video" per_region="true" choice="single-radio">
-    <Label value="draft" />
-    <Label value="reviewed" />
-    <Label value="accepted" />
-    <Label value="needs_adjudication" />
-  </Choices>
+```
+<Choices
+  name="confidence"
+  toName="video"
+  perRegion="true"
+  choice="single-radio"
+  showInline="true"
+  required="true"
+  requiredMessage="Select confidence for this event."
+>
+  <Choice value="high" />
+  <Choice value="med" />
+  <Choice value="low" />
+</Choices>
 
-  <TextArea name="notes" toName="video" per_region="true" editable="true"
-            maxSubmissions="1" rows="2" placeholder="Optional notes for this region...">
-  </TextArea>
+<Choices
+  name="hard_case"
+  toName="video"
+  perRegion="true"
+  choice="single-radio"
+  showInline="true"
+  required="true"
+  requiredMessage="Specify whether this is a hard case."
+>
+  <Choice value="false" />
+  <Choice value="true" />
+</Choices>
 
-  <!-- Task-level confirmation -->
-  <Header value="Review Confirmation" visible="true">
-    <p>
-      I have reviewed the complete active span for this clip.
-      Check the box below to confirm.
-    </p>
-  </Header>
-  <Checkbox name="complete_active_span_reviewed" toName="video"
-            value="true" choice="single-radio">
-    <Label value="true" />
-  </Checkbox>
+<Number
+  name="item_count"
+  toName="video"
+  perRegion="true"
+  min="1"
+  step="1"
+  defaultValue="1"
+  required="true"
+  requiredMessage="Enter an item count of at least 1."
+/>
+```
 
-  <!-- Hidden metadata fields for export -->
-  <Hidden name="meta_clip_id" value="$clip_id" />
-  <Hidden name="meta_fps" value="$fps" />
-  <Hidden name="meta_annotator" value="$annotator" />
+  </View>
+
+  <!-- Attributes required for ignore regions -->
+
+<View
+visibleWhen="region-selected"
+whenLabelValue="ignore"
+style="padding: 12px; margin-top: 12px; border: 1px solid #ddd;"
+
+>
+
+```
+<Header value="Ignore interval attributes" />
+```
+
+```
+<Choices
+  name="ignore_reason"
+  toName="video"
+  perRegion="true"
+  choice="single-radio"
+  required="true"
+  requiredMessage="Select why this interval is ignored."
+>
+  <Choice value="ACTION_OCCLUDED" />
+  <Choice value="ACTION_OUT_OF_FRAME" />
+  <Choice value="CLIP_BOUNDARY" />
+  <Choice value="UNLABELABLE" />
+  <Choice value="CORRUPT_SECTION" />
+</Choices>
+```
+
+  </View>
+
+  <!-- Attributes available for every selected region -->
+
+<View
+visibleWhen="region-selected"
+style="padding: 12px; margin-top: 12px; border: 1px solid #ddd;"
+
+>
+
+```
+<Header value="Region review" />
+```
+
+```
+<Choices
+  name="review_status"
+  toName="video"
+  perRegion="true"
+  choice="single-radio"
+  showInline="true"
+  required="true"
+  requiredMessage="Select a review status for this region."
+>
+  <Choice value="draft" />
+  <Choice value="reviewed" />
+  <Choice value="accepted" />
+  <Choice value="needs_adjudication" />
+</Choices>
+
+<TextArea
+  name="notes"
+  toName="video"
+  perRegion="true"
+  editable="true"
+  maxSubmissions="1"
+  rows="2"
+  placeholder="Optional notes for this region"
+/>
+```
+
+  </View>
+
+  <!-- Required task-level confirmation -->
+
+  <View style="padding: 12px; margin-top: 16px; border: 2px solid #555;">
+    <Header value="Complete-span review confirmation" />
+
+```
+<Text
+  name="review_confirmation_help"
+  value="Select Confirmed only after reviewing the complete active span, including areas outside any candidate suggestions."
+/>
+
+<Choices
+  name="complete_active_span_reviewed"
+  toName="video"
+  choice="single-radio"
+  required="true"
+  requiredMessage="Confirm that the complete active span was reviewed."
+>
+  <Choice value="true" alias="Confirmed" />
+</Choices>
+```
+
+  </View>
 </View>
