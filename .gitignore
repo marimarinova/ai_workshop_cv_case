@@ -214,3 +214,10 @@ artifacts/
 **.backup
 .local/
 models/
+
+# Annotation artifacts (generated per-session)
+annotation/tasks.json
+annotation/export.json
+annotation/label_studio_data/
+annotation/*.csv
+annotation/*.parquet

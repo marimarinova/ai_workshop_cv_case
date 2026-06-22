@@ -1,0 +1,26 @@
+[
+  {
+    "event_id": "evt_pickup_putdown_1",
+    "clip_id": "clip_pickup_putdown",
+    "type": "pickup",
+    "t_start": 3.0,
+    "t_end": 4.5,
+    "hard_case": false,
+    "annotator": "bob",
+    "confidence": "high",
+    "notes": "",
+    "event_group_id": "group_pickup_putdown_1"
+  },
+  {
+    "event_id": "evt_pickup_putdown_2",
+    "clip_id": "clip_pickup_putdown",
+    "type": "putdown",
+    "t_start": 5.0,
+    "t_end": 6.5,
+    "hard_case": false,
+    "annotator": "bob",
+    "confidence": "high",
+    "notes": "",
+    "event_group_id": "group_pickup_putdown_2"
+  }
+]

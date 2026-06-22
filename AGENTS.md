@@ -112,132 +112,100 @@ docker compose config
 
 Do not claim a check passed unless it was actually run and completed successfully.
 
-## Optional Code Context Engine
-
-The following section applies only when the named Code Context Engine tools are
-available in the current agent environment.
-
-If a required CCE tool is unavailable, use normal repository inspection tools
-instead and continue without failing the task.
-
-The version markers delimit the managed CCE instructions for automated updates.
-They do not provide conditional execution by themselves.
-
 <!-- cce-block-version: 4 -->
-
 ## Context Engine (CCE)
 
-This project may use Code Context Engine for code retrieval and cross-session
-memory.
-
-When CCE tools are available, follow the rules in this section.
+This project uses Code Context Engine for intelligent code retrieval and
+cross-session memory.
 
 ### Searching the codebase
 
-Use `context_search` before broad file exploration when:
+**You MUST use `context_search` instead of reading files directly** when
+exploring the codebase, answering questions about code, or understanding how
+things work. This is a hard requirement, not a suggestion. `context_search`
+returns the most relevant code chunks with confidence scores instead of whole
+files, and tracks token savings automatically.
 
-* Answering questions about repository code.
-* Locating a feature, function, class, configuration, or workflow.
-* Exploring architecture or dependencies.
-* Finding existing patterns before implementing a change.
-* Determining which files require direct inspection.
+When to use `context_search`:
+- Answering questions about the codebase ("how does X work?", "where is Y?")
+- Exploring structure or architecture
+- Finding related code, functions, or patterns
+- Any time you would otherwise read a file just to understand it
 
-Use a direct file read when:
+When to use `Read` instead:
+- You need to edit a specific file (read before editing)
+- You need the exact, complete content of a known file path
 
-* The user names a specific file.
-* You need exact and complete file contents.
-* You are preparing to edit a known file.
-* You need to verify a search result before changing code.
+Other search tools:
+- `expand_chunk` — get full source for a compressed result
+- `related_context` — find what calls/imports a function
 
-Use supporting tools where available:
+### Cross-session memory — use it actively
 
-* `expand_chunk` to inspect complete source around a search result.
-* `related_context` to find callers, imports, dependencies, and related symbols.
+This project has persistent memory across Claude Code sessions. **You must
+use it both ways: recall before answering, record after deciding.** Memory
+that is not recorded is lost; memory that is not recalled does nothing.
 
-Do not use `context_search` merely to avoid reading a file whose exact path and
-purpose are already known.
+**Before answering a non-trivial question, call `session_recall`.**
+Especially when:
+- The question touches architecture, design, or naming choices
+- The user asks "what / why / how did we ..."
+- You are about to recommend an approach the team may have already chosen
+  or already rejected
 
-### Cross-session memory
+Pass a topic phrase, not a single word — e.g. `session_recall("auth flow")`,
+not `session_recall("auth")`. Recall is vector-similarity-based, so paraphrases
+match. If recall returns relevant entries, lead with them ("Per a prior
+decision: ...") instead of re-deriving the answer.
 
-Use CCE memory for durable repository context, not as a general event log.
+**After making a non-obvious decision, call `record_decision`.** Especially:
+- Choosing one library / pattern / approach over another
+- Resolving an ambiguity in the spec or requirements
+- Establishing a convention the project should follow going forward
+- Anything you would not want to re-litigate next session
 
-Before a non-trivial repository question or implementation task, call
-`session_recall` when prior decisions may affect:
+Format: `record_decision(decision="...", reason="...")`. Keep both fields
+short and specific — they are surfaced verbatim at the start of future
+sessions.
 
-* Architecture.
-* Naming or layout conventions.
-* Model, library, or framework selection.
-* Data and evaluation conventions.
-* Previously accepted or rejected approaches.
-* Continuation of earlier implementation work.
+**After meaningful work in a file, call `record_code_area`.** Especially when:
+- You added or substantially modified a function/class
+- You traced through a non-obvious flow and want future-you to find it fast
 
-Use a descriptive topic phrase:
+Format: `record_code_area(file_path="...", description="...")`.
 
-```text
-session_recall("temporal event detection architecture")
-session_recall("pickup putdown timestamp definition")
-session_recall("VLM verifier output schema")
-```
+Skip recording for trivial reads, formatting changes, or one-off lookups —
+the goal is durable signal, not an event log.
 
-Avoid vague single-word queries.
+### Drilling deeper from a recall hit
 
-Recalled memory is supporting context, not authoritative state. Verify relevant
-claims against current code and configuration before implementing changes.
-Current repository state and explicit user instructions take precedence over
-stored memory.
+`session_recall` results are tagged with the source session id, e.g.
+`[turn sid:abc123|n:5]`. To drill in:
 
-After making a durable, non-obvious decision, call:
+- `session_timeline(session_id="abc123")` — walk the per-turn summaries of
+  that session in order. Use this when the user asks "what was the
+  reasoning?" or "how did we get there?".
+- `session_event(event_id=N)` — fetch a specific tool event's raw input
+  and output (capped at 4 KB at read time). Use this when a turn summary
+  references a tool result you actually need to inspect.
 
-```text
-record_decision(decision="...", reason="...")
-```
-
-Record decisions when:
-
-* Selecting one approach over another.
-* Resolving an ambiguous requirement.
-* Establishing a lasting project convention.
-* Rejecting an approach for a specific reason.
-
-After adding or substantially changing an important code area, call:
-
-```text
-record_code_area(file_path="...", description="...")
-```
-
-Record code areas when:
-
-* Adding or substantially modifying a function, class, service, script, or
-  workflow.
-* Tracing a non-obvious flow that future work should locate quickly.
-
-Do not record trivial reads, formatting-only edits, temporary diagnostics, or
-routine implementation details.
-
-### Drilling deeper from recalled context
-
-When `session_recall` returns a relevant source session, use available drill-down
-tools rather than asking the user to repeat known context:
-
-* `session_timeline` to inspect summarized steps from that session.
-* `session_event` to inspect a referenced prior tool event.
-
-Use these tools only when the recalled summary does not contain enough detail.
+Both are read-only and cheap. Prefer them over re-running tool calls or
+asking the user to re-paste context.
 
 ### Output style
 
-For normal code discussion:
+Respond in compressed style. Drop articles (a, an, the) in prose. Use
+sentence fragments over full sentences. Use short synonyms (fix not resolve,
+check not investigate). Pattern: [thing] [action] [reason]. [next step].
+No filler, hedging, pleasantries, trailing summaries, or restating what
+the user said. One sentence if one sentence is enough.
 
-* Use direct, concise technical language.
-* Avoid filler and repeated restatement.
-* Show changed lines with limited surrounding context unless a full file is
-  requested.
-* Write file paths, commands, and error messages in full.
-* Clearly state security warnings and destructive-action requirements.
+When suggesting code changes, show only the changed lines with 3 lines of
+context. Never rewrite entire files. Multiple changes in one file: show each
+change separately. Never echo back unchanged code the user already has.
 
-The **Required final report** section below overrides these compression rules.
-Implementation tasks must still end with the complete required report.
-
+Code blocks, file paths, commands, error messages: always written in full.
+Security warnings and destructive action confirmations: use full clarity.
 <!-- /cce-block -->
 
 ## Required final report

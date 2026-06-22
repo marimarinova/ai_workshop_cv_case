@@ -7,8 +7,6 @@ downloads or GPU access are required.
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import pytest
 
 from pickup_putdown.common.exceptions import ConfigError, ValidationError
@@ -165,6 +163,7 @@ def _raw_interaction(
 # 1. One actor entering and leaving one region
 # ---------------------------------------------------------------------------
 
+
 class TestSingleActorRegion:
     def test_actor_entering_and_leaving_region(self):
         """A wrist starts outside, enters the expanded region, stays, then leaves."""
@@ -178,7 +177,9 @@ class TestSingleActorRegion:
             _pose_obs(timestamp_s=8.0, wrist_x=700.0, wrist_y=250.0, wrist_confidence=0.8),
             _pose_obs(timestamp_s=9.0, wrist_x=900.0, wrist_y=250.0, wrist_confidence=0.8),
         ]
-        interactions = detect_raw_interactions(poses, cam, ProposalsConfig(), RegionMeasurementConfig())
+        interactions = detect_raw_interactions(
+            poses, cam, ProposalsConfig(), RegionMeasurementConfig()
+        )
         assert len(interactions) >= 1
         for ri in interactions:
             assert ri.actor_id == "actor_3"
@@ -191,19 +192,58 @@ class TestSingleActorRegion:
 # 2. Two simultaneous actors producing independent candidates
 # ---------------------------------------------------------------------------
 
+
 class TestTwoActors:
     def test_two_actors_independent_candidates(self):
         """Two actors in the same clip produce independent candidates."""
         cam = _camera_config()
         poses = [
-            _pose_obs(actor_id="actor_1", timestamp_s=5.0, wrist_x=400.0, wrist_y=250.0, wrist_confidence=0.8),
-            _pose_obs(actor_id="actor_1", timestamp_s=6.0, wrist_x=450.0, wrist_y=250.0, wrist_confidence=0.8),
-            _pose_obs(actor_id="actor_1", timestamp_s=7.0, wrist_x=500.0, wrist_y=250.0, wrist_confidence=0.8),
-            _pose_obs(actor_id="actor_2", timestamp_s=5.0, wrist_x=400.0, wrist_y=250.0, wrist_confidence=0.8),
-            _pose_obs(actor_id="actor_2", timestamp_s=6.0, wrist_x=450.0, wrist_y=250.0, wrist_confidence=0.8),
-            _pose_obs(actor_id="actor_2", timestamp_s=7.0, wrist_x=500.0, wrist_y=250.0, wrist_confidence=0.8),
+            _pose_obs(
+                actor_id="actor_1",
+                timestamp_s=5.0,
+                wrist_x=400.0,
+                wrist_y=250.0,
+                wrist_confidence=0.8,
+            ),
+            _pose_obs(
+                actor_id="actor_1",
+                timestamp_s=6.0,
+                wrist_x=450.0,
+                wrist_y=250.0,
+                wrist_confidence=0.8,
+            ),
+            _pose_obs(
+                actor_id="actor_1",
+                timestamp_s=7.0,
+                wrist_x=500.0,
+                wrist_y=250.0,
+                wrist_confidence=0.8,
+            ),
+            _pose_obs(
+                actor_id="actor_2",
+                timestamp_s=5.0,
+                wrist_x=400.0,
+                wrist_y=250.0,
+                wrist_confidence=0.8,
+            ),
+            _pose_obs(
+                actor_id="actor_2",
+                timestamp_s=6.0,
+                wrist_x=450.0,
+                wrist_y=250.0,
+                wrist_confidence=0.8,
+            ),
+            _pose_obs(
+                actor_id="actor_2",
+                timestamp_s=7.0,
+                wrist_x=500.0,
+                wrist_y=250.0,
+                wrist_confidence=0.8,
+            ),
         ]
-        interactions = detect_raw_interactions(poses, cam, ProposalsConfig(), RegionMeasurementConfig())
+        interactions = detect_raw_interactions(
+            poses, cam, ProposalsConfig(), RegionMeasurementConfig()
+        )
         actor_ids = {ri.actor_id for ri in interactions}
         assert "actor_1" in actor_ids
         assert "actor_2" in actor_ids
@@ -219,17 +259,44 @@ class TestTwoActors:
 # 3. Left and right hands remaining independent
 # ---------------------------------------------------------------------------
 
+
 class TestHandIndependence:
     def test_left_right_hands_independent(self):
         """Left and right hands of the same actor produce separate candidates."""
         cam = _camera_config()
         poses = [
-            _pose_obs(hand_side="left", timestamp_s=5.0, wrist_x=400.0, wrist_y=250.0, wrist_confidence=0.8),
-            _pose_obs(hand_side="left", timestamp_s=6.0, wrist_x=450.0, wrist_y=250.0, wrist_confidence=0.8),
-            _pose_obs(hand_side="right", timestamp_s=5.0, wrist_x=400.0, wrist_y=250.0, wrist_confidence=0.8),
-            _pose_obs(hand_side="right", timestamp_s=6.0, wrist_x=450.0, wrist_y=250.0, wrist_confidence=0.8),
+            _pose_obs(
+                hand_side="left",
+                timestamp_s=5.0,
+                wrist_x=400.0,
+                wrist_y=250.0,
+                wrist_confidence=0.8,
+            ),
+            _pose_obs(
+                hand_side="left",
+                timestamp_s=6.0,
+                wrist_x=450.0,
+                wrist_y=250.0,
+                wrist_confidence=0.8,
+            ),
+            _pose_obs(
+                hand_side="right",
+                timestamp_s=5.0,
+                wrist_x=400.0,
+                wrist_y=250.0,
+                wrist_confidence=0.8,
+            ),
+            _pose_obs(
+                hand_side="right",
+                timestamp_s=6.0,
+                wrist_x=450.0,
+                wrist_y=250.0,
+                wrist_confidence=0.8,
+            ),
         ]
-        interactions = detect_raw_interactions(poses, cam, ProposalsConfig(), RegionMeasurementConfig())
+        interactions = detect_raw_interactions(
+            poses, cam, ProposalsConfig(), RegionMeasurementConfig()
+        )
         hand_sides = {ri.hand_side for ri in interactions}
         assert "left" in hand_sides
         assert "right" in hand_sides
@@ -238,6 +305,7 @@ class TestHandIndependence:
 # ---------------------------------------------------------------------------
 # 4. Separate shelf regions remaining independent
 # ---------------------------------------------------------------------------
+
 
 class TestRegionIndependence:
     def test_separate_regions_independent(self):
@@ -249,7 +317,9 @@ class TestRegionIndependence:
             _pose_obs(timestamp_s=5.0, wrist_x=1300.0, wrist_y=650.0, wrist_confidence=0.8),
             _pose_obs(timestamp_s=6.0, wrist_x=1300.0, wrist_y=650.0, wrist_confidence=0.8),
         ]
-        interactions = detect_raw_interactions(poses, cam, ProposalsConfig(), RegionMeasurementConfig())
+        interactions = detect_raw_interactions(
+            poses, cam, ProposalsConfig(), RegionMeasurementConfig()
+        )
         region_ids = {ri.region_id for ri in interactions}
         assert len(region_ids) >= 2
 
@@ -257,6 +327,7 @@ class TestRegionIndependence:
 # ---------------------------------------------------------------------------
 # 5. Low-confidence wrist observations not creating interactions
 # ---------------------------------------------------------------------------
+
 
 class TestLowConfidence:
     def test_low_confidence_no_interaction(self):
@@ -266,13 +337,16 @@ class TestLowConfidence:
             _pose_obs(timestamp_s=5.0, wrist_x=400.0, wrist_y=250.0, wrist_confidence=0.1),
             _pose_obs(timestamp_s=6.0, wrist_x=450.0, wrist_y=250.0, wrist_confidence=0.1),
         ]
-        interactions = detect_raw_interactions(poses, cam, ProposalsConfig(), RegionMeasurementConfig())
+        interactions = detect_raw_interactions(
+            poses, cam, ProposalsConfig(), RegionMeasurementConfig()
+        )
         assert len(interactions) == 0
 
 
 # ---------------------------------------------------------------------------
 # 6. Minimum dwell duration threshold behavior
 # ---------------------------------------------------------------------------
+
 
 class TestDwellDuration:
     def test_below_min_dwell_no_interaction(self):
@@ -296,13 +370,16 @@ class TestDwellDuration:
             _pose_obs(timestamp_s=7.0, wrist_x=440.0, wrist_y=250.0, wrist_confidence=0.8),
             _pose_obs(timestamp_s=8.0, wrist_x=460.0, wrist_y=250.0, wrist_confidence=0.8),
         ]
-        interactions = detect_raw_interactions(poses, cam, ProposalsConfig(), RegionMeasurementConfig())
+        interactions = detect_raw_interactions(
+            poses, cam, ProposalsConfig(), RegionMeasurementConfig()
+        )
         assert len(interactions) >= 1
 
 
 # ---------------------------------------------------------------------------
 # 7. Short-gap merging for the same actor, hand, and region
 # ---------------------------------------------------------------------------
+
 
 class TestGapMerging:
     def test_short_gap_merges(self):
@@ -332,6 +409,7 @@ class TestGapMerging:
 # ---------------------------------------------------------------------------
 # 8. No merging across actors, hands, or regions
 # ---------------------------------------------------------------------------
+
 
 class TestNoCrossMerge:
     def test_no_merge_across_actors(self):
@@ -366,6 +444,7 @@ class TestNoCrossMerge:
 # 9. Raw timestamps remaining unchanged after context padding
 # ---------------------------------------------------------------------------
 
+
 class TestRawTimestampsUnchanged:
     def test_raw_timestamps_preserved(self):
         """Raw start/end timestamps are preserved in the candidate."""
@@ -384,6 +463,7 @@ class TestRawTimestampsUnchanged:
 # ---------------------------------------------------------------------------
 # 10. Padded timestamps clamped at clip start and end
 # ---------------------------------------------------------------------------
+
 
 class TestClamping:
     def test_clamp_at_start(self):
@@ -407,6 +487,7 @@ class TestClamping:
 # 11. Candidate may contain both pickup and putdown without receiving a type
 # ---------------------------------------------------------------------------
 
+
 class TestNoEventType:
     def test_candidate_has_no_event_type(self):
         """A candidate with multiple raw interactions never receives a type label."""
@@ -428,6 +509,7 @@ class TestNoEventType:
 # 12. Deterministic candidate IDs and output ordering
 # ---------------------------------------------------------------------------
 
+
 class TestDeterminism:
     def test_deterministic_candidate_ids(self):
         """Running candidate generation twice produces identical IDs."""
@@ -441,9 +523,30 @@ class TestDeterminism:
     def test_deterministic_output_ordering(self):
         """Candidates are sorted by (clip_id, actor_id, hand_side, region_id, raw_start)."""
         interactions = [
-            _raw_interaction(clip_id="clip_b", actor_id="actor_2", hand_side="left", region_id="region_0", start_s=5.0, end_s=7.0),
-            _raw_interaction(clip_id="clip_a", actor_id="actor_1", hand_side="right", region_id="region_0", start_s=3.0, end_s=5.0),
-            _raw_interaction(clip_id="clip_a", actor_id="actor_1", hand_side="left", region_id="region_0", start_s=3.0, end_s=5.0),
+            _raw_interaction(
+                clip_id="clip_b",
+                actor_id="actor_2",
+                hand_side="left",
+                region_id="region_0",
+                start_s=5.0,
+                end_s=7.0,
+            ),
+            _raw_interaction(
+                clip_id="clip_a",
+                actor_id="actor_1",
+                hand_side="right",
+                region_id="region_0",
+                start_s=3.0,
+                end_s=5.0,
+            ),
+            _raw_interaction(
+                clip_id="clip_a",
+                actor_id="actor_1",
+                hand_side="left",
+                region_id="region_0",
+                start_s=3.0,
+                end_s=5.0,
+            ),
         ]
         clip_durations = {"clip_a": 30.0, "clip_b": 30.0}
         candidates = generate_candidates(interactions, clip_durations, ProposalsConfig())
@@ -456,6 +559,7 @@ class TestDeterminism:
 # ---------------------------------------------------------------------------
 # 13. Proposal-recall computation with covered and uncovered events
 # ---------------------------------------------------------------------------
+
 
 class TestProposalRecall:
     def test_covered_and_uncovered_events(self):
@@ -474,8 +578,20 @@ class TestProposalRecall:
             ),
         ]
         gt_events = [
-            {"event_id": "evt_1", "clip_id": "clip_test", "type": "pickup", "t_start": 6.0, "t_end": 7.0},
-            {"event_id": "evt_2", "clip_id": "clip_test", "type": "putdown", "t_start": 15.0, "t_end": 16.0},
+            {
+                "event_id": "evt_1",
+                "clip_id": "clip_test",
+                "type": "pickup",
+                "t_start": 6.0,
+                "t_end": 7.0,
+            },
+            {
+                "event_id": "evt_2",
+                "clip_id": "clip_test",
+                "type": "putdown",
+                "t_start": 15.0,
+                "t_end": 16.0,
+            },
         ]
         results, aggregate = compute_proposal_recall(candidates, gt_events)
         assert len(results) == 2
@@ -501,16 +617,31 @@ class TestProposalRecall:
             ),
         ]
         gt_events = [
-            {"event_id": "evt_1", "clip_id": "clip_test", "type": "pickup", "t_start": 9.0, "t_end": 9.5},
+            {
+                "event_id": "evt_1",
+                "clip_id": "clip_test",
+                "type": "pickup",
+                "t_start": 9.0,
+                "t_end": 9.5,
+            },
         ]
         results, aggregate = compute_proposal_recall(candidates, gt_events)
         assert results[0].covered is True
         assert aggregate["proposal_recall"] == pytest.approx(1.0)
 
     def test_empty_candidates_no_coverage(self):
-        results, aggregate = compute_proposal_recall([], [
-            {"event_id": "evt_1", "clip_id": "clip_test", "type": "pickup", "t_start": 5.0, "t_end": 6.0},
-        ])
+        results, aggregate = compute_proposal_recall(
+            [],
+            [
+                {
+                    "event_id": "evt_1",
+                    "clip_id": "clip_test",
+                    "type": "pickup",
+                    "t_start": 5.0,
+                    "t_end": 6.0,
+                },
+            ],
+        )
         assert results[0].covered is False
         assert aggregate["proposal_recall"] == 0.0
 
@@ -519,10 +650,13 @@ class TestProposalRecall:
 # 14. Empty active spans and empty pose results
 # ---------------------------------------------------------------------------
 
+
 class TestEmptyInputs:
     def test_empty_pose_observations(self):
         cam = _camera_config()
-        interactions = detect_raw_interactions([], cam, ProposalsConfig(), RegionMeasurementConfig())
+        interactions = detect_raw_interactions(
+            [], cam, ProposalsConfig(), RegionMeasurementConfig()
+        )
         assert len(interactions) == 0
         clip_durations = {"clip_test": 30.0}
         candidates = generate_candidates(interactions, clip_durations, ProposalsConfig())
@@ -541,6 +675,7 @@ class TestEmptyInputs:
 # ---------------------------------------------------------------------------
 # 15. Malformed configuration and invalid timestamps
 # ---------------------------------------------------------------------------
+
 
 class TestValidation:
     def test_negative_fps_raises(self):
@@ -597,34 +732,51 @@ class TestValidation:
 # Actor association tests
 # ---------------------------------------------------------------------------
 
+
 class TestActorAssociation:
     def test_association_by_iou(self):
         """Pose detection within IoU threshold gets matched to actor track."""
         poses = [_pose_obs(wrist_x=300.0, wrist_y=200.0, wrist_confidence=0.8)]
-        persons = [_person_obs(
-            person_track_id="clip_test:person:99",
-            tracker_track_id=99,
-            timestamp_s=5.0,
-            bbox_x1=200.0, bbox_y1=50.0, bbox_x2=400.0, bbox_y2=450.0,
-            confidence=0.85,
-        )]
+        persons = [
+            _person_obs(
+                person_track_id="clip_test:person:99",
+                tracker_track_id=99,
+                timestamp_s=5.0,
+                bbox_x1=200.0,
+                bbox_y1=50.0,
+                bbox_x2=400.0,
+                bbox_y2=450.0,
+                confidence=0.85,
+            )
+        ]
         associated = associate_poses_with_actors(poses, persons, ActorAssociationConfig())
         assert len(associated) == 1
         assert associated[0].actor_id == "clip_test:person:99"
 
     def test_unmatched_pose_keeps_original_actor(self):
         """Pose detection far from any actor track remains unmatched."""
-        poses = [_pose_obs(
-            wrist_x=1500.0, wrist_y=800.0, wrist_confidence=0.8,
-            person_bbox_x1=1400.0, person_bbox_y1=700.0,
-            person_bbox_x2=1600.0, person_bbox_y2=900.0,
-        )]
-        persons = [_person_obs(
-            tracker_track_id=1,
-            timestamp_s=5.0,
-            bbox_x1=200.0, bbox_y1=50.0, bbox_x2=400.0, bbox_y2=450.0,
-            confidence=0.85,
-        )]
+        poses = [
+            _pose_obs(
+                wrist_x=1500.0,
+                wrist_y=800.0,
+                wrist_confidence=0.8,
+                person_bbox_x1=1400.0,
+                person_bbox_y1=700.0,
+                person_bbox_x2=1600.0,
+                person_bbox_y2=900.0,
+            )
+        ]
+        persons = [
+            _person_obs(
+                tracker_track_id=1,
+                timestamp_s=5.0,
+                bbox_x1=200.0,
+                bbox_y1=50.0,
+                bbox_x2=400.0,
+                bbox_y2=450.0,
+                confidence=0.85,
+            )
+        ]
         associated = associate_poses_with_actors(poses, persons, ActorAssociationConfig())
         assert len(associated) == 1
         assert "untracked" in associated[0].actor_id or associated[0].actor_id == "actor_3"
@@ -633,6 +785,7 @@ class TestActorAssociation:
 # ---------------------------------------------------------------------------
 # Region measurement tests
 # ---------------------------------------------------------------------------
+
 
 class TestRegionMeasurements:
     def test_entry_exit_detection(self):
@@ -646,7 +799,7 @@ class TestRegionMeasurements:
             _pose_obs(timestamp_s=7.0, wrist_x=900.0, wrist_y=250.0, wrist_confidence=0.8),
         ]
         measurements = compute_region_measurements(poses, cam, RegionMeasurementConfig())
-        for key, ms in measurements.items():
+        for _key, ms in measurements.items():
             entries = [m for m in ms if m.entry_event]
             exits = [m for m in ms if m.exit_event]
             if entries and exits:
@@ -658,6 +811,7 @@ class TestRegionMeasurements:
 # ---------------------------------------------------------------------------
 # Candidate schema validation
 # ---------------------------------------------------------------------------
+
 
 class TestCandidateSchema:
     def test_valid_candidate(self):
@@ -706,6 +860,7 @@ class TestCandidateSchema:
 # Proposal recall actor/region aware
 # ---------------------------------------------------------------------------
 
+
 class TestProposalRecallActorRegionAware:
     def test_actor_aware_coverage(self):
         """Actor-aware recall requires actor_id match."""
@@ -723,7 +878,14 @@ class TestProposalRecallActorRegionAware:
             ),
         ]
         gt_events = [
-            {"event_id": "evt_1", "clip_id": "clip_test", "type": "pickup", "t_start": 6.0, "t_end": 7.0, "actor_id": "actor_2"},
+            {
+                "event_id": "evt_1",
+                "clip_id": "clip_test",
+                "type": "pickup",
+                "t_start": 6.0,
+                "t_end": 7.0,
+                "actor_id": "actor_2",
+            },
         ]
         results, aggregate = compute_proposal_recall(candidates, gt_events, actor_aware=True)
         assert results[0].covered is False
@@ -744,7 +906,14 @@ class TestProposalRecallActorRegionAware:
             ),
         ]
         gt_events = [
-            {"event_id": "evt_1", "clip_id": "clip_test", "type": "pickup", "t_start": 6.0, "t_end": 7.0, "region_id": "region_1"},
+            {
+                "event_id": "evt_1",
+                "clip_id": "clip_test",
+                "type": "pickup",
+                "t_start": 6.0,
+                "t_end": 7.0,
+                "region_id": "region_1",
+            },
         ]
         results, aggregate = compute_proposal_recall(candidates, gt_events, region_aware=True)
         assert results[0].covered is False
@@ -765,9 +934,19 @@ class TestProposalRecallActorRegionAware:
             ),
         ]
         gt_events = [
-            {"event_id": "evt_1", "clip_id": "clip_test", "type": "pickup", "t_start": 6.0, "t_end": 7.0, "actor_id": "actor_2", "region_id": "region_1"},
+            {
+                "event_id": "evt_1",
+                "clip_id": "clip_test",
+                "type": "pickup",
+                "t_start": 6.0,
+                "t_end": 7.0,
+                "actor_id": "actor_2",
+                "region_id": "region_1",
+            },
         ]
-        results, aggregate = compute_proposal_recall(candidates, gt_events, actor_aware=True, region_aware=True)
+        results, aggregate = compute_proposal_recall(
+            candidates, gt_events, actor_aware=True, region_aware=True
+        )
         assert results[0].covered is False
         assert results[0].actor_match is False
         assert results[0].region_match is None

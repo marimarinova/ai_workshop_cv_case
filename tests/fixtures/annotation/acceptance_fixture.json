@@ -1,0 +1,88 @@
+{
+  "clips": [
+    {
+      "clip_id": "clip_no_events",
+      "video_path": "/videos/clip_no_events.mp4",
+      "fps": 30.0,
+      "duration_s": 10.0,
+      "active_start_s": 1.0,
+      "active_end_s": 9.0
+    },
+    {
+      "clip_id": "clip_single_pickup",
+      "video_path": "/videos/clip_single_pickup.mp4",
+      "fps": 30.0,
+      "duration_s": 10.0,
+      "active_start_s": 1.0,
+      "active_end_s": 9.0
+    },
+    {
+      "clip_id": "clip_pickup_putdown",
+      "video_path": "/videos/clip_pickup_putdown.mp4",
+      "fps": 30.0,
+      "duration_s": 10.0,
+      "active_start_s": 1.0,
+      "active_end_s": 9.0
+    },
+    {
+      "clip_id": "clip_two_item_pickup",
+      "video_path": "/videos/clip_two_item_pickup.mp4",
+      "fps": 30.0,
+      "duration_s": 10.0,
+      "active_start_s": 1.0,
+      "active_end_s": 9.0
+    },
+    {
+      "clip_id": "clip_low_confidence",
+      "video_path": "/videos/clip_low_confidence.mp4",
+      "fps": 30.0,
+      "duration_s": 10.0,
+      "active_start_s": 1.0,
+      "active_end_s": 9.0
+    }
+  ],
+  "candidates": [
+    {
+      "candidate_id": "cand_no_events",
+      "clip_id": "clip_no_events",
+      "actor_id": "actor_1",
+      "hand_side": "right",
+      "region_id": "shelf_left",
+      "raw_start_s": 3.0,
+      "raw_end_s": 5.0,
+      "window_start_s": 2.0,
+      "window_end_s": 6.0,
+      "proposal_reason": "wrist_entered_region",
+      "proposal_score": 0.55,
+      "review_status": "pending"
+    },
+    {
+      "candidate_id": "cand_single_pickup",
+      "clip_id": "clip_single_pickup",
+      "actor_id": "actor_1",
+      "hand_side": "right",
+      "region_id": "shelf_left",
+      "raw_start_s": 4.0,
+      "raw_end_s": 6.0,
+      "window_start_s": 3.0,
+      "window_end_s": 7.0,
+      "proposal_reason": "wrist_entered_region",
+      "proposal_score": 0.82,
+      "review_status": "pending"
+    },
+    {
+      "candidate_id": "cand_incorrect",
+      "clip_id": "clip_pickup_putdown",
+      "actor_id": "actor_1",
+      "hand_side": "right",
+      "region_id": "shelf_left",
+      "raw_start_s": 3.0,
+      "raw_end_s": 5.0,
+      "window_start_s": 2.0,
+      "window_end_s": 6.0,
+      "proposal_reason": "wrist_entered_region",
+      "proposal_score": 0.60,
+      "review_status": "pending"
+    }
+  ]
+}

@@ -58,7 +58,9 @@ VIDEO ?= $(TRIAGE_INPUT)
 .PHONY: help install install-dev lint format format-check typecheck test compile clean \
 	env-setup env-ingest ingest \
 	show-run models task-3 task-4 task-5 tasks-3-5 \
-	task_3 task_4 task_5
+	task_3 task_4 task_5 \
+	annotation-pull annotation-up annotation-down annotation-restart annotation-status annotation-logs \
+	annotation-config-validate annotation-test annotation-acceptance annotation-reset
 
 # ---------------------------------------------------------------------------
 # General development targets
@@ -314,4 +316,68 @@ task_3: task-3 ## Alias for task-3
 task_4: task-4 ## Alias for task-4
 
 task_5: task-5 ## Alias for task-5
+
+# ---------------------------------------------------------------------------
+# Annotation workflow (Label Studio)
+# ---------------------------------------------------------------------------
+
+ANNOTATION_COMPOSE ?= docker compose -f docker-compose.annotation.yml
+ANNOTATION_PORT ?= 8080
+ANNOTATION_VIDEO_DIR ?= ./data/videos
+
+annotation-pull: ## Pull the pinned Label Studio Docker image
+	@echo "Pulling heartexlabs/label-studio:1.15.0 ..."
+	@docker pull heartexlabs/label-studio:1.15.0
+	@echo "Done."
+
+annotation-up: ## Create required local directories and start Label Studio
+	@mkdir -p "$(ANNOTATION_VIDEO_DIR)"
+	@mkdir -p annotation/label_studio_data
+	@ANNOTATION_PORT=$(ANNOTATION_PORT) \
+	 ANNOTATION_VIDEO_DIR=$(ANNOTATION_VIDEO_DIR) \
+	 $(ANNOTATION_COMPOSE) up -d
+	@echo "Label Studio starting on port $(ANNOTATION_PORT) ..."
+	@echo "Access the UI at http://localhost:$(ANNOTATION_PORT)"
+
+annotation-down: ## Stop the annotation stack without deleting persistent data
+	@$(ANNOTATION_COMPOSE) down
+	@echo "Label Studio stopped. Persistent data preserved in Docker volume."
+
+annotation-restart: annotation-down annotation-up ## Restart the Label Studio service
+	@echo "Label Studio restarted."
+
+annotation-status: ## Show service status
+	@$(ANNOTATION_COMPOSE) ps
+
+annotation-logs: ## Follow or print Label Studio logs
+	@$(ANNOTATION_COMPOSE) logs -f
+
+ANNOTATION_CONFIG ?= annotation/label_studio_config.xml
+
+annotation-config-validate: ## Validate the shared Label Studio XML configuration
+	@test -f $(ANNOTATION_CONFIG) || \
+		(echo "Missing $(ANNOTATION_CONFIG)" && exit 1)
+	@$(PYTHON) -c "import sys, xml.etree.ElementTree as ET; p='$(ANNOTATION_CONFIG)'; root=ET.parse(p).getroot(); local=lambda e: e.tag.rsplit('}', 1)[-1].lower(); controls={local(e) for e in root.iter()}; labels={e.get('value', '') for e in root.iter() if local(e) == 'label'}; missing_controls={'timelinelabels'} - controls; missing_labels={'pickup', 'putdown', 'ignore'} - labels; missing_controls and sys.exit(f'Missing required controls: {sorted(missing_controls)}'); missing_labels and sys.exit(f'Missing required labels: {sorted(missing_labels)}'); print(f'XML is well-formed: {p}'); print(f'Controls found: {sorted(controls)}'); print(f'Labels found: {sorted(labels)}'); print('Config validation passed.')"
+
+annotation-test: ## Run annotation schema and import/export tests
+	$(PYTHON) -m pytest tests/test_annotation_export.py -v
+
+annotation-acceptance: ## Run Task 6 annotation acceptance scenarios
+	$(PYTHON) -m pytest -m annotation_acceptance -q
+
+annotation-reset: ## ⚠️  DESTRUCTIVE: Delete local Label Studio state (database, annotations)
+	@echo "⚠️  WARNING: This will DELETE all local Label Studio state including"
+	@echo "   annotations, project settings, and user data."
+	@echo "   This action cannot be undone."
+	@read -rp "Type 'YES' to confirm: " confirm; \
+	if [ "$$confirm" != "YES" ]; then \
+		echo "Aborted."; \
+		exit 1; \
+	fi
+	@$(ANNOTATION_COMPOSE) down -v
+	@rm -rf annotation/label_studio_data
+	@echo "Label Studio state deleted. Volume and local data removed."
+
+# Underscore alias for annotation-test
+task_6: annotation-test ## Alias for annotation-test
 

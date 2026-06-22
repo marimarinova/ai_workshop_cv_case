@@ -1,0 +1,14 @@
+[
+  {
+    "event_id": "evt_single_pickup",
+    "clip_id": "clip_single_pickup",
+    "type": "pickup",
+    "t_start": 4.0,
+    "t_end": 6.0,
+    "hard_case": false,
+    "annotator": "alice",
+    "confidence": "high",
+    "notes": "",
+    "event_group_id": "group_single_pickup"
+  }
+]

@@ -1,0 +1,311 @@
+[
+  {
+    "id": 1,
+    "annotations": [
+      {
+        "id": 1,
+        "result": [],
+        "who": "alice",
+        "state": [
+          {"name": "complete_active_span_reviewed", "value": {"selected": ["true"]}}
+        ]
+      }
+    ],
+    "task": {
+      "id": "task_no_events",
+      "data": {"video": "/videos/clip_no_events.mp4", "clip_id": "clip_no_events", "fps": 30.0},
+      "meta": {
+        "clip_id": "clip_no_events",
+        "fps": 30.0,
+        "complete_active_span_reviewed": true,
+        "annotator": "alice"
+      }
+    }
+  },
+  {
+    "id": 2,
+    "annotations": [
+      {
+        "id": 2,
+        "result": [
+          {
+            "id": "region_pickup_1",
+            "from_name": "labels",
+            "to_name": "video",
+            "type": "timelabels",
+            "value": {
+              "start": 4.0,
+              "end": 6.0,
+              "labels": ["pickup"],
+              "confidence": "high",
+              "hard_case": "false",
+              "item_count": 1,
+              "review_status": "accepted"
+            }
+          }
+        ],
+        "who": "alice",
+        "state": [
+          {"name": "complete_active_span_reviewed", "value": {"selected": ["true"]}}
+        ]
+      }
+    ],
+    "task": {
+      "id": "task_single_pickup",
+      "data": {"video": "/videos/clip_single_pickup.mp4", "clip_id": "clip_single_pickup", "fps": 30.0},
+      "meta": {
+        "clip_id": "clip_single_pickup",
+        "fps": 30.0,
+        "complete_active_span_reviewed": true,
+        "annotator": "alice"
+      }
+    }
+  },
+  {
+    "id": 3,
+    "annotations": [
+      {
+        "id": 3,
+        "result": [
+          {
+            "id": "region_pickup_2",
+            "from_name": "labels",
+            "to_name": "video",
+            "type": "timelabels",
+            "value": {
+              "start": 3.0,
+              "end": 4.5,
+              "labels": ["pickup"],
+              "confidence": "high",
+              "hard_case": "false",
+              "item_count": 1,
+              "review_status": "accepted"
+            }
+          },
+          {
+            "id": "region_putdown_2",
+            "from_name": "labels",
+            "to_name": "video",
+            "type": "timelabels",
+            "value": {
+              "start": 5.0,
+              "end": 6.5,
+              "labels": ["putdown"],
+              "confidence": "high",
+              "hard_case": "false",
+              "item_count": 1,
+              "review_status": "accepted"
+            }
+          }
+        ],
+        "who": "bob",
+        "state": [
+          {"name": "complete_active_span_reviewed", "value": {"selected": ["true"]}}
+        ]
+      }
+    ],
+    "task": {
+      "id": "task_pickup_putdown",
+      "data": {"video": "/videos/clip_pickup_putdown.mp4", "clip_id": "clip_pickup_putdown", "fps": 30.0},
+      "meta": {
+        "clip_id": "clip_pickup_putdown",
+        "fps": 30.0,
+        "complete_active_span_reviewed": true,
+        "annotator": "bob"
+      }
+    }
+  },
+  {
+    "id": 4,
+    "annotations": [
+      {
+        "id": 4,
+        "result": [
+          {
+            "id": "region_two_item",
+            "from_name": "labels",
+            "to_name": "video",
+            "type": "timelabels",
+            "value": {
+              "start": 4.0,
+              "end": 6.0,
+              "labels": ["pickup"],
+              "confidence": "high",
+              "hard_case": "false",
+              "item_count": 2,
+              "review_status": "accepted"
+            }
+          }
+        ],
+        "who": "alice",
+        "state": [
+          {"name": "complete_active_span_reviewed", "value": {"selected": ["true"]}}
+        ]
+      }
+    ],
+    "task": {
+      "id": "task_two_item_pickup",
+      "data": {"video": "/videos/clip_two_item_pickup.mp4", "clip_id": "clip_two_item_pickup", "fps": 30.0},
+      "meta": {
+        "clip_id": "clip_two_item_pickup",
+        "fps": 30.0,
+        "complete_active_span_reviewed": true,
+        "annotator": "alice"
+      }
+    }
+  },
+  {
+    "id": 5,
+    "annotations": [
+      {
+        "id": 5,
+        "result": [
+          {
+            "id": "region_low_conf",
+            "from_name": "labels",
+            "to_name": "video",
+            "type": "timelabels",
+            "value": {
+              "start": 5.0,
+              "end": 7.0,
+              "labels": ["pickup"],
+              "confidence": "low",
+              "hard_case": "true",
+              "item_count": 1,
+              "review_status": "reviewed"
+            }
+          }
+        ],
+        "who": "bob",
+        "state": [
+          {"name": "complete_active_span_reviewed", "value": {"selected": ["true"]}}
+        ]
+      }
+    ],
+    "task": {
+      "id": "task_low_confidence",
+      "data": {"video": "/videos/clip_low_confidence.mp4", "clip_id": "clip_low_confidence", "fps": 30.0},
+      "meta": {
+        "clip_id": "clip_low_confidence",
+        "fps": 30.0,
+        "complete_active_span_reviewed": true,
+        "annotator": "bob"
+      }
+    }
+  },
+  {
+    "id": 6,
+    "annotations": [
+      {
+        "id": 6,
+        "result": [
+          {
+            "id": "region_ignore_1",
+            "from_name": "labels",
+            "to_name": "video",
+            "type": "timelabels",
+            "value": {
+              "start": 2.0,
+              "end": 4.0,
+              "labels": ["ignore"],
+              "reason": "ACTION_OCCLUDED",
+              "notes": "Hand fully occluded by body"
+            }
+          }
+        ],
+        "who": "alice",
+        "state": [
+          {"name": "complete_active_span_reviewed", "value": {"selected": ["true"]}}
+        ]
+      }
+    ],
+    "task": {
+      "id": "task_ignore",
+      "data": {"video": "/videos/clip_ignore.mp4", "clip_id": "clip_ignore", "fps": 30.0},
+      "meta": {
+        "clip_id": "clip_ignore",
+        "fps": 30.0,
+        "complete_active_span_reviewed": true,
+        "annotator": "alice"
+      }
+    }
+  },
+  {
+    "id": 7,
+    "annotations": [
+      {
+        "id": 7,
+        "result": [
+          {
+            "id": "region_corrected",
+            "from_name": "labels",
+            "to_name": "video",
+            "type": "timelabels",
+            "value": {
+              "start": 5.0,
+              "end": 7.0,
+              "labels": ["putdown"],
+              "confidence": "high",
+              "hard_case": "false",
+              "item_count": 1,
+              "review_status": "accepted"
+            }
+          }
+        ],
+        "who": "alice",
+        "state": [
+          {"name": "complete_active_span_reviewed", "value": {"selected": ["true"]}}
+        ]
+      }
+    ],
+    "task": {
+      "id": "task_corrected",
+      "data": {"video": "/videos/clip_corrected.mp4", "clip_id": "clip_corrected", "fps": 30.0},
+      "meta": {
+        "clip_id": "clip_corrected",
+        "fps": 30.0,
+        "complete_active_span_reviewed": true,
+        "annotator": "alice"
+      }
+    }
+  },
+  {
+    "id": 8,
+    "annotations": [
+      {
+        "id": 8,
+        "result": [
+          {
+            "id": "region_manually_added",
+            "from_name": "labels",
+            "to_name": "video",
+            "type": "timelabels",
+            "value": {
+              "start": 6.0,
+              "end": 8.0,
+              "labels": ["pickup"],
+              "confidence": "high",
+              "hard_case": "false",
+              "item_count": 1,
+              "review_status": "accepted"
+            }
+          }
+        ],
+        "who": "bob",
+        "state": [
+          {"name": "complete_active_span_reviewed", "value": {"selected": ["true"]}}
+        ]
+      }
+    ],
+    "task": {
+      "id": "task_manually_added",
+      "data": {"video": "/videos/clip_manually_added.mp4", "clip_id": "clip_manually_added", "fps": 30.0},
+      "meta": {
+        "clip_id": "clip_manually_added",
+        "fps": 30.0,
+        "complete_active_span_reviewed": true,
+        "annotator": "bob"
+      }
+    }
+  }
+]

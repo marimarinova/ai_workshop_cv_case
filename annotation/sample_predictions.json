@@ -1,0 +1,101 @@
+[
+  {
+    "id": 1,
+    "annotations": [
+      {
+        "id": 1,
+        "result": [
+          {
+            "id": "region_001",
+            "from_name": "labels",
+            "to_name": "video",
+            "type": "timelabels",
+            "value": {
+              "start": 8.0,
+              "end": 10.5,
+              "labels": ["pickup"],
+              "confidence": "high",
+              "hard_case": "false",
+              "item_count": 1,
+              "review_status": "accepted"
+            }
+          },
+          {
+            "id": "region_002",
+            "from_name": "labels",
+            "to_name": "video",
+            "type": "timelabels",
+            "value": {
+              "start": 11.0,
+              "end": 13.0,
+              "labels": ["putdown"],
+              "confidence": "med",
+              "hard_case": "true",
+              "item_count": 1,
+              "review_status": "reviewed"
+            }
+          }
+        ],
+        "who": "alice",
+        "state": [
+          {"name": "complete_active_span_reviewed", "value": {"selected": ["true"]}}
+        ]
+      }
+    ],
+    "task": {
+      "id": "task_001",
+      "data": {
+        "video": "/videos/clip_001.mp4",
+        "clip_id": "clip_001",
+        "fps": 30.0
+      },
+      "meta": {
+        "clip_id": "clip_001",
+        "fps": 30.0,
+        "complete_active_span_reviewed": true,
+        "annotator": "alice"
+      }
+    }
+  },
+  {
+    "id": 2,
+    "annotations": [
+      {
+        "id": 2,
+        "result": [
+          {
+            "id": "region_003",
+            "from_name": "labels",
+            "to_name": "video",
+            "type": "timelabels",
+            "value": {
+              "start": 3.0,
+              "end": 5.0,
+              "labels": ["ignore"],
+              "reason": "ACTION_OCCLUDED",
+              "notes": "Hand fully occluded by body"
+            }
+          }
+        ],
+        "who": "bob",
+        "state": [
+          {"name": "complete_active_span_reviewed", "value": {"selected": ["true"]}}
+        ]
+      }
+    ],
+    "task": {
+      "id": "task_002",
+      "data": {
+        "video": "/videos/clip_002.mp4",
+        "clip_id": "clip_002",
+        "fps": 30.0
+      },
+      "meta": {
+        "clip_id": "clip_002",
+        "fps": 30.0,
+        "complete_active_span_reviewed": true,
+        "annotator": "bob"
+      }
+    }
+  }
+]

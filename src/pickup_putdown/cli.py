@@ -850,10 +850,7 @@ def propose(
         selected_camera_id,
     )
     expanded_regions = get_expanded_regions(camera_config)
-    original_regions = {
-        region.region_id: region.points
-        for region in camera_config.regions
-    }
+    original_regions = {region.region_id: region.points for region in camera_config.regions}
 
     typer.echo(f"Using shelf camera: {selected_camera_id}")
 
@@ -873,25 +870,15 @@ def propose(
 
         person_table = pq.read_table(person_tracks_path)
         person_observations = person_table.to_pandas().to_dict("records")
-        typer.echo(
-            f"Loaded {len(person_observations)} person observations."
-        )
+        typer.echo(f"Loaded {len(person_observations)} person observations.")
 
-    active_spans_path: Path | None = (
-        Path(active_spans)
-        if active_spans is not None
-        else None
-    )
+    active_spans_path: Path | None = Path(active_spans) if active_spans is not None else None
 
     if active_spans_path is None and person_tracks_path is not None:
-        sibling_spans = person_tracks_path.with_name(
-            "active_spans.parquet"
-        )
+        sibling_spans = person_tracks_path.with_name("active_spans.parquet")
         if sibling_spans.is_file():
             active_spans_path = sibling_spans
-            typer.echo(
-                f"Auto-detected active spans: {active_spans_path}"
-            )
+            typer.echo(f"Auto-detected active spans: {active_spans_path}")
 
     active_span_records: list[dict[str, Any]] = []
     if active_spans_path is not None:
@@ -902,12 +889,8 @@ def propose(
             )
 
         span_table = pq.read_table(active_spans_path)
-        active_span_records = span_table.to_pandas().to_dict(
-            "records"
-        )
-        typer.echo(
-            f"Loaded {len(active_span_records)} active spans."
-        )
+        active_span_records = span_table.to_pandas().to_dict("records")
+        typer.echo(f"Loaded {len(active_span_records)} active spans.")
     else:
         logger.warning(
             "No active-spans file supplied or auto-detected; pose "
@@ -955,14 +938,9 @@ def propose(
             clip_active_spans = None
         else:
             matching_spans = [
-                record
-                for record in active_span_records
-                if record.get("clip_id") == clip_id
+                record for record in active_span_records if record.get("clip_id") == clip_id
             ]
-            clip_active_spans = [
-                ActiveSpan(**record)
-                for record in matching_spans
-            ]
+            clip_active_spans = [ActiveSpan(**record) for record in matching_spans]
 
             if not clip_active_spans:
                 logger.warning(
@@ -971,9 +949,7 @@ def propose(
                     clip_id,
                 )
             else:
-                typer.echo(
-                    f"    {len(clip_active_spans)} active span(s)"
-                )
+                typer.echo(f"    {len(clip_active_spans)} active span(s)")
 
         # Run pose inference only over the resolved active spans.
         from pickup_putdown.perception.pose_tracker import PoseTracker
@@ -1004,13 +980,10 @@ def propose(
             skipped_for_clip = 0
 
             for observation in matching_person_rows:
-                tracker_track_id = observation.get(
-                    "tracker_track_id"
-                )
+                tracker_track_id = observation.get("tracker_track_id")
                 try:
-                    valid_track_id = (
-                        tracker_track_id is not None
-                        and math.isfinite(float(tracker_track_id))
+                    valid_track_id = tracker_track_id is not None and math.isfinite(
+                        float(tracker_track_id)
                     )
                 except (TypeError, ValueError):
                     valid_track_id = False
@@ -1019,15 +992,12 @@ def propose(
                     skipped_for_clip += 1
                     continue
 
-                valid_person_tracks.append(
-                    PersonObservation(**observation)
-                )
+                valid_person_tracks.append(PersonObservation(**observation))
 
             skipped_invalid_track_rows += skipped_for_clip
             if skipped_for_clip:
                 logger.warning(
-                    "Skipped %d/%d person observations without a "
-                    "finite tracker ID for clip %s",
+                    "Skipped %d/%d person observations without a finite tracker ID for clip %s",
                     skipped_for_clip,
                     len(matching_person_rows),
                     clip_id,
@@ -1042,10 +1012,7 @@ def propose(
             associated = pose_results
 
         # Persist the actor-associated records, not the temporary YOLO IDs.
-        all_pose_obs.extend(
-            observation.model_dump()
-            for observation in associated
-        )
+        all_pose_obs.extend(observation.model_dump() for observation in associated)
 
         raw_interactions = detect_raw_interactions(
             associated,
@@ -1053,19 +1020,14 @@ def propose(
             cfg.proposals,
             cfg.region_measurements,
         )
-        typer.echo(
-            f"    {len(raw_interactions)} raw interactions"
-        )
+        typer.echo(f"    {len(raw_interactions)} raw interactions")
 
         candidates = generate_candidates(
             raw_interactions,
             clip_durations,
             cfg.proposals,
         )
-        all_candidates.extend(
-            candidate.model_dump()
-            for candidate in candidates
-        )
+        all_candidates.extend(candidate.model_dump() for candidate in candidates)
         typer.echo(f"    {len(candidates)} candidates")
 
         # --------------------------------------------------------------
@@ -1085,10 +1047,7 @@ def propose(
                 original_polygon = original_regions.get(region_id)
                 expanded_polygon = expanded_regions.get(region_id)
 
-                if (
-                    original_polygon is None
-                    or expanded_polygon is None
-                ):
+                if original_polygon is None or expanded_polygon is None:
                     logger.warning(
                         "Skipping preview for candidate %s because "
                         "region %r is not present in camera %s",
@@ -1103,20 +1062,15 @@ def propose(
                     for observation in associated
                     if (
                         observation.clip_id == candidate.clip_id
-                        and observation.actor_id
-                        == candidate.actor_id
-                        and observation.hand_side
-                        == candidate.hand_side
+                        and observation.actor_id == candidate.actor_id
+                        and observation.hand_side == candidate.hand_side
                         and candidate.window_start_s
                         <= observation.timestamp_s
                         <= candidate.window_end_s
                     )
                 ]
 
-                output_preview = (
-                    preview_dir
-                    / f"{candidate.candidate_id}.mp4"
-                )
+                output_preview = preview_dir / f"{candidate.candidate_id}.mp4"
 
                 try:
                     render_candidate_preview(
@@ -1127,31 +1081,15 @@ def propose(
                         expanded_polygon,
                         output_preview,
                         config=CandidateOverlayConfig(
-                            draw_actor_box=(
-                                cfg.preview.draw_actor_box
-                            ),
-                            draw_wrist_positions=(
-                                cfg.preview.draw_wrist_positions
-                            ),
-                            draw_region_polygons=(
-                                cfg.preview.draw_region_polygons
-                            ),
-                            draw_region_labels=(
-                                cfg.preview.draw_region_labels
-                            ),
-                            draw_candidate_intervals=(
-                                cfg.preview.draw_candidate_intervals
-                            ),
+                            draw_actor_box=(cfg.preview.draw_actor_box),
+                            draw_wrist_positions=(cfg.preview.draw_wrist_positions),
+                            draw_region_polygons=(cfg.preview.draw_region_polygons),
+                            draw_region_labels=(cfg.preview.draw_region_labels),
+                            draw_candidate_intervals=(cfg.preview.draw_candidate_intervals),
                             text_scale=cfg.preview.text_scale,
-                            line_thickness=(
-                                cfg.preview.line_thickness
-                            ),
-                            max_output_width=(
-                                cfg.preview.max_output_width
-                            ),
-                            max_output_height=(
-                                cfg.preview.max_output_height
-                            ),
+                            line_thickness=(cfg.preview.line_thickness),
+                            max_output_width=(cfg.preview.max_output_width),
+                            max_output_height=(cfg.preview.max_output_height),
                             preview_fps=cfg.preview.preview_fps,
                         ),
                         clip_duration_s=duration_s,
@@ -1212,10 +1150,7 @@ def propose(
             ]
         )
         pose_table = pa.Table.from_pydict(
-            {
-                field.name: []
-                for field in pose_schema
-            },
+            {field.name: [] for field in pose_schema},
             schema=pose_schema,
         )
 
@@ -1253,10 +1188,7 @@ def propose(
             ]
         )
         candidate_table = pa.Table.from_pydict(
-            {
-                field.name: []
-                for field in candidate_schema
-            },
+            {field.name: [] for field in candidate_schema},
             schema=candidate_schema,
         )
 
@@ -1268,34 +1200,20 @@ def propose(
     # ------------------------------------------------------------------
     resolved = {
         "pose": cfg.pose.model_dump(),
-        "actor_association": (
-            cfg.actor_association.model_dump()
-        ),
-        "region_measurements": (
-            cfg.region_measurements.model_dump()
-        ),
+        "actor_association": (cfg.actor_association.model_dump()),
+        "region_measurements": (cfg.region_measurements.model_dump()),
         "proposals": cfg.proposals.model_dump(),
         "preview": cfg.preview.model_dump(),
         "runtime": {
             "camera_id": selected_camera_id,
             "shelves_config": str(shelf_cfg_path),
-            "person_tracks": (
-                str(person_tracks_path)
-                if person_tracks_path is not None
-                else None
-            ),
-            "active_spans": (
-                str(active_spans_path)
-                if active_spans_path is not None
-                else None
-            ),
+            "person_tracks": (str(person_tracks_path) if person_tracks_path is not None else None),
+            "active_spans": (str(active_spans_path) if active_spans_path is not None else None),
             "render_previews": render_previews,
         },
     }
 
-    resolved_config_path = (
-        output_base / "resolved_proposals_config.yaml"
-    )
+    resolved_config_path = output_base / "resolved_proposals_config.yaml"
     with resolved_config_path.open("w") as file_handle:
         yaml.safe_dump(
             resolved,
@@ -1317,9 +1235,7 @@ def propose(
         git_commit = "unknown"
 
     try:
-        pose_model_hash = hashlib.sha256(
-            Path(cfg.pose.model_path).read_bytes()
-        ).hexdigest()
+        pose_model_hash = hashlib.sha256(Path(cfg.pose.model_path).read_bytes()).hexdigest()
     except Exception:
         pose_model_hash = "unknown"
 
@@ -1328,27 +1244,15 @@ def propose(
         "proposals_config": str(cfg_path),
         "shelves_config": str(shelf_cfg_path),
         "camera_id": selected_camera_id,
-        "person_tracks": (
-            str(person_tracks_path)
-            if person_tracks_path is not None
-            else None
-        ),
-        "active_spans": (
-            str(active_spans_path)
-            if active_spans_path is not None
-            else None
-        ),
+        "person_tracks": (str(person_tracks_path) if person_tracks_path is not None else None),
+        "active_spans": (str(active_spans_path) if active_spans_path is not None else None),
         "pose_model_path": cfg.pose.model_path,
         "pose_model_sha256": pose_model_hash,
         "n_videos_requested": len(video_paths),
         "n_videos_processed": videos_processed,
         "n_person_track_rows": len(person_observations),
-        "n_matching_person_track_rows": (
-            total_matching_track_rows
-        ),
-        "n_invalid_person_track_rows_skipped": (
-            skipped_invalid_track_rows
-        ),
+        "n_matching_person_track_rows": (total_matching_track_rows),
+        "n_invalid_person_track_rows_skipped": (skipped_invalid_track_rows),
         "n_pose_observations": len(all_pose_obs),
         "n_candidates": len(all_candidates),
         "target_fps": cfg.pose.target_fps,
@@ -1361,39 +1265,212 @@ def propose(
 
     typer.echo("")
     typer.echo("=== Propose Summary ===")
-    typer.echo(
-        f"  Videos processed:    {videos_processed}/"
-        f"{len(video_paths)}"
-    )
-    typer.echo(
-        f"  Shelf camera:        {selected_camera_id}"
-    )
-    typer.echo(
-        f"  Pose observations:   {len(all_pose_obs)}"
-    )
-    typer.echo(
-        f"  Candidates:          {len(all_candidates)}"
-    )
-    typer.echo(
-        f"  Invalid track rows:  {skipped_invalid_track_rows}"
-    )
-    typer.echo(
-        f"  Tracks pose parquet: {tracks_pose_path}"
-    )
-    typer.echo(
-        f"  Candidates parquet:  {candidates_path}"
-    )
-    typer.echo(
-        f"  Resolved config:     {resolved_config_path}"
-    )
-    typer.echo(
-        f"  Run metadata:        {metadata_path}"
-    )
+    typer.echo(f"  Videos processed:    {videos_processed}/{len(video_paths)}")
+    typer.echo(f"  Shelf camera:        {selected_camera_id}")
+    typer.echo(f"  Pose observations:   {len(all_pose_obs)}")
+    typer.echo(f"  Candidates:          {len(all_candidates)}")
+    typer.echo(f"  Invalid track rows:  {skipped_invalid_track_rows}")
+    typer.echo(f"  Tracks pose parquet: {tracks_pose_path}")
+    typer.echo(f"  Candidates parquet:  {candidates_path}")
+    typer.echo(f"  Resolved config:     {resolved_config_path}")
+    typer.echo(f"  Run metadata:        {metadata_path}")
     if render_previews:
-        typer.echo(
-            f"  Previews dir:        "
-            f"{output_base / 'candidate_previews'}"
-        )
+        typer.echo(f"  Previews dir:        {output_base / 'candidate_previews'}")
+
+
+# ---------------------------------------------------------------------------
+# Annotation commands
+# ---------------------------------------------------------------------------
+
+
+@app.command()
+def annotation_build_tasks(
+    clips_path: str = typer.Argument(
+        ...,
+        help="Path to clips JSON file.",
+    ),
+    candidates_path: str | None = typer.Option(
+        None,
+        "--candidates",
+        "-c",
+        help="Path to candidates JSON file (optional).",
+    ),
+    output_path: str = typer.Option(
+        "annotation/tasks.json",
+        "--output",
+        "-o",
+        help="Output path for Label Studio task JSON.",
+    ),
+    verbose: bool = typer.Option(
+        False,
+        "--verbose",
+        "-v",
+        help="Enable debug logging.",
+    ),
+) -> None:
+    """Build Label Studio tasks from clip metadata and candidate predictions.
+
+    Candidates are placed in the prediction (pre-annotation) structure,
+    never in the completed annotation structure.
+    """
+    _setup_logging(verbose)
+
+    import json
+    from pathlib import Path
+
+    from pickup_putdown.annotation.import_export import (
+        build_label_studio_tasks,
+    )
+
+    clips = json.loads(Path(clips_path).read_text())
+    candidates = None
+    if candidates_path:
+        candidates = json.loads(Path(candidates_path).read_text())
+
+    tasks = build_label_studio_tasks(clips, candidates)
+    Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+    Path(output_path).write_text(
+        json.dumps([t.model_dump() for t in tasks], indent=2, default=str)
+    )
+    typer.echo(f"Wrote {len(tasks)} task(s) to {output_path}")
+
+
+@app.command()
+def annotation_export(
+    input_path: str = typer.Argument(
+        ...,
+        help="Path to Label Studio export JSON.",
+    ),
+    events_output: str = typer.Option(
+        "events.csv",
+        "--events",
+        "-e",
+        help="Output path for canonical events.csv.",
+    ),
+    ignore_output: str = typer.Option(
+        "ignore_intervals.parquet",
+        "--ignore",
+        "-i",
+        help="Output path for ignore_intervals.parquet.",
+    ),
+    verbose: bool = typer.Option(
+        False,
+        "--verbose",
+        "-v",
+        help="Enable debug logging.",
+    ),
+) -> None:
+    """Export Label Studio annotations to canonical repository formats.
+
+    Only accepted visible pickup/putdown events with
+    complete_active_span_reviewed=true are exported to events.csv.
+    Ignore intervals are exported to ignore_intervals.parquet.
+    """
+    _setup_logging(verbose)
+
+    import json
+    from pathlib import Path
+
+    from pickup_putdown.annotation.import_export import (
+        export_events_csv,
+        export_ignore_intervals_parquet,
+    )
+
+    export_data = json.loads(Path(input_path).read_text())
+
+    events_result = export_events_csv(export_data, events_output)
+    typer.echo(f"Events: {len(events_result.canonical_events)} rows ({events_output})")
+    if not events_result.is_valid:
+        for err in events_result.validation.errors:
+            typer.echo(f"  WARN: {err.message}", err=True)
+
+    ignore_result = export_ignore_intervals_parquet(export_data, ignore_output)
+    typer.echo(f"Ignore intervals: {len(ignore_result.ignore_intervals)} rows ({ignore_output})")
+
+
+@app.command()
+def annotation_validate(
+    input_path: str = typer.Argument(
+        ...,
+        help="Path to Label Studio export JSON.",
+    ),
+    verbose: bool = typer.Option(
+        False,
+        "--verbose",
+        "-v",
+        help="Enable debug logging.",
+    ),
+) -> None:
+    """Validate a Label Studio export JSON before conversion."""
+    _setup_logging(verbose)
+
+    import json
+    from pathlib import Path
+
+    from pickup_putdown.annotation.import_export import (
+        validate_export,
+    )
+
+    export_data = json.loads(Path(input_path).read_text())
+    errors = validate_export(export_data)
+
+    if errors.is_valid:
+        typer.echo("Validation passed.")
+    else:
+        typer.echo(f"Validation failed with {len(errors.errors)} error(s):", err=True)
+        for err in errors.errors:
+            typer.echo(
+                f"  [{err.task_id}/{err.region_id}/{err.field_name}] {err.message}",
+                err=True,
+            )
+        raise SystemExit(1)
+
+
+@app.command()
+def annotation_roundtrip(
+    export_path: str = typer.Argument(
+        ...,
+        help="Path to Label Studio export JSON.",
+    ),
+    fps: float = typer.Option(
+        30.0,
+        "--fps",
+        help="Frame rate for round-trip check.",
+    ),
+    verbose: bool = typer.Option(
+        False,
+        "--verbose",
+        "-v",
+        help="Enable debug logging.",
+    ),
+) -> None:
+    """Verify timestamp fidelity of a round-trip export."""
+    _setup_logging(verbose)
+
+    import json
+    from pathlib import Path
+
+    from pickup_putdown.annotation.import_export import (
+        export_events_csv,
+        round_trip_check,
+    )
+
+    export_data = json.loads(Path(export_path).read_text())
+    result = export_events_csv(export_data)
+
+    if not result.is_valid:
+        typer.echo("Export validation failed. Cannot perform round-trip check.", err=True)
+        raise SystemExit(1)
+
+    # Use the exported events as both original and re-exported
+    original = result.canonical_events
+    passed = round_trip_check(original, export_data, fps=fps)
+
+    if passed:
+        typer.echo(f"Round-trip check passed ({len(original)} events, {fps} fps).")
+    else:
+        typer.echo("Round-trip check FAILED: timestamps differ beyond tolerance.", err=True)
+        raise SystemExit(1)
 
 
 if __name__ == "__main__":

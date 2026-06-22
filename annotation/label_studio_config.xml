@@ -1,0 +1,247 @@
+<!--
+  Shared Label Studio configuration for pickup/putdown temporal annotation.
+
+  Main regions:
+    - pickup
+    - putdown
+    - ignore
+
+  Region attributes:
+    - confidence
+    - hard_case
+    - item_count for pickup/putdown
+    - ignore_reason for ignore intervals
+    - review_status
+    - notes
+
+  Task attribute:
+    - complete_active_span_reviewed
+-->
+
+<View>
+  <Header value="Pickup/Putdown Annotation" />
+
+  <View style="padding: 12px; margin-bottom: 12px; border: 1px solid #ddd;">
+    <Header value="Annotation guidance" />
+
+```
+<Text
+  name="guidance_pickup"
+  value="Pickup: The person removes an item from a shelf or surface and takes control of it."
+/>
+
+<Text
+  name="guidance_putdown"
+  value="Putdown: The person places an item onto a shelf or surface and releases control of it."
+/>
+
+<Text
+  name="guidance_ignore"
+  value="Ignore: Use only when transfer evidence is unavailable, such as a fully occluded or out-of-frame interaction."
+/>
+
+<Text
+  name="guidance_low_confidence"
+  value="A visible but ambiguous event remains pickup or putdown with confidence set to low. Do not mark it as ignore."
+/>
+
+<Text
+  name="guidance_multi_item"
+  value="For simultaneous items, create one interval and enter the number of transferred items in Item count."
+/>
+
+<Text
+  name="guidance_immediate_return"
+  value="For an immediate pickup followed by putdown, create two separate ordered intervals."
+/>
+
+<Text
+  name="guidance_candidates"
+  value="Candidate regions are suggestions only. Review the complete active span and correct, delete, or add regions as needed."
+/>
+```
+
+  </View>
+
+<Video
+ name="video"
+ value="$video"
+ frameRate="$fps"
+ timelineHeight="120"
+/>
+
+  <TimelineLabels name="labels" toName="video">
+    <Label value="pickup" background="#4CAF50" />
+    <Label value="putdown" background="#2196F3" />
+    <Label value="ignore" background="#FF9800" />
+  </TimelineLabels>
+
+  <!-- Pickup and putdown attributes -->
+
+<View
+visibleWhen="region-selected"
+whenTagName="labels"
+whenLabelValue="pickup,putdown"
+style="padding: 12px; margin-top: 12px; border: 1px solid #ddd;"
+
+>
+
+```
+<Header value="Event attributes" />
+```
+
+```
+<Choices
+  name="confidence"
+  toName="video"
+  perRegion="true"
+  choice="single-radio"
+  showInline="true"
+  visibleWhen="region-selected"
+  whenTagName="labels"
+  whenLabelValue="pickup,putdown"
+  required="true"
+  requiredMessage="Select confidence for this event."
+>
+  <Choice value="high" />
+  <Choice value="med" />
+  <Choice value="low" />
+</Choices>
+
+<Choices
+  name="hard_case"
+  toName="video"
+  perRegion="true"
+  choice="single-radio"
+  showInline="true"
+  visibleWhen="region-selected"
+  whenTagName="labels"
+  whenLabelValue="pickup,putdown"
+  required="true"
+  requiredMessage="Specify whether this is a hard case."
+>
+  <Choice value="false" />
+  <Choice value="true" />
+</Choices>
+
+<Number
+  name="item_count"
+  toName="video"
+  perRegion="true"
+  min="1"
+  step="1"
+  defaultValue="1"
+  visibleWhen="region-selected"
+  whenTagName="labels"
+  whenLabelValue="pickup,putdown"
+  required="true"
+  requiredMessage="Enter an item count of at least 1."
+/>
+```
+
+  </View>
+
+  <!-- Ignore interval attributes -->
+
+<View
+visibleWhen="region-selected"
+whenTagName="labels"
+whenLabelValue="ignore"
+style="padding: 12px; margin-top: 12px; border: 1px solid #ddd;"
+
+>
+
+```
+<Header value="Ignore interval attributes" />
+```
+
+```
+<Choices
+  name="ignore_reason"
+  toName="video"
+  perRegion="true"
+  choice="single-radio"
+  visibleWhen="region-selected"
+  whenTagName="labels"
+  whenLabelValue="ignore"
+>
+  <Choice value="ACTION_OCCLUDED" />
+  <Choice value="ACTION_OUT_OF_FRAME" />
+  <Choice value="CLIP_BOUNDARY" />
+  <Choice value="UNLABELABLE" />
+  <Choice value="CORRUPT_SECTION" />
+</Choices>
+```
+
+  </View>
+
+  <!-- Attributes available for every selected region -->
+
+<View
+visibleWhen="region-selected"
+whenTagName="labels"
+style="padding: 12px; margin-top: 12px; border: 1px solid #ddd;"
+
+>
+
+```
+<Header value="Region review" />
+```
+
+```
+<Choices
+  name="review_status"
+  toName="video"
+  perRegion="true"
+  choice="single-radio"
+  showInline="true"
+  visibleWhen="region-selected"
+  whenTagName="labels"
+  required="true"
+  requiredMessage="Select a review status for this region."
+>
+  <Choice value="draft" />
+  <Choice value="reviewed" />
+  <Choice value="accepted" />
+  <Choice value="needs_adjudication" />
+</Choices>
+
+<TextArea
+  name="notes"
+  toName="video"
+  perRegion="true"
+  editable="true"
+  maxSubmissions="1"
+  rows="2"
+  placeholder="Optional notes for this region"
+  visibleWhen="region-selected"
+  whenTagName="labels"
+/>
+```
+
+  </View>
+
+  <!-- Required task-level confirmation -->
+
+  <View style="padding: 12px; margin-top: 16px; border: 2px solid #555;">
+    <Header value="Complete-span review confirmation" />
+
+```
+<Text
+  name="review_confirmation_help"
+  value="Select Confirmed only after reviewing the complete active span, including areas outside any candidate suggestions."
+/>
+
+<Choices
+  name="complete_active_span_reviewed"
+  toName="video"
+  choice="single-radio"
+  required="true"
+  requiredMessage="Confirm that the complete active span was reviewed."
+>
+  <Choice value="true" alias="Confirmed" />
+</Choices>
+```
+
+  </View>
+</View>

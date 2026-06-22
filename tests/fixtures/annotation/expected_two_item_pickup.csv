@@ -1,0 +1,26 @@
+[
+  {
+    "event_id": "evt_two_item_1",
+    "clip_id": "clip_two_item_pickup",
+    "type": "pickup",
+    "t_start": 4.0,
+    "t_end": 6.0,
+    "hard_case": false,
+    "annotator": "alice",
+    "confidence": "high",
+    "notes": "",
+    "event_group_id": "group_two_item"
+  },
+  {
+    "event_id": "evt_two_item_2",
+    "clip_id": "clip_two_item_pickup",
+    "type": "pickup",
+    "t_start": 4.0,
+    "t_end": 6.0,
+    "hard_case": false,
+    "annotator": "alice",
+    "confidence": "high",
+    "notes": "",
+    "event_group_id": "group_two_item"
+  }
+]
