@@ -325,37 +325,54 @@ make tasks-3-5 \
 
 When S3 write permissions are not available, download source videos and process them locally. The ledger tracks state in `.local/candidate_staging/local_processing.csv`.
 
-### Workflow
+### Option A: Automated download and processing (recommended)
+
+Download all clips, then process and upload automatically:
 
 ```bash
-# 1. Download a batch of source videos (S3 read only)
-python scripts/download_s3_sample.py --count 10 --offset 0
+# 1. Download all remaining clips (runs in background, survives SSH disconnect)
+nohup bash scripts/download_all_s3.sh > /dev/null 2>&1 &
+tail -f scripts/download_all.log
 
-# 2. Process downloaded videos locally (GPU sequential, CPU parallel)
-make candidates-process-local CANDIDATE_TARGET_COUNT=10
+# 2. Process all downloaded videos (runs in background, handles failures)
+nohup bash scripts/process_all_local.sh > /dev/null 2>&1 &
+tail -f scripts/process_all.log
 
-# 3. Repeat steps 1–2 for additional batches
-python scripts/download_s3_sample.py --count 10 --offset 10
-make candidates-process-local CANDIDATE_TARGET_COUNT=10
-
-# 4. When S3 write access is available, upload staged candidates
+# 3. Upload when S3 write access is available
 make candidates-upload CANDIDATE_TARGET_COUNT=0
 ```
 
-### Download script options
+Both scripts retry on failure and stop when all clips are done. Monitor with:
 
 ```bash
-# Download first 10 clips
-python scripts/download_s3_sample.py --count 10 --offset 0
-
-# Download next 10 clips
-python scripts/download_s3_sample.py --count 10 --offset 10
-
-# Lower minimum size threshold
-python scripts/download_s3_sample.py --count 5 --min-size-mb 20
+cat .local/process_status.txt
+tail -f scripts/process_all.log
 ```
 
-The script downloads deterministically (sorted by key), excludes already-downloaded files, and updates the local ledger after each download.
+Videos that fail repeatedly (3 retries) are added to `.local/processing_skip.txt`. To retry a skipped video, remove it from that file and rerun the process script.
+
+### Option B: Manual batch download and process
+
+Download and process in interleaved batches:
+
+```bash
+# Batch 1
+python scripts/download_s3_sample.py --count 10 --offset 0
+make candidates-process-local CANDIDATE_TARGET_COUNT=10
+
+# Batch 2
+python scripts/download_s3_sample.py --count 10 --offset 10
+make candidates-process-local CANDIDATE_TARGET_COUNT=10
+
+# Batch 3
+python scripts/download_s3_sample.py --count 10 --offset 20
+make candidates-process-local CANDIDATE_TARGET_COUNT=10
+
+# ... repeat until all clips downloaded, then upload
+make candidates-upload CANDIDATE_TARGET_COUNT=0
+```
+
+The script downloads deterministically (sorted by key), excludes already-downloaded files, and updates the local ledger after each download. Use `--min-size-mb` to adjust the minimum clip size threshold.
 
 ### Ledger states
 
@@ -371,20 +388,24 @@ Each source video progresses through three states in the local ledger:
 
 `candidates-process-local` uses a two-stage pipeline:
 
-* **Stage 1 (GPU, sequential):** Runs triage + pose inference one video at a time.
+* **Stage 1 (GPU, parallel):** Runs triage + pose inference across multiple videos concurrently.
 * **Stage 2 (CPU, parallel):** Encodes candidates to H.264 MP4 in parallel. A queue between stages lets CPU encoding overlap with GPU inference.
 
-Control CPU parallelism with `CANDIDATE_ENCODE_WORKERS` (default: 4).
+Control parallelism with `CANDIDATE_GPU_WORKERS` (default: 8) and `CANDIDATE_ENCODE_WORKERS` (default: 12).
+
+### Failure tracking
+
+The process script tracks failures in `.local/processing_failed.json` (per-video retry count and error). Videos exceeding 3 retries are added to `.local/processing_skip.txt` and excluded from subsequent runs. Current status is available in `.local/process_status.txt`.
 
 ### CLI equivalents
 
 ```bash
-# Process locally
-pickup-putdown candidates-process-local --target-count 10 --encode-workers 4
+# Process locally (all ready videos)
+pickup-putdown candidates-process-local --target-count 0
 
 # Upload when ready
 pickup-putdown candidates-upload --target-count 0
 ```
 
-Set `CANDIDATE_TARGET_COUNT=0` for upload to process all ready candidates. Use `--keep-local-files` to retain intermediate work directories for debugging.
+Use `--target-count 0` to process/upload all ready candidates. Use `--keep-local-files` to retain intermediate work directories for debugging.
 

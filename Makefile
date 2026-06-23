@@ -391,8 +391,8 @@ CANDIDATE_PIPELINE_CONFIG ?= configs/candidates.yaml
 CANDIDATE_TARGET_COUNT ?= 5
 CANDIDATE_WORKERS ?= 4
 CANDIDATE_TRANSFER_WORKERS ?= 4
-CANDIDATE_GPU_WORKERS ?= 1
-CANDIDATE_ENCODE_WORKERS ?= 4
+CANDIDATE_GPU_WORKERS ?= 8
+CANDIDATE_ENCODE_WORKERS ?= 12
 CANDIDATE_WORK_DIR ?= .local/remote_candidates
 CANDIDATE_KEEP_LOCAL_FILES ?=
 CANDIDATE_FAIL_FAST ?=
@@ -504,10 +504,11 @@ candidates-generate: ## Process downloaded sources locally without uploading to 
 		$(if $(CANDIDATE_DRY_RUN),--dry-run,) \
 		-v
 
-candidates-process-local: ## Process downloaded sources locally (GPU sequential, CPU parallel)
+candidates-process-local: ## Process downloaded sources locally (GPU parallel, CPU parallel)
 	@echo "=== Local Candidate Processing ==="
 	@echo "Pipeline config:   $(CANDIDATE_PIPELINE_CONFIG)"
 	@echo "Target count:      $(CANDIDATE_TARGET_COUNT)"
+	@echo "GPU workers:       $(CANDIDATE_GPU_WORKERS)"
 	@echo "Encode workers:    $(CANDIDATE_ENCODE_WORKERS)"
 	@echo "Work dir:          $(CANDIDATE_WORK_DIR)"
 	@echo "Source dir:        $(CANDIDATE_LOCAL_SOURCE_DIR)"
@@ -515,6 +516,7 @@ candidates-process-local: ## Process downloaded sources locally (GPU sequential,
 	@$(PICKUP_PUTDOWN) candidates-process-local \
 		--pipeline-config "$(CANDIDATE_PIPELINE_CONFIG)" \
 		--target-count $(CANDIDATE_TARGET_COUNT) \
+		--gpu-workers $(CANDIDATE_GPU_WORKERS) \
 		--encode-workers $(CANDIDATE_ENCODE_WORKERS) \
 		--work-dir "$(CANDIDATE_WORK_DIR)" \
 		--local-source-dir "$(CANDIDATE_LOCAL_SOURCE_DIR)" \

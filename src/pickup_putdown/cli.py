@@ -1848,9 +1848,14 @@ def candidates_process_local(
         help="Number of downloaded videos to process.",
     ),
     encode_workers: int = typer.Option(
-        4,
+        12,
         "--encode-workers",
         help="Maximum concurrent H.264 encoding jobs (CPU-bound).",
+    ),
+    gpu_workers: int = typer.Option(
+        8,
+        "--gpu-workers",
+        help="Maximum concurrent GPU inference workers (triage + propose).",
     ),
     work_dir: str = typer.Option(
         ".local/remote_candidates",
@@ -1886,7 +1891,7 @@ def candidates_process_local(
 ) -> None:
     """Process downloaded source videos locally with GPU/CPU two-stage pipeline.
 
-    Runs GPU inference (triage + propose) sequentially and encoding
+    Runs GPU inference (triage + propose) in parallel and encoding
     (H.264 MP4) in parallel. No S3 interaction — purely local.
 
     Uses the local ledger to track downloaded/generated state.
@@ -1922,9 +1927,10 @@ def candidates_process_local(
         raise SystemExit(0)
 
     typer.echo(f"Processing {len(ready)} video(s) locally...")
-    typer.echo(f"Encode workers: {encode_workers}")
-    typer.echo(f"Source dir: {local_source_dir}")
-    typer.echo(f"Output dir: {local_output_dir}")
+    typer.echo(f"GPU workers:     {gpu_workers}")
+    typer.echo(f"Encode workers:  {encode_workers}")
+    typer.echo(f"Source dir:      {local_source_dir}")
+    typer.echo(f"Output dir:      {local_output_dir}")
 
     worker_cfg = WorkerConfig(
         storage_config=Path("configs/storage.s3.yaml"),
@@ -1953,6 +1959,7 @@ def candidates_process_local(
             local_source_dir=Path(local_source_dir),
             local_output_dir=Path(local_output_dir),
             encode_workers=encode_workers,
+            gpu_workers=gpu_workers,
         )
     except KeyboardInterrupt as kb_exc:
         typer.echo("\nInterrupted by user.", err=True)

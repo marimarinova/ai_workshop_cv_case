@@ -368,20 +368,28 @@ def run_two_stage_pipeline(
     worker_cfg: Any,
     local_source_dir: Path,
     local_output_dir: Path,
-    encode_workers: int = 4,
+    encode_workers: int = 12,
+    gpu_workers: int = 8,
 ) -> RunReport:
-    """Run GPU-inference sequentially and encoding in parallel.
+    """Run GPU inference in parallel and encoding in parallel.
 
-    Stage 1 (GPU, sequential): triage + propose for each video.
+    Stage 1 (GPU, parallel): triage + propose for each video.
     Stage 2 (CPU, parallel): encode candidates and stage to disk.
 
     Uses a queue between stages so CPU encoding overlaps with GPU inference.
     """
+    import threading
+
     run_id = f"local_{uuid.uuid4().hex[:12]}"
     t_start = datetime.now(UTC)
 
     logger.info("=== Two-stage local run %s ===", run_id)
-    logger.info("Videos: %d, encode workers: %d", len(entries), encode_workers)
+    logger.info(
+        "Videos: %d, GPU workers: %d, encode workers: %d",
+        len(entries),
+        gpu_workers,
+        encode_workers,
+    )
 
     work_dir = Path(worker_cfg.work_dir) / run_id
     work_dir.mkdir(parents=True, exist_ok=True)
@@ -389,10 +397,12 @@ def run_two_stage_pipeline(
     inter_queue: queue.Queue = queue.Queue()
 
     failed_sources: list[dict[str, str]] = []
+    failed_lock = threading.Lock()
 
     # Stage 2: CPU encoding workers (pull from queue)
     sentinel = None
     counters = {"completed": 0, "failed": 0, "total_candidates": 0}
+    counters_lock = threading.Lock()
 
     def _encode_worker() -> None:
         while True:
@@ -428,69 +438,85 @@ def run_two_stage_pipeline(
                     metadata_dir=output_dir / "metadata",
                     local_output_dir=str(local_output_dir),
                 )
-                counters["total_candidates"] += len(encoded)
-                counters["completed"] += 1
+                with counters_lock:
+                    counters["total_candidates"] += len(encoded)
+                    counters["completed"] += 1
                 logger.info("CPU: %s encoded %d candidate(s)", source_video_id, len(encoded))
             except Exception as exc:
-                counters["failed"] += 1
+                with counters_lock:
+                    counters["failed"] += 1
                 sid = (
                     result.get("source_video_id", "unknown")
                     if not isinstance(result, Exception)
                     else "unknown"
                 )
-                failed_sources.append({"source_key": sid, "error": str(exc)[:500]})
+                with failed_lock:
+                    failed_sources.append({"source_key": sid, "error": str(exc)[:500]})
                 logger.error("CPU worker failed for %s: %s", sid, exc)
             finally:
                 inter_queue.task_done()
+
+    def _gpu_worker(entry: Any) -> None:
+        from pickup_putdown.remote.worker import run_tasks_3_5
+
+        source_rel_key = entry.file_name
+        source_video_id = _make_source_video_id(source_rel_key)
+        source_path = local_source_dir / source_rel_key
+
+        if not source_path.exists():
+            logger.error("Source missing: %s", source_path)
+            with counters_lock:
+                counters["failed"] += 1
+            with failed_lock:
+                failed_sources.append(
+                    {"source_key": source_rel_key, "error": f"Source missing: {source_path}"}
+                )
+            return
+
+        output_dir = work_dir / source_video_id
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        try:
+            logger.info("GPU: processing %s", source_video_id)
+            task_output = run_tasks_3_5(
+                video_path=source_path,
+                output_dir=output_dir / "intermediate",
+                worker_cfg=worker_cfg,
+            )
+            candidates_data = task_output.get("candidates", [])
+            logger.info("GPU: %s produced %d candidate(s)", source_video_id, len(candidates_data))
+
+            inter_queue.put(
+                {
+                    "source_video_id": source_video_id,
+                    "source_path": source_path,
+                    "candidates_data": candidates_data,
+                    "output_dir": output_dir,
+                }
+            )
+        except Exception as exc:
+            logger.error("GPU: %s failed: %s", source_video_id, exc)
+            with counters_lock:
+                counters["failed"] += 1
+            with failed_lock:
+                failed_sources.append({"source_key": source_rel_key, "error": str(exc)[:500]})
+            inter_queue.put(exc)
 
     with ThreadPoolExecutor(max_workers=encode_workers) as cpu_pool:
         for _ in range(encode_workers):
             cpu_pool.submit(_encode_worker)
 
-        # Stage 1: GPU inference (sequential)
-        from pickup_putdown.remote.worker import run_tasks_3_5
+        # Stage 1: GPU inference (parallel)
+        with ThreadPoolExecutor(max_workers=gpu_workers) as gpu_pool:
+            futures = []
+            for entry in entries:
+                futures.append(gpu_pool.submit(_gpu_worker, entry))
 
-        for entry in entries:
-            source_rel_key = entry.file_name
-            source_video_id = _make_source_video_id(source_rel_key)
-            source_path = local_source_dir / source_rel_key
-
-            if not source_path.exists():
-                logger.error("Source missing: %s", source_path)
-                counters["failed"] += 1
-                failed_sources.append(
-                    {"source_key": source_rel_key, "error": f"Source missing: {source_path}"}
-                )
-                continue
-
-            output_dir = work_dir / source_video_id
-            output_dir.mkdir(parents=True, exist_ok=True)
-
-            try:
-                logger.info("GPU: processing %s", source_video_id)
-                task_output = run_tasks_3_5(
-                    video_path=source_path,
-                    output_dir=output_dir / "intermediate",
-                    worker_cfg=worker_cfg,
-                )
-                candidates_data = task_output.get("candidates", [])
-                logger.info(
-                    "GPU: %s produced %d candidate(s)", source_video_id, len(candidates_data)
-                )
-
-                inter_queue.put(
-                    {
-                        "source_video_id": source_video_id,
-                        "source_path": source_path,
-                        "candidates_data": candidates_data,
-                        "output_dir": output_dir,
-                    }
-                )
-            except Exception as exc:
-                logger.error("GPU: %s failed: %s", source_video_id, exc)
-                counters["failed"] += 1
-                failed_sources.append({"source_key": source_rel_key, "error": str(exc)[:500]})
-                inter_queue.put(exc)
+            for f in as_completed(futures):
+                try:
+                    f.result()
+                except Exception as exc:
+                    logger.error("GPU worker exception: %s", exc)
 
         # Wait for GPU stage to finish feeding queue
         inter_queue.join()
