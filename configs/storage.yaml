@@ -14,5 +14,5 @@ storage:
 
 cache:
   base_dir: "cache/downloads"
-  max_size_mb: 5120         # 5 GB default
+  max_size_mb: 5072         # 3 GB
   max_count: 50

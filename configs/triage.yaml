@@ -3,10 +3,10 @@
 
 triage:
   model_path: "models/person_detector.pt"
-  target_fps: 1.0
+  target_fps: 3.0
   image_size: 640
   device: "auto"
-  half: false
+  half: true
 
   detector_confidence: 0.10
   detector_iou_threshold: 0.70

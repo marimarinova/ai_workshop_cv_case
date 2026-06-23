@@ -16,7 +16,7 @@ pose:
   target_fps: 8
   image_size: 640
   device: "auto"
-  half: false
+  half: true
   # Minimum confidence for a wrist keypoint to be recorded.
   pose_confidence: 0.30
   max_detections: 100
