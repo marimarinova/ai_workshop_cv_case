@@ -1,0 +1,30 @@
+# S3 storage configuration for remote candidate generation.
+# Used by: pickup-putdown candidates-remote
+#
+# Credentials are picked up from the standard AWS credential chain:
+#   1. IAM role (EC2/ECS/EKS instance profile)
+#   2. Environment variables (AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY)
+#   3. Shared credentials file (~/.aws/credentials)
+#   4. Config file (~/.aws/config)
+#
+# Required permissions (restrict to bucket/prefix where possible):
+#   s3:ListBucket
+#   s3:GetObject
+#   s3:HeadObject
+#   s3:PutObject
+
+storage:
+  bucket_uri: "s3://chillnbite-cameras/anon/"
+  region: "eu-central-1"
+  endpoint_url: null
+  anonymous: false
+
+# Candidate encoding defaults
+candidate_encoding:
+  codec: libx264
+  pixel_format: yuv420p
+  preset: fast
+  crf: 23
+  faststart: true
+  retain_audio: false
+  keyframe_interval_s: 2

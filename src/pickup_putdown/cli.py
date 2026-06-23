@@ -1473,5 +1473,644 @@ def annotation_roundtrip(
         raise SystemExit(1)
 
 
+@app.command("candidates-download")
+def candidates_download(
+    storage_config: str = typer.Option(
+        "configs/storage.s3.yaml",
+        "--storage-config",
+        "-s",
+        help="Path to S3 storage configuration YAML file.",
+    ),
+    target_count: int = typer.Option(
+        10,
+        "--target-count",
+        "-t",
+        help="Number of not-yet-downloaded source videos to download.",
+    ),
+    transfer_workers: int = typer.Option(
+        4,
+        "--transfer-workers",
+        help="Maximum concurrent S3 download operations.",
+    ),
+    local_source_dir: str = typer.Option(
+        ".local/source_videos",
+        "--local-source-dir",
+        help="Local directory for cached source videos.",
+    ),
+    local_output_dir: str = typer.Option(
+        ".local/candidate_staging",
+        "--local-output-dir",
+        help="Local directory for candidate staging and run reports.",
+    ),
+    minimum_free_disk_gb: float = typer.Option(
+        0.0,
+        "--minimum-free-disk-gb",
+        help="Minimum free disk space in GB before downloading.",
+    ),
+    refresh_changed: bool = typer.Option(
+        False,
+        "--refresh-changed",
+        help="Redownload sources that changed in S3.",
+    ),
+    verbose: bool = typer.Option(
+        False,
+        "--verbose",
+        "-v",
+        help="Enable debug logging.",
+    ),
+) -> None:
+    """Download source videos from S3 to local cache in batches.
+
+    Tracks download state in local_processing.csv. Repeated invocations
+    select different not-yet-downloaded source videos deterministically.
+    """
+    _setup_logging(verbose)
+
+    from pathlib import Path
+
+    from pickup_putdown.config import load_config
+    from pickup_putdown.remote.download_coordinator import (
+        DownloadConfig,
+        run_source_download,
+    )
+    from pickup_putdown.remote.local_ledger import LocalProcessingLedger
+    from pickup_putdown.remote.s3_storage import S3Storage
+
+    cfg = load_config(Path(storage_config))
+    storage_cfg = cfg.storage
+
+    if not storage_cfg.bucket_uri:
+        typer.echo("Error: storage.bucket_uri is required.", err=True)
+        raise SystemExit(1)
+
+    typer.echo(f"Storage: {storage_cfg.bucket_uri}")
+    typer.echo(f"Target count: {target_count}")
+    typer.echo(f"Source dir: {local_source_dir}")
+    typer.echo(f"Output dir: {local_output_dir}")
+
+    storage = S3Storage(
+        bucket_uri=storage_cfg.bucket_uri,
+        endpoint_url=storage_cfg.endpoint_url,
+        region=storage_cfg.region,
+        anonymous=storage_cfg.anonymous,
+    )
+
+    ledger_path = Path(local_output_dir) / "local_processing.csv"
+    local_ledger = LocalProcessingLedger(ledger_path)
+
+    download_cfg = DownloadConfig(
+        target_count=target_count,
+        transfer_workers=transfer_workers,
+        local_source_dir=local_source_dir,
+        local_output_dir=local_output_dir,
+        minimum_free_disk_gb=minimum_free_disk_gb,
+        refresh_changed=refresh_changed,
+    )
+
+    try:
+        report = run_source_download(
+            storage=storage,
+            local_ledger=local_ledger,
+            config=download_cfg,
+        )
+    except KeyboardInterrupt as kb_exc:
+        typer.echo("\nInterrupted by user.", err=True)
+        raise SystemExit(130) from kb_exc
+    except Exception as exc:
+        typer.echo(f"Fatal error: {exc}", err=True)
+        raise SystemExit(1) from exc
+
+    typer.echo("")
+    typer.echo("=== Download Summary ===")
+    typer.echo(f"  Run ID:        {report.run_id}")
+    typer.echo(f"  Requested:     {report.requested_count}")
+    typer.echo(f"  Selected:      {report.selected_count}")
+    typer.echo(f"  Downloaded:    {report.downloaded_count}")
+    typer.echo(f"  Failed:        {report.failed_count}")
+    typer.echo(f"  Skipped:       {report.skipped_count}")
+    typer.echo(f"  Started:       {report.started_at}")
+    typer.echo(f"  Completed:     {report.completed_at}")
+    typer.echo(f"  Ledger:        {ledger_path}")
+    typer.echo(f"  Report:        {Path(local_output_dir) / 'runs' / f'{report.run_id}.json'}")
+
+    if report.errors:
+        typer.echo("")
+        typer.echo("Errors:")
+        for err in report.errors:
+            typer.echo(f"  {err}")
+
+    if report.failed_count > 0:
+        raise SystemExit(1)
+
+
+@app.command("candidates-remote")
+def candidates_remote(
+    storage_config: str = typer.Option(
+        "configs/storage.s3.yaml",
+        "--storage-config",
+        "-s",
+        help="Path to S3 storage configuration YAML file.",
+    ),
+    pipeline_config: str = typer.Option(
+        "configs/candidates.yaml",
+        "--pipeline-config",
+        "-p",
+        help="Path to candidate pipeline configuration YAML file.",
+    ),
+    target_count: int = typer.Option(
+        5,
+        "--target-count",
+        "-t",
+        help="Number of unprocessed videos to select for candidate generation.",
+    ),
+    workers: int = typer.Option(
+        4,
+        "--workers",
+        "-w",
+        help="Maximum concurrent source-video processing jobs.",
+    ),
+    transfer_workers: int = typer.Option(
+        4,
+        "--transfer-workers",
+        help="Maximum concurrent S3 download/upload operations.",
+    ),
+    gpu_workers: int = typer.Option(
+        1,
+        "--gpu-workers",
+        help="Maximum concurrent GPU inference jobs.",
+    ),
+    encode_workers: int = typer.Option(
+        4,
+        "--encode-workers",
+        help="Maximum concurrent H.264 encoding jobs.",
+    ),
+    work_dir: str = typer.Option(
+        ".local/remote_candidates",
+        "--work-dir",
+        help="Local working directory for intermediate files.",
+    ),
+    keep_local_files: bool = typer.Option(
+        False,
+        "--keep-local-files",
+        help="Keep local intermediate files after successful upload.",
+    ),
+    fail_fast: bool = typer.Option(
+        False,
+        "--fail-fast",
+        help="Stop all processing on first source video failure.",
+    ),
+    overwrite: bool = typer.Option(
+        False,
+        "--overwrite",
+        help="Re-process videos already marked as processed.",
+    ),
+    defer_upload: bool = typer.Option(
+        False,
+        "--defer-upload",
+        help="Generate candidates locally without uploading to S3.",
+    ),
+    local_source_dir: str = typer.Option(
+        ".local/source_videos",
+        "--local-source-dir",
+        help="Local directory for cached source videos (deferred mode).",
+    ),
+    local_output_dir: str = typer.Option(
+        ".local/candidate_staging",
+        "--local-output-dir",
+        help="Local directory for candidate staging and run reports.",
+    ),
+    dry_run: bool = typer.Option(
+        False,
+        "--dry-run",
+        "-n",
+        help="Synchronize ledger and report selections without processing.",
+    ),
+    verbose: bool = typer.Option(
+        False,
+        "--verbose",
+        "-v",
+        help="Enable debug logging.",
+    ),
+) -> None:
+    """Generate annotation candidates from remote S3 source videos.
+
+    Downloads unprocessed source videos from S3, runs the Tasks 3-5
+    candidate-generation pipeline, encodes candidates as H.264 MP4 files,
+    and uploads them back to S3 for Label Studio annotation.
+
+    With --defer-upload, processes locally cached sources and stages
+    candidates without uploading. Use candidates-download first to
+    populate the local source cache.
+    """
+    _setup_logging(verbose)
+
+    from pathlib import Path
+
+    from pickup_putdown.config import load_config
+    from pickup_putdown.remote.coordinator import (
+        CoordinationConfig,
+        run_candidate_generation,
+    )
+    from pickup_putdown.remote.ledger import ProcessingLedger
+    from pickup_putdown.remote.s3_storage import S3Storage
+    from pickup_putdown.remote.worker import WorkerConfig
+
+    # Load storage config
+    cfg = load_config(Path(storage_config))
+    storage_cfg = cfg.storage
+
+    if not storage_cfg.bucket_uri:
+        typer.echo("Error: storage.bucket_uri is required.", err=True)
+        raise SystemExit(1)
+
+    typer.echo(f"Storage: {storage_cfg.bucket_uri}")
+    typer.echo(f"Target count: {target_count}")
+    typer.echo(
+        f"Workers: {workers} (transfer={transfer_workers}, gpu={gpu_workers}, encode={encode_workers})"
+    )
+    if defer_upload:
+        typer.echo("Mode: deferred (local generation only)")
+
+    # Initialize S3 storage
+    storage = S3Storage(
+        bucket_uri=storage_cfg.bucket_uri,
+        endpoint_url=storage_cfg.endpoint_url,
+        region=storage_cfg.region,
+        anonymous=storage_cfg.anonymous,
+    )
+
+    # Initialize ledger — local for defer-upload, S3 for normal mode
+    if defer_upload:
+        from pickup_putdown.remote.local_ledger import LocalProcessingLedger
+
+        ledger_path = Path(local_output_dir) / "local_processing.csv"
+        local_ledger = LocalProcessingLedger(ledger_path)
+        local_ledger.load()
+        ledger = local_ledger
+    else:
+        ledger = ProcessingLedger(storage)
+
+    # Load pipeline config for encoding settings
+    pipeline_cfg = load_config(Path(pipeline_config))
+
+    # Build coordination config
+    coord_cfg = CoordinationConfig(
+        target_count=target_count,
+        workers=workers,
+        transfer_workers=transfer_workers,
+        gpu_workers=gpu_workers,
+        encode_workers=encode_workers,
+        work_dir=work_dir,
+        keep_local_files=keep_local_files,
+        fail_fast=fail_fast,
+        overwrite=overwrite,
+        dry_run=dry_run,
+        defer_upload=defer_upload,
+        local_output_dir=local_output_dir,
+        local_source_dir=local_source_dir,
+    )
+
+    # Build worker config
+    worker_cfg = WorkerConfig(
+        storage_config=Path(storage_config),
+        pipeline_config=Path(pipeline_config),
+        work_dir=Path(work_dir),
+        keep_local_files=keep_local_files,
+        triage_config=cfg.triage.model_dump()
+        .get("model_path", "models/person_detector.pt")
+        .rsplit("/", 1)[0]
+        + "/triage.yaml"
+        if False
+        else "configs/triage.yaml",
+        proposals_config="configs/proposals.yaml",
+        shelves_config="configs/shelves.yaml",
+        camera_id="store_camera_01",
+        defer_upload=defer_upload,
+        local_source_dir=local_source_dir,
+        local_output_dir=local_output_dir,
+    )
+
+    # Override from pipeline config if present
+    if hasattr(pipeline_cfg, "triage"):
+        worker_cfg.triage_config = "configs/triage.yaml"
+    if hasattr(pipeline_cfg, "proposals"):
+        worker_cfg.proposals_config = "configs/proposals.yaml"
+
+    try:
+        report = run_candidate_generation(
+            storage=storage,
+            ledger=ledger,
+            config=coord_cfg,
+            worker_cfg=worker_cfg,
+        )
+    except KeyboardInterrupt as kb_exc:
+        typer.echo("\nInterrupted by user.", err=True)
+        raise SystemExit(130) from kb_exc
+    except Exception as exc:
+        typer.echo(f"Fatal error: {exc}", err=True)
+        raise SystemExit(1) from exc
+
+    # Print summary
+    typer.echo("")
+    typer.echo("=== Candidate Generation Summary ===")
+    typer.echo(f"  Run ID:              {report.run_id}")
+    typer.echo(f"  Requested:           {report.requested_count}")
+    typer.echo(f"  Selected:            {report.selected_count}")
+    typer.echo(f"  Completed:           {report.completed_count}")
+    typer.echo(f"  Failed:              {report.failed_count}")
+    typer.echo(f"  Skipped:             {report.skipped_count}")
+    typer.echo(f"  Total candidates:    {report.total_candidates}")
+    typer.echo(f"  Start:               {report.start_time}")
+    typer.echo(f"  End:                 {report.end_time}")
+
+    if report.failed_sources:
+        typer.echo("")
+        typer.echo("Failed sources:")
+        for fs in report.failed_sources:
+            typer.echo(f"  {fs['source_key']}: {fs['error'][:120]}")
+
+    if report.failed_count > 0:
+        raise SystemExit(1)
+
+
+@app.command("candidates-process-local")
+def candidates_process_local(
+    pipeline_config: str = typer.Option(
+        "configs/candidates.yaml",
+        "--pipeline-config",
+        "-p",
+        help="Path to candidate pipeline configuration YAML file.",
+    ),
+    target_count: int = typer.Option(
+        10,
+        "--target-count",
+        "-t",
+        help="Number of downloaded videos to process.",
+    ),
+    encode_workers: int = typer.Option(
+        12,
+        "--encode-workers",
+        help="Maximum concurrent H.264 encoding jobs (CPU-bound).",
+    ),
+    gpu_workers: int = typer.Option(
+        8,
+        "--gpu-workers",
+        help="Maximum concurrent GPU inference workers (triage + propose).",
+    ),
+    work_dir: str = typer.Option(
+        ".local/remote_candidates",
+        "--work-dir",
+        help="Local working directory for intermediate files.",
+    ),
+    keep_local_files: bool = typer.Option(
+        False,
+        "--keep-local-files",
+        help="Keep local intermediate files after successful processing.",
+    ),
+    local_source_dir: str = typer.Option(
+        ".local/source_videos",
+        "--local-source-dir",
+        help="Local directory for downloaded source videos.",
+    ),
+    local_output_dir: str = typer.Option(
+        ".local/candidate_staging",
+        "--local-output-dir",
+        help="Local directory for candidate staging and run reports.",
+    ),
+    overwrite: bool = typer.Option(
+        False,
+        "--overwrite",
+        help="Re-process videos already marked as generated.",
+    ),
+    verbose: bool = typer.Option(
+        False,
+        "--verbose",
+        "-v",
+        help="Enable debug logging.",
+    ),
+) -> None:
+    """Process downloaded source videos locally with GPU/CPU two-stage pipeline.
+
+    Runs GPU inference (triage + propose) in parallel and encoding
+    (H.264 MP4) in parallel. No S3 interaction — purely local.
+
+    Uses the local ledger to track downloaded/generated state.
+    """
+    _setup_logging(verbose)
+
+    from pathlib import Path
+
+    from pickup_putdown.config import load_config
+    from pickup_putdown.remote.coordinator import run_two_stage_pipeline
+    from pickup_putdown.remote.local_ledger import LocalProcessingLedger
+    from pickup_putdown.remote.worker import WorkerConfig
+
+    # Load pipeline config
+    pipeline_cfg = load_config(Path(pipeline_config))
+
+    # Initialize local ledger
+    ledger_path = Path(local_output_dir) / "local_processing.csv"
+    local_ledger = LocalProcessingLedger(ledger_path)
+    local_ledger.load()
+
+    # Select downloaded but not generated
+    if overwrite:
+        ready = sorted(
+            [e for e in local_ledger.entries.values() if e.downloaded],
+            key=lambda e: e.file_name,
+        )[:target_count]
+    else:
+        ready = local_ledger.select_ready_for_generation(target_count)
+
+    if not ready:
+        typer.echo("No downloaded videos ready for processing.")
+        raise SystemExit(0)
+
+    typer.echo(f"Processing {len(ready)} video(s) locally...")
+    typer.echo(f"GPU workers:     {gpu_workers}")
+    typer.echo(f"Encode workers:  {encode_workers}")
+    typer.echo(f"Source dir:      {local_source_dir}")
+    typer.echo(f"Output dir:      {local_output_dir}")
+
+    worker_cfg = WorkerConfig(
+        storage_config=Path("configs/storage.s3.yaml"),
+        pipeline_config=Path(pipeline_config),
+        work_dir=Path(work_dir),
+        keep_local_files=keep_local_files,
+        triage_config="configs/triage.yaml",
+        tracker_config="configs/bytetrack_triage.yaml",
+        proposals_config="configs/proposals.yaml",
+        shelves_config="configs/shelves.yaml",
+        camera_id="store_camera_01",
+        defer_upload=True,
+        local_source_dir=local_source_dir,
+        local_output_dir=local_output_dir,
+    )
+
+    if hasattr(pipeline_cfg, "triage"):
+        worker_cfg.triage_config = "configs/triage.yaml"
+    if hasattr(pipeline_cfg, "proposals"):
+        worker_cfg.proposals_config = "configs/proposals.yaml"
+
+    try:
+        report = run_two_stage_pipeline(
+            entries=ready,
+            worker_cfg=worker_cfg,
+            local_source_dir=Path(local_source_dir),
+            local_output_dir=Path(local_output_dir),
+            encode_workers=encode_workers,
+            gpu_workers=gpu_workers,
+        )
+    except KeyboardInterrupt as kb_exc:
+        typer.echo("\nInterrupted by user.", err=True)
+        raise SystemExit(130) from kb_exc
+    except Exception as exc:
+        typer.echo(f"Fatal error: {exc}", err=True)
+        raise SystemExit(1) from exc
+
+    # Update ledger for completed entries
+    completed_keys = {fs["source_key"] for fs in report.failed_sources}
+    for entry in ready:
+        if entry.file_name not in completed_keys:
+            local_ledger.mark_generated(entry.file_name)
+    local_ledger.save()
+
+    # Save local run report
+    from pickup_putdown.remote.coordinator import _save_local_run_report
+
+    _save_local_run_report(Path(local_output_dir), report)
+
+    # Print summary
+    typer.echo("")
+    typer.echo("=== Local Processing Summary ===")
+    typer.echo(f"  Run ID:              {report.run_id}")
+    typer.echo(f"  Selected:            {report.selected_count}")
+    typer.echo(f"  Completed:           {report.completed_count}")
+    typer.echo(f"  Failed:              {report.failed_count}")
+    typer.echo(f"  Total candidates:    {report.total_candidates}")
+    typer.echo(f"  Start:               {report.start_time}")
+    typer.echo(f"  End:                 {report.end_time}")
+    typer.echo(f"  Ledger:              {ledger_path}")
+    typer.echo(
+        f"  Report:              {Path(local_output_dir) / 'runs' / f'{report.run_id}.json'}"
+    )
+
+    if report.failed_sources:
+        typer.echo("")
+        typer.echo("Failed sources:")
+        for fs in report.failed_sources:
+            typer.echo(f"  {fs['source_key']}: {fs['error'][:120]}")
+
+    if report.failed_count > 0:
+        raise SystemExit(1)
+
+
+@app.command("candidates-upload")
+def candidates_upload(
+    storage_config: str = typer.Option(
+        "configs/storage.s3.yaml",
+        "--storage-config",
+        "-s",
+        help="Path to S3 storage configuration YAML file.",
+    ),
+    local_output_dir: str = typer.Option(
+        ".local/candidate_staging",
+        "--local-output-dir",
+        help="Local directory for candidate staging and ledger.",
+    ),
+    target_count: int = typer.Option(
+        0,
+        "--target-count",
+        "-t",
+        help="Maximum sources to upload (0 = all ready).",
+    ),
+    verbose: bool = typer.Option(
+        False,
+        "--verbose",
+        "-v",
+        help="Enable debug logging.",
+    ),
+) -> None:
+    """Upload locally staged candidates to S3.
+
+    Selects entries where generated=true and uploaded=false from the
+    local processing ledger, uploads candidate videos and metadata,
+    then marks them as uploaded.
+    """
+    _setup_logging(verbose)
+
+    from pathlib import Path
+
+    from pickup_putdown.config import load_config
+    from pickup_putdown.remote.local_ledger import LocalProcessingLedger
+    from pickup_putdown.remote.s3_storage import S3Storage
+
+    cfg = load_config(Path(storage_config))
+    storage_cfg = cfg.storage
+
+    if not storage_cfg.bucket_uri:
+        typer.echo("Error: storage.bucket_uri is required.", err=True)
+        raise SystemExit(1)
+
+    storage = S3Storage(
+        bucket_uri=storage_cfg.bucket_uri,
+        endpoint_url=storage_cfg.endpoint_url,
+        region=storage_cfg.region,
+        anonymous=storage_cfg.anonymous,
+    )
+
+    ledger_path = Path(local_output_dir) / "local_processing.csv"
+    local_ledger = LocalProcessingLedger(ledger_path)
+    local_ledger.load()
+
+    ready = local_ledger.select_ready_for_upload(target_count)
+    if not ready:
+        typer.echo("No candidates ready for upload.")
+        raise SystemExit(0)
+
+    typer.echo(f"Uploading {len(ready)} source(s)...")
+
+    uploaded = 0
+    failed = 0
+    for entry in ready:
+        source_video_id = entry.file_name.replace("/", "_").replace(".mp4", "")
+        candidates_dir = Path(local_output_dir) / "candidates" / source_video_id
+        if not candidates_dir.exists():
+            typer.echo(f"  Missing candidates dir for {entry.file_name}, skipping", err=True)
+            local_ledger.set_error(entry.file_name, "candidates_dir_missing")
+            failed += 1
+            continue
+
+        try:
+            candidate_files = sorted(candidates_dir.glob("*.mp4"))
+            metadata_files = sorted(candidates_dir.glob("*.json"))
+
+            for cf in candidate_files:
+                dest_key = f"anon/candidates/videos/{source_video_id}/{cf.name}"
+                storage.upload(cf, dest_key)
+                typer.echo(f"  Uploaded {cf.name} -> {dest_key}")
+
+            for mf in metadata_files:
+                dest_key = f"anon/candidates/metadata/{source_video_id}/{mf.name}"
+                storage.upload(mf, dest_key)
+
+            local_ledger.mark_uploaded(entry.file_name)
+            local_ledger.save()
+            uploaded += 1
+        except Exception as exc:
+            failed += 1
+            typer.echo(f"  Failed {entry.file_name}: {exc}", err=True)
+            local_ledger.set_error(entry.file_name, str(exc)[:500])
+            local_ledger.save()
+
+    typer.echo("")
+    typer.echo("=== Upload Summary ===")
+    typer.echo(f"  Uploaded: {uploaded}")
+    typer.echo(f"  Failed:   {failed}")
+
+    if failed > 0:
+        raise SystemExit(1)
+
+
 if __name__ == "__main__":
     app()

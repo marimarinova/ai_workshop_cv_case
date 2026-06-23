@@ -60,7 +60,8 @@ VIDEO ?= $(TRIAGE_INPUT)
 	show-run models task-3 task-4 task-5 tasks-3-5 \
 	task_3 task_4 task_5 \
 	annotation-pull annotation-up annotation-down annotation-restart annotation-status annotation-logs \
-	annotation-config-validate annotation-test annotation-acceptance annotation-reset
+	annotation-config-validate annotation-test annotation-acceptance annotation-reset \
+candidates-remote candidates-download candidates-upload candidates-generate candidates-process-local
 
 # ---------------------------------------------------------------------------
 # General development targets
@@ -380,4 +381,147 @@ annotation-reset: ## ⚠️  DESTRUCTIVE: Delete local Label Studio state (datab
 
 # Underscore alias for annotation-test
 task_6: annotation-test ## Alias for annotation-test
+
+# ---------------------------------------------------------------------------
+# Remote candidate generation (Task 6.1 Hard)
+# ---------------------------------------------------------------------------
+
+CANDIDATE_STORAGE_CONFIG ?= configs/storage.s3.yaml
+CANDIDATE_PIPELINE_CONFIG ?= configs/candidates.yaml
+CANDIDATE_TARGET_COUNT ?= 5
+CANDIDATE_WORKERS ?= 4
+CANDIDATE_TRANSFER_WORKERS ?= 4
+CANDIDATE_GPU_WORKERS ?= 8
+CANDIDATE_ENCODE_WORKERS ?= 12
+CANDIDATE_WORK_DIR ?= .local/remote_candidates
+CANDIDATE_KEEP_LOCAL_FILES ?=
+CANDIDATE_FAIL_FAST ?=
+CANDIDATE_OVERWRITE ?=
+CANDIDATE_DRY_RUN ?=
+
+CANDIDATE_DEFER_UPLOAD ?=
+CANDIDATE_LOCAL_SOURCE_DIR ?= .local/source_videos
+CANDIDATE_LOCAL_OUTPUT_DIR ?= .local/candidate_staging
+CANDIDATE_MIN_FREE_DISK_GB ?= 0
+CANDIDATE_REFRESH_CHANGED ?=
+
+candidates-download: ## Download source videos from S3 to local cache in batches
+	@echo "=== Source Video Download ==="
+	@echo "Storage config:    $(CANDIDATE_STORAGE_CONFIG)"
+	@echo "Target count:      $(CANDIDATE_TARGET_COUNT)"
+	@echo "Transfer workers:  $(CANDIDATE_TRANSFER_WORKERS)"
+	@echo "Source dir:        $(CANDIDATE_LOCAL_SOURCE_DIR)"
+	@echo "Output dir:        $(CANDIDATE_LOCAL_OUTPUT_DIR)"
+	@set -a && \
+	source "$(STORAGE_ENV)" && \
+	set +a && \
+	$(PICKUP_PUTDOWN) candidates-download \
+		--storage-config "$(CANDIDATE_STORAGE_CONFIG)" \
+		--target-count $(CANDIDATE_TARGET_COUNT) \
+		--transfer-workers $(CANDIDATE_TRANSFER_WORKERS) \
+		--local-source-dir "$(CANDIDATE_LOCAL_SOURCE_DIR)" \
+		--local-output-dir "$(CANDIDATE_LOCAL_OUTPUT_DIR)" \
+		--minimum-free-disk-gb $(CANDIDATE_MIN_FREE_DISK_GB) \
+		$(if $(CANDIDATE_REFRESH_CHANGED),--refresh-changed,) \
+		-v
+
+candidates-remote: ## Generate annotation candidates from remote S3 source videos
+	@echo "=== Remote Candidate Generation ==="
+	@echo "Storage config:    $(CANDIDATE_STORAGE_CONFIG)"
+	@echo "Pipeline config:   $(CANDIDATE_PIPELINE_CONFIG)"
+	@echo "Target count:      $(CANDIDATE_TARGET_COUNT)"
+	@echo "Workers:           $(CANDIDATE_WORKERS)"
+	@echo "Transfer workers:  $(CANDIDATE_TRANSFER_WORKERS)"
+	@echo "GPU workers:       $(CANDIDATE_GPU_WORKERS)"
+	@echo "Encode workers:    $(CANDIDATE_ENCODE_WORKERS)"
+	@echo "Work dir:          $(CANDIDATE_WORK_DIR)"
+	@echo "Source dir:        $(CANDIDATE_LOCAL_SOURCE_DIR)"
+	@echo "Output dir:        $(CANDIDATE_LOCAL_OUTPUT_DIR)"
+	@set -a && \
+	source "$(STORAGE_ENV)" && \
+	set +a && \
+	$(PICKUP_PUTDOWN) candidates-remote \
+		--storage-config "$(CANDIDATE_STORAGE_CONFIG)" \
+		--pipeline-config "$(CANDIDATE_PIPELINE_CONFIG)" \
+		--target-count $(CANDIDATE_TARGET_COUNT) \
+		--workers $(CANDIDATE_WORKERS) \
+		--transfer-workers $(CANDIDATE_TRANSFER_WORKERS) \
+		--gpu-workers $(CANDIDATE_GPU_WORKERS) \
+		--encode-workers $(CANDIDATE_ENCODE_WORKERS) \
+		--work-dir "$(CANDIDATE_WORK_DIR)" \
+		--local-source-dir "$(CANDIDATE_LOCAL_SOURCE_DIR)" \
+		--local-output-dir "$(CANDIDATE_LOCAL_OUTPUT_DIR)" \
+		$(if $(CANDIDATE_KEEP_LOCAL_FILES),--keep-local-files,) \
+		$(if $(CANDIDATE_FAIL_FAST),--fail-fast,) \
+		$(if $(CANDIDATE_DEFER_UPLOAD),--defer-upload,) \
+		$(if $(CANDIDATE_OVERWRITE),--overwrite,) \
+		$(if $(CANDIDATE_DRY_RUN),--dry-run,) \
+		-v
+
+candidates-upload: ## Upload locally staged candidates to S3
+	@echo "=== Candidate Upload ==="
+	@echo "Storage config:    $(CANDIDATE_STORAGE_CONFIG)"
+	@echo "Output dir:        $(CANDIDATE_LOCAL_OUTPUT_DIR)"
+	@echo "Target count:      $(CANDIDATE_TARGET_COUNT)"
+	@set -a && \
+	source "$(STORAGE_ENV)" && \
+	set +a && \
+	$(PICKUP_PUTDOWN) candidates-upload \
+		--storage-config "$(CANDIDATE_STORAGE_CONFIG)" \
+		--local-output-dir "$(CANDIDATE_LOCAL_OUTPUT_DIR)" \
+		--target-count $(CANDIDATE_TARGET_COUNT) \
+		-v
+
+candidates-generate: ## Process downloaded sources locally without uploading to S3
+	@echo "=== Local Candidate Generation (deferred upload) ==="
+	@echo "Storage config:    $(CANDIDATE_STORAGE_CONFIG)"
+	@echo "Pipeline config:   $(CANDIDATE_PIPELINE_CONFIG)"
+	@echo "Target count:      $(CANDIDATE_TARGET_COUNT)"
+	@echo "Workers:           $(CANDIDATE_WORKERS)"
+	@echo "GPU workers:       $(CANDIDATE_GPU_WORKERS)"
+	@echo "Encode workers:    $(CANDIDATE_ENCODE_WORKERS)"
+	@echo "Work dir:          $(CANDIDATE_WORK_DIR)"
+	@echo "Source dir:        $(CANDIDATE_LOCAL_SOURCE_DIR)"
+	@echo "Output dir:        $(CANDIDATE_LOCAL_OUTPUT_DIR)"
+	@set -a && \
+	source "$(STORAGE_ENV)" && \
+	set +a && \
+	$(PICKUP_PUTDOWN) candidates-remote \
+		--storage-config "$(CANDIDATE_STORAGE_CONFIG)" \
+		--pipeline-config "$(CANDIDATE_PIPELINE_CONFIG)" \
+		--target-count $(CANDIDATE_TARGET_COUNT) \
+		--workers $(CANDIDATE_WORKERS) \
+		--transfer-workers $(CANDIDATE_TRANSFER_WORKERS) \
+		--gpu-workers $(CANDIDATE_GPU_WORKERS) \
+		--encode-workers $(CANDIDATE_ENCODE_WORKERS) \
+		--work-dir "$(CANDIDATE_WORK_DIR)" \
+		--local-source-dir "$(CANDIDATE_LOCAL_SOURCE_DIR)" \
+		--local-output-dir "$(CANDIDATE_LOCAL_OUTPUT_DIR)" \
+		$(if $(CANDIDATE_KEEP_LOCAL_FILES),--keep-local-files,) \
+		$(if $(CANDIDATE_FAIL_FAST),--fail-fast,) \
+		--defer-upload \
+		$(if $(CANDIDATE_OVERWRITE),--overwrite,) \
+		$(if $(CANDIDATE_DRY_RUN),--dry-run,) \
+		-v
+
+candidates-process-local: ## Process downloaded sources locally (GPU parallel, CPU parallel)
+	@echo "=== Local Candidate Processing ==="
+	@echo "Pipeline config:   $(CANDIDATE_PIPELINE_CONFIG)"
+	@echo "Target count:      $(CANDIDATE_TARGET_COUNT)"
+	@echo "GPU workers:       $(CANDIDATE_GPU_WORKERS)"
+	@echo "Encode workers:    $(CANDIDATE_ENCODE_WORKERS)"
+	@echo "Work dir:          $(CANDIDATE_WORK_DIR)"
+	@echo "Source dir:        $(CANDIDATE_LOCAL_SOURCE_DIR)"
+	@echo "Output dir:        $(CANDIDATE_LOCAL_OUTPUT_DIR)"
+	@$(PICKUP_PUTDOWN) candidates-process-local \
+		--pipeline-config "$(CANDIDATE_PIPELINE_CONFIG)" \
+		--target-count $(CANDIDATE_TARGET_COUNT) \
+		--gpu-workers $(CANDIDATE_GPU_WORKERS) \
+		--encode-workers $(CANDIDATE_ENCODE_WORKERS) \
+		--work-dir "$(CANDIDATE_WORK_DIR)" \
+		--local-source-dir "$(CANDIDATE_LOCAL_SOURCE_DIR)" \
+		--local-output-dir "$(CANDIDATE_LOCAL_OUTPUT_DIR)" \
+		$(if $(CANDIDATE_KEEP_LOCAL_FILES),--keep-local-files,) \
+		$(if $(CANDIDATE_OVERWRITE),--overwrite,) \
+		-v
 
