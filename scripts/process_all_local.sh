@@ -87,8 +87,8 @@ print(json.dumps(d))
     cnt=$(echo "$data" | python -c "import sys,json; d=json.load(sys.stdin); print(d.get('$video',{}).get('count',0))")
 
     if [ "$cnt" -ge "$MAX_RETRIES" ]; then
-        if ! grep -qxF "$video" "$SKIP_FILE" 2>/dev/null; then
-            echo "$video" >> "$SKIP_FILE"
+        if ! grep -qF "$video" "$SKIP_FILE" 2>/dev/null; then
+            echo "$video $(date -u '+%Y-%m-%dT%H:%M:%SZ')" >> "$SKIP_FILE"
             log "PERMANENT: $video exceeded $MAX_RETRIES retries → added to $SKIP_FILE"
         fi
     fi
