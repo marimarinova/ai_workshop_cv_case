@@ -7,7 +7,10 @@
 # Inherit from configs/triage.yaml for Task 3 settings
 triage:
   model_path: "models/person_detector.pt"
-  target_fps: 1.0
+  target_fps: 0.5
+  pipeline_n_decoders: 4
+  pipeline_queue_depth: 32
+  pipeline_frame_timeout_s: 30.0
   image_size: 640
   device: "auto"
   half: false

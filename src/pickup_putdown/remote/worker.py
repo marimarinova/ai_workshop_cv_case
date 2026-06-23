@@ -184,7 +184,7 @@ def run_tasks_3_5(
         "--verbose",
     ]
     logger.info("Task 3: %s", " ".join(triage_cmd))
-    result = subprocess.run(triage_cmd, capture_output=True, text=True, timeout=1800, check=False)
+    result = subprocess.run(triage_cmd, capture_output=True, text=True, timeout=3600, check=False)
     if result.returncode != 0:
         raise RuntimeError(f"Task 3 failed: {result.stderr[-500:]}")
 
@@ -208,7 +208,7 @@ def run_tasks_3_5(
         "--verbose",
     ]
     logger.info("Task 5: %s", " ".join(propose_cmd))
-    result = subprocess.run(propose_cmd, capture_output=True, text=True, timeout=1800, check=False)
+    result = subprocess.run(propose_cmd, capture_output=True, text=True, timeout=3600, check=False)
     if result.returncode != 0:
         raise RuntimeError(f"Task 5 failed: {result.stderr[-500:]}")
 

@@ -198,7 +198,7 @@ def run_candidate_generation(
         for future in as_completed(futures):
             source_key = futures[future]
             try:
-                result = future.result(timeout=1800)
+                result = future.result(timeout=3600)
                 if result.success:
                     completed += 1
                     total_candidates += result.candidate_count

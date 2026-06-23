@@ -1886,6 +1886,11 @@ def candidates_process_local(
         "--overwrite",
         help="Re-process videos already marked as generated.",
     ),
+    skip_file: str = typer.Option(
+        ".local/processing_skip.txt",
+        "--skip-file",
+        help="File with one filename per line to skip during selection.",
+    ),
     verbose: bool = typer.Option(
         False,
         "--verbose",
@@ -1917,14 +1922,30 @@ def candidates_process_local(
     local_ledger = LocalProcessingLedger(ledger_path)
     local_ledger.load()
 
+    # Load skip list
+    skip_path = Path(skip_file)
+    skip_names: set[str] = set()
+    if skip_path.exists():
+        skip_names = {
+            line.split()[0]
+            for line in skip_path.read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        }
+        if skip_names:
+            typer.echo(f"Skipping {len(skip_names)} file(s) from {skip_file}")
+
     # Select downloaded but not generated
     if overwrite:
         ready = sorted(
-            [e for e in local_ledger.entries.values() if e.downloaded],
+            [
+                e
+                for e in local_ledger.entries.values()
+                if e.downloaded and e.file_name not in skip_names
+            ],
             key=lambda e: e.file_name,
         )[:target_count]
     else:
-        ready = local_ledger.select_ready_for_generation(target_count)
+        ready = local_ledger.select_ready_for_generation(target_count, skip_names)
 
     if not ready:
         typer.echo("No downloaded videos ready for processing.")

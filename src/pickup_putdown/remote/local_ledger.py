@@ -124,10 +124,17 @@ class LocalProcessingLedger:
         )
         return candidates[:target_count]
 
-    def select_ready_for_generation(self, target_count: int) -> list[LocalLedgerEntry]:
-        """Return entries where downloaded=true, generated=false."""
+    def select_ready_for_generation(
+        self, target_count: int, skip_names: set[str] | None = None
+    ) -> list[LocalLedgerEntry]:
+        """Return entries where downloaded=true, generated=false, excluding skip_names."""
+        skip_names = skip_names or set()
         candidates = sorted(
-            [e for e in self.entries.values() if e.downloaded and not e.generated],
+            [
+                e
+                for e in self.entries.values()
+                if e.downloaded and not e.generated and e.file_name not in skip_names
+            ],
             key=lambda e: e.file_name,
         )
         return candidates[:target_count]

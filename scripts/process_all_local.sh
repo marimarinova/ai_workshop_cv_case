@@ -150,8 +150,9 @@ while [ "$run" -lt "$MAX_RUNS" ]; do
 
     output=$(pickup-putdown candidates-process-local \
         --target-count 9999 \
-        --gpu-workers 8 \
+        --gpu-workers 5 \
         --encode-workers 12 \
+        --skip-file "$SKIP_FILE" \
         -v 2>&1) || true
 
     echo "$output" >> "$LOG_FILE"
