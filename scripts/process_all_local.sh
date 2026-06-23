@@ -1,9 +1,17 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
+CONTINUOUS=false
+for arg in "$@"; do
+    case "$arg" in
+        -c|--continuous) CONTINUOUS=true ;;
+    esac
+done
+
 MAX_RUNS=10
 MAX_RETRIES=3
 SLEEP_BETWEEN=10
+IDLE_TIMEOUT=600
 LOG_FILE="scripts/process_all.log"
 LEDGER=".local/candidate_staging/local_processing.csv"
 FAILED_JSON=".local/processing_failed.json"
@@ -11,7 +19,7 @@ SKIP_FILE=".local/processing_skip.txt"
 STATUS_FILE=".local/process_status.txt"
 
 count_remaining() {
-    grep -c ',true,false,' "$LEDGER" 2>/dev/null || echo 0
+    grep -c ',true,false,false,' "$LEDGER" 2>/dev/null || echo 0
 }
 
 count_skipped() {
@@ -30,7 +38,9 @@ log() {
 
 update_status() {
     local run_num="$1" completed="$2" failed="$3" remaining="$4"
-    echo "Run ${run_num}/${MAX_RUNS} | Completed: ${completed} | Failed: ${failed} | Remaining: ${remaining} | Last: $(date -u '+%Y-%m-%dT%H:%M:%SZ')" > "$STATUS_FILE"
+    local mode="once"
+    [ "$CONTINUOUS" = true ] && mode="continuous"
+    echo "[${mode}] Run ${run_num}/${MAX_RUNS} | Completed: ${completed} | Failed: ${failed} | Remaining: ${remaining} | Last: $(date -u '+%Y-%m-%dT%H:%M:%SZ')" > "$STATUS_FILE"
 }
 
 load_failed_json() {
@@ -85,7 +95,7 @@ print(json.dumps(d))
 }
 
 log "=== PROCESS ALL START ==="
-log "Config: gpu_workers=8 encode_workers=12 max_retries=$MAX_RETRIES"
+log "Config: gpu_workers=8 encode_workers=12 max_retries=$MAX_RETRIES continuous=$CONTINUOUS"
 
 remaining=$(count_remaining)
 skipped=$(count_skipped)
@@ -93,12 +103,17 @@ log "Videos ready: $remaining"
 log "Skipped: $skipped (from $SKIP_FILE)"
 
 if [ "$remaining" -eq 0 ]; then
-    log "No videos ready for processing. Done."
-    exit 0
+    if [ "$CONTINUOUS" = true ]; then
+        log "No videos ready yet. Waiting for downloads (idle timeout: ${IDLE_TIMEOUT}s)..."
+    else
+        log "No videos ready for processing. Done."
+        exit 0
+    fi
 fi
 
 total_completed=0
 total_failed=0
+idle_start=0
 
 run=0
 while [ "$run" -lt "$MAX_RUNS" ]; do
@@ -106,8 +121,27 @@ while [ "$run" -lt "$MAX_RUNS" ]; do
     remaining=$(count_remaining)
 
     if [ "$remaining" -eq 0 ]; then
-        log "All videos processed."
-        break
+        if [ "$CONTINUOUS" = true ]; then
+            if [ "$idle_start" -eq 0 ]; then
+                idle_start=$(date +%s)
+            else
+                idle_elapsed=$(( $(date +%s) - idle_start ))
+                if [ "$idle_elapsed" -ge "$IDLE_TIMEOUT" ]; then
+                    log "Idle for ${idle_elapsed}s (timeout ${IDLE_TIMEOUT}s). Downloads likely done."
+                    break
+                fi
+                log "Idle ${idle_elapsed}s/${IDLE_TIMEOUT}s. Waiting for new downloads..."
+            fi
+            sleep "$SLEEP_BETWEEN"
+            continue
+        else
+            log "All videos processed."
+            break
+        fi
+    fi
+
+    if [ "$CONTINUOUS" = true ]; then
+        idle_start=0
     fi
 
     log ""
@@ -115,7 +149,7 @@ while [ "$run" -lt "$MAX_RUNS" ]; do
     log "Selected: $remaining"
 
     output=$(pickup-putdown candidates-process-local \
-        --target-count 0 \
+        --target-count 9999 \
         --gpu-workers 8 \
         --encode-workers 12 \
         -v 2>&1) || true
@@ -166,7 +200,14 @@ for v, info in sorted(d.items(), key=lambda x: -x[1]['count']):
     remaining=$new_remaining
 
     if [ "$remaining" -eq 0 ]; then
-        break
+        if [ "$CONTINUOUS" = true ]; then
+            idle_start=$(date +%s)
+            log "All current videos processed. Waiting for new downloads..."
+            sleep "$SLEEP_BETWEEN"
+            continue
+        else
+            break
+        fi
     fi
 
     log "Remaining: $remaining"
