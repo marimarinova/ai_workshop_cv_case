@@ -68,6 +68,24 @@ candidate intervals. The `complete_active_span_reviewed` checkbox is required
 before export. A reviewed clip with zero events is valid and distinguishable
 from an unreviewed clip.
 
+### Candidate clip review (Task 6.2)
+
+For candidate-backed tasks (those built from Task 6.1 candidate metadata), the
+annotator reviews only the trimmed candidate clip window, not the full active
+span. These tasks carry `annotation_unit: candidate_clip` in their data.
+
+During export, candidate-backed tasks accept either:
+- `candidate_clip_reviewed = true` (preferred for candidate tasks); or
+- `complete_active_span_reviewed = true` (backward compatibility).
+
+A candidate task with neither confirmation fails validation. The exported
+events are never interpreted as having the full active span reviewed — they
+are traceable only to the candidate clip window via `candidate_id` in the
+provenance export.
+
+Legacy (non-candidate) tasks still require `complete_active_span_reviewed =
+true` and are unaffected by this change.
+
 ## 8. Annotating Events
 
 ### Zero events
@@ -141,13 +159,27 @@ export_ignore_intervals_parquet(data, "ignore_intervals.parquet")
 
 ### Official events (events.csv)
 - Only accepted visible `pickup` and `putdown` annotations.
-- Requires `complete_active_span_reviewed=true`.
+- For legacy tasks: requires `complete_active_span_reviewed=true`.
+- For candidate-backed tasks: requires `candidate_clip_reviewed=true` (or
+  `complete_active_span_reviewed=true` for backward compatibility).
+- Contains **only the approved canonical columns**: `event_id`, `clip_id`,
+  `type`, `t_start`, `t_end`, `hard_case`, `annotator`, `confidence`, `notes`.
 - Chronological ordering within each clip.
 - Multi-item expansion: N rows with shared `event_group_id`.
+- Compatible with Task 8 evaluator without downstream filtering.
 
 ### Ignore intervals (ignore_intervals.parquet)
 - Only `ignore`-label regions.
+- Contains **only the approved canonical columns**: `ignore_id`, `clip_id`,
+  `t_start`, `t_end`, `reason`, `annotator`, `notes`.
 - Used for excluding occluded/out-of-frame spans from negative sampling.
+
+### Provenance export (event_provenance.parquet)
+- Optional artifact produced with `--provenance` flag.
+- Contains candidate traceability metadata: `event_id`, `candidate_id`,
+  `clip_id`, `actor_id`, `hand_side`, `region_id`, `event_group_id`.
+- Not consumed by Task 8 evaluator. Preserves full traceability from exported
+  events back to originating candidates and generation configuration.
 
 ## 13. Acceptance Round Trip
 
@@ -294,27 +326,54 @@ a location Label Studio can access.
 
 ### Task-generation command
 
+All candidates:
+
 ```bash
 pickup-putdown annotation-build-tasks \
   --candidate-metadata-dir .local/candidate_staging/metadata \
   --output annotation/tasks_candidates.json
 ```
 
-Or with a single metadata file containing a `candidates` array:
+With pilot sampling (30-50 candidates):
 
 ```bash
 pickup-putdown annotation-build-tasks \
-  --candidate-metadata-dir path/to/metadata.json \
-  --output annotation/tasks_candidates.json
+  --candidate-metadata-dir .local/candidate_staging/metadata \
+  --output annotation/tasks_pilot.json \
+  --limit 40 \
+  --seed 42
+```
+
+With S3 storage integration:
+
+```bash
+pickup-putdown annotation-build-tasks \
+  --candidate-metadata-dir .local/candidate_staging/metadata \
+  --output annotation/tasks_candidates.json \
+  --video-url-mode s3_storage \
+  --s3-bucket chillnbite-cameras
+```
+
+With local video serving:
+
+```bash
+pickup-putdown annotation-build-tasks \
+  --candidate-metadata-dir .local/candidate_staging/metadata \
+  --output annotation/tasks_candidates.json \
+  --video-url-mode local \
+  --local-video-dir /data/candidates
 ```
 
 The command:
 - Processes all `.json` files in the directory (sorted deterministically).
 - Produces one Label Studio task per valid candidate.
+- With `--limit`, selects a deterministic subset using `--seed` for
+  reproducibility.
 - Reports the number of generated and rejected tasks.
 - Fails with exit code 1 when any candidate has validation errors.
 - Assigns no default event label — the candidate is only a possible
   interaction interval.
+- Sets `annotation_unit: candidate_clip` in task data.
 
 ### Import procedure
 
@@ -341,7 +400,8 @@ make annotation-up
 - Draw temporal regions for events.
 - Assign labels: `pickup`, `putdown`, or `ignore`.
 - Set per-region metadata: confidence, hard_case, item_count, review_status.
-- Mark `complete_active_span_reviewed` as confirmed.
+- Mark `candidate_clip_reviewed` as confirmed (or `complete_active_span_reviewed`
+  for backward compatibility).
 
 ### Candidate-relative to source-video timestamp conversion
 
@@ -365,13 +425,24 @@ For legacy tasks without `source_start_s`, timestamps pass through unchanged
 
 ### Export and validation commands
 
-Export with source offset conversion:
+Export with source offset conversion (official canonical outputs only):
 
 ```bash
 pickup-putdown annotation-export \
   --input annotation/label_studio_export.json \
   --events annotation/exports/events.csv \
   --ignore annotation/exports/ignore_intervals.parquet \
+  --candidate-mode
+```
+
+Export with provenance traceability:
+
+```bash
+pickup-putdown annotation-export \
+  --input annotation/label_studio_export.json \
+  --events annotation/exports/events.csv \
+  --ignore annotation/exports/ignore_intervals.parquet \
+  --provenance annotation/exports/event_provenance.parquet \
   --candidate-mode
 ```
 
@@ -391,6 +462,26 @@ pickup-putdown annotation-validate \
   --input annotation/label_studio_export.json
 ```
 
+### Official canonical schemas
+
+**events.csv** (Task 8 compatible, no provenance fields):
+
+```
+event_id,clip_id,type,t_start,t_end,hard_case,annotator,confidence,notes
+```
+
+**ignore_intervals.parquet** (Task 8 compatible, no provenance fields):
+
+```
+ignore_id,clip_id,t_start,t_end,reason,annotator,notes
+```
+
+**event_provenance.parquet** (optional, candidate traceability only):
+
+```
+event_id,candidate_id,clip_id,actor_id,hand_side,region_id,event_group_id
+```
+
 ### Timestamp validation rules
 
 The exporter validates:
@@ -405,7 +496,7 @@ Violations produce validation errors identifying the candidate and annotation.
 
 ### How to prepare a 30–50 candidate pilot
 
-1. Generate candidates from a representative set of source videos:
+1. Generate candidates from source videos (if not already done):
 
 ```bash
 # Using remote S3 pipeline
@@ -417,21 +508,27 @@ make candidates-remote \
   CANDIDATE_ENCODE_WORKERS=4
 ```
 
-2. Select a representative subset of 30–50 candidates:
-- Include candidates with non-zero `source_start_s`.
-- Include candidates near source-video boundaries.
-- Include clear pickups and putdowns (if known from inspection).
-- Include candidates likely containing no valid event.
-- Include multiple-person or ambiguous cases.
-- Include at least one case that will produce an ignore interval.
-- Include multi-item events where available.
-
-3. Build tasks for the pilot subset:
+2. Select a deterministic pilot subset from existing candidate metadata:
 
 ```bash
 pickup-putdown annotation-build-tasks \
   --candidate-metadata-dir .local/candidate_staging/metadata \
-  --output annotation/tasks_pilot.json
+  --output annotation/tasks_pilot.json \
+  --limit 40 \
+  --seed 42
+```
+
+The `--limit` flag selects at most that many valid candidates. The `--seed`
+ensures reproducible selection. Selection is deterministic for the same seed
+and inputs. If fewer candidates exist than requested, all valid candidates are
+exported.
+
+3. Verify media references before import:
+
+```bash
+pickup-putdown annotation-check-media \
+  --tasks annotation/tasks_pilot.json \
+  --video-url-mode s3_key
 ```
 
 4. Import into Label Studio and annotate.
@@ -443,6 +540,7 @@ pickup-putdown annotation-export \
   --input annotation/label_studio_export_pilot.json \
   --events annotation/exports/pilot_events.csv \
   --ignore annotation/exports/pilot_ignore.parquet \
+  --provenance annotation/exports/pilot_provenance.parquet \
   --candidate-mode
 ```
 
@@ -470,15 +568,59 @@ Verify: 104.3 - 102.0 = 2.3 ✓, 105.7 - 102.0 = 3.7 ✓
 
 - Candidate tasks do not include pre-annotated predictions. The annotator
   must draw all temporal regions manually.
-- The `candidate_id`, `actor_id`, `hand_side`, and `region_id` fields are
-  stored in the canonical event but are not part of the official case CSV
-  schema. They are preserved for traceability and can be filtered out for
-  final export.
-- Ignore interval `candidate_id` is preserved in the Parquet export but is
-  not part of the official ignore schema.
 - The boundary tolerance of 0.05 s is fixed and not currently configurable.
-- Active-span review confirmation is still required for candidate-backed
-  tasks, even though the candidate clip is already trimmed.
+
+### Supported video playback modes
+
+Candidate videos can be referenced in Label Studio using different playback
+modes, configured via `--video-url-mode` during task building:
+
+| Mode | Description | Configuration |
+|------|-------------|---------------|
+| `s3_key` (default) | Raw S3 object key passed through | None |
+| `s3_storage` | `s3://bucket/key` format for Label Studio cloud-storage integration | `--s3-bucket` required |
+| `local` | Local file path under `--local-video-dir` | `--local-video-dir` required |
+| `presigned` | Presigned S3 URL (expires) | URL must be http(s) |
+
+**Important:** A raw S3 key like `anon/candidates/videos/cand_001.mp4` is NOT
+automatically playable by Label Studio. Choose the mode matching your Label
+Studio deployment:
+
+- **Local serving:** Download candidates locally, then use `--video-url-mode
+  local --local-video-dir /path/to/candidates`. Label Studio serves files from
+  its mounted document root.
+- **S3 cloud-storage integration:** Use `--video-url-mode s3_storage --s3-bucket
+  chillnbite-cameras`. Requires Label Studio to be configured with S3
+  cloud-storage credentials.
+- **Presigned URLs:** Generate presigned URLs externally, then use
+  `--video-url-mode presigned`. URLs expire — regenerate at task-build time.
+
+### Media verification command
+
+Before importing tasks, verify video references:
+
+```bash
+pickup-putdown annotation-check-media \
+  --tasks annotation/tasks_pilot.json \
+  --video-url-mode local \
+  --local-video-dir /data/candidates
+```
+
+This checks:
+- Each task has a video reference
+- URL/path format matches the selected mode
+- Local files exist (for local mode)
+- S3 objects exist (for s3_storage mode, with credentials)
+- Reports unsupported or malformed references
+
+### Troubleshooting videos that do not load
+
+1. Run `annotation-check-media` to identify broken references.
+2. For local mode, verify `--local-video-dir` contains the candidate videos.
+3. For s3_storage mode, verify Label Studio cloud-storage integration is
+   configured with correct S3 credentials.
+4. Ensure videos use H.264 codec in MP4 container (see codec conversion
+   above).
 
 ## Task 6.2 Acceptance Matrix
 
