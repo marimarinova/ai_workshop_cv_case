@@ -1,0 +1,11 @@
+# Resolved configuration used for the task_8 acceptance run.
+# Thresholds are inputs and are never tuned on the test split.
+evaluation:
+  matcher: hungarian            # hungarian (max-cardinality) | greedy (mAP convention)
+  tiou_thresholds: [0.3, 0.5]
+  midpoint_tolerance_s: 1.0
+  map_thresholds: [0.3, 0.5, 0.7]
+  confusion_tiou: 0.5
+  multi_item_overlap_thr: null  # null => group_id / exact-duplicate default (overlap opt-in)
+  short_max_s: 1.0
+  ignore_rule: any_positive_overlap   # official labeling guidelines: case repo Marchev-Science/case-pickup-putdown-event-detection
