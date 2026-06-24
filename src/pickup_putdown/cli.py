@@ -1289,21 +1289,63 @@ def propose(
 
 @app.command()
 def annotation_build_tasks(
-    clips_path: str = typer.Argument(
-        ...,
-        help="Path to clips JSON file.",
+    clips_path: str | None = typer.Option(
+        None,
+        "--clips",
+        help="Path to clips JSON file (for legacy clip-based tasks).",
     ),
     candidates_path: str | None = typer.Option(
         None,
         "--candidates",
         "-c",
-        help="Path to candidates JSON file (optional).",
+        help="Path to candidates JSON file (optional, for legacy mode).",
+    ),
+    candidate_metadata_dir: str | None = typer.Option(
+        None,
+        "--candidate-metadata-dir",
+        help=(
+            "Directory containing candidate metadata JSON files from Task 6.1. "
+            "When provided, builds candidate-backed tasks instead of clip-based tasks."
+        ),
     ),
     output_path: str = typer.Option(
         "annotation/tasks.json",
         "--output",
         "-o",
         help="Output path for Label Studio task JSON.",
+    ),
+    limit: int | None = typer.Option(
+        None,
+        "--limit",
+        help=(
+            "Select at most this many candidates for a pilot. "
+            "Use with --seed for deterministic selection."
+        ),
+    ),
+    seed: int = typer.Option(
+        42,
+        "--seed",
+        help="Random seed for deterministic pilot selection.",
+    ),
+    video_url_mode: str = typer.Option(
+        "s3_key",
+        "--video-url-mode",
+        help=("How to format video references: local, s3_key, s3_storage, or presigned."),
+    ),
+    s3_bucket: str | None = typer.Option(
+        None,
+        "--s3-bucket",
+        help="S3 bucket name (required for s3_storage mode).",
+    ),
+    s3_prefix: str | None = typer.Option(
+        "anon/candidates/videos",
+        "--s3-prefix",
+        help="S3 prefix for candidate videos.",
+    ),
+    local_video_dir: str | None = typer.Option(
+        None,
+        "--local-video-dir",
+        help="Local directory for candidate videos (required for local mode).",
     ),
     verbose: bool = typer.Option(
         False,
@@ -1312,31 +1354,160 @@ def annotation_build_tasks(
         help="Enable debug logging.",
     ),
 ) -> None:
-    """Build Label Studio tasks from clip metadata and candidate predictions.
+    """Build Label Studio tasks from clip metadata or candidate metadata.
 
-    Candidates are placed in the prediction (pre-annotation) structure,
-    never in the completed annotation structure.
+    Legacy mode (--clips): Build tasks from clip metadata with optional
+    candidate predictions.
+
+    Candidate mode (--candidate-metadata-dir): Build tasks from Task 6.1
+    candidate metadata. Each candidate becomes one task with source offset
+    information for timestamp conversion during export. No default event
+    label is assigned.
+
+    Use --limit and --seed for deterministic pilot selection from existing
+    candidates.
     """
     _setup_logging(verbose)
 
     import json
     from pathlib import Path
 
-    from pickup_putdown.annotation.import_export import (
-        build_label_studio_tasks,
-    )
+    from pickup_putdown.annotation.schemas import VideoUrlMode
 
-    clips = json.loads(Path(clips_path).read_text())
-    candidates = None
-    if candidates_path:
-        candidates = json.loads(Path(candidates_path).read_text())
+    if candidate_metadata_dir:
+        from pickup_putdown.annotation.import_export import (
+            _load_candidate_metadata_from_dir,
+            build_candidate_tasks,
+            select_candidate_pilot,
+        )
 
-    tasks = build_label_studio_tasks(clips, candidates)
-    Path(output_path).parent.mkdir(parents=True, exist_ok=True)
-    Path(output_path).write_text(
-        json.dumps([t.model_dump() for t in tasks], indent=2, default=str)
-    )
-    typer.echo(f"Wrote {len(tasks)} task(s) to {output_path}")
+        # Load metadata
+        metadata_path = Path(candidate_metadata_dir)
+        load_stats = None
+        if metadata_path.is_file():
+            candidate_metadata = json.loads(metadata_path.read_text())
+            if isinstance(candidate_metadata, dict) and "candidates" in candidate_metadata:
+                source_meta = candidate_metadata
+                nested = source_meta.get("candidates", [])
+                if not isinstance(nested, list):
+                    typer.echo(
+                        f"Error: 'candidates' in {metadata_path} must be a list.",
+                        err=True,
+                    )
+                    raise SystemExit(1)
+                source_video_id = source_meta.get("source_video_id")
+                source_bucket = source_meta.get("source_bucket")
+                source_key = source_meta.get("source_key")
+                candidate_metadata = []
+                for cand in nested:
+                    if not isinstance(cand, dict):
+                        continue
+                    enriched = dict(cand)
+                    if source_video_id:
+                        enriched.setdefault("clip_id", str(source_video_id))
+                    if source_bucket:
+                        enriched.setdefault("source_bucket", source_bucket)
+                    if source_key:
+                        enriched.setdefault("source_key", source_key)
+                    candidate_metadata.append(enriched)
+            elif isinstance(candidate_metadata, list):
+                pass
+            else:
+                candidate_metadata = [candidate_metadata]
+        elif metadata_path.is_dir():
+            candidate_metadata, load_stats = _load_candidate_metadata_from_dir(metadata_path)
+            # Report load errors immediately
+            if load_stats.errors:
+                typer.echo("Metadata load errors:", err=True)
+                for err_msg in load_stats.errors:
+                    typer.echo(f"  ERROR: {err_msg}", err=True)
+                raise SystemExit(1)
+        else:
+            typer.echo(f"Metadata path not found: {metadata_path}", err=True)
+            raise SystemExit(1)
+
+        # Report load stats
+        if load_stats:
+            typer.echo(f"Scanned {load_stats.source_files_scanned} source metadata file(s).")
+            if load_stats.zero_candidate_sources_skipped:
+                typer.echo(
+                    f"Skipped {load_stats.zero_candidate_sources_skipped} "
+                    f"source(s) with zero candidates."
+                )
+            typer.echo(f"Loaded {load_stats.candidates_loaded} candidate(s).")
+
+        # Pilot selection
+        if limit is not None:
+            if limit <= 0:
+                typer.echo(f"Error: --limit must be positive, got {limit}", err=True)
+                raise SystemExit(1)
+            try:
+                candidate_metadata = select_candidate_pilot(
+                    candidate_metadata,
+                    limit=limit,
+                    seed=seed,
+                )
+                typer.echo(
+                    f"Selected {len(candidate_metadata)} candidate(s) (limit={limit}, seed={seed})"
+                )
+            except ValueError as exc:
+                typer.echo(f"Error selecting pilot: {exc}", err=True)
+                raise SystemExit(1) from exc
+
+        # Validate video URL mode
+        try:
+            url_mode = VideoUrlMode(video_url_mode)
+        except ValueError as e:
+            typer.echo(
+                f"Error: invalid --video-url-mode {video_url_mode!r}. "
+                f"Choose from: {', '.join(v.value for v in VideoUrlMode)}",
+                err=True,
+            )
+            raise SystemExit(1) from e
+
+        tasks, errors = build_candidate_tasks(
+            candidate_metadata,
+            video_url_mode=url_mode,
+            s3_bucket=s3_bucket,
+            s3_prefix=s3_prefix,
+            local_video_dir=local_video_dir,
+        )
+
+        Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+        Path(output_path).write_text(
+            json.dumps([t.model_dump() for t in tasks], indent=2, default=str)
+        )
+        typer.echo(f"Generated {len(tasks)} task(s) -> {output_path}")
+        if errors:
+            typer.echo(f"Rejected {len(errors)} candidate(s) due to validation errors:", err=True)
+            for err in errors:
+                typer.echo(
+                    f"  [{err.candidate_id}/{err.field_name}] {err.message}",
+                    err=True,
+                )
+            raise SystemExit(1)
+    elif clips_path:
+        from pickup_putdown.annotation.import_export import (
+            build_label_studio_tasks,
+        )
+
+        clips = json.loads(Path(clips_path).read_text())
+        candidates = None
+        if candidates_path:
+            candidates = json.loads(Path(candidates_path).read_text())
+
+        tasks = build_label_studio_tasks(clips, candidates)
+        Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+        Path(output_path).write_text(
+            json.dumps([t.model_dump() for t in tasks], indent=2, default=str)
+        )
+        typer.echo(f"Wrote {len(tasks)} task(s) to {output_path}")
+    else:
+        typer.echo(
+            "Error: provide either --clips or --candidate-metadata-dir.",
+            err=True,
+        )
+        raise SystemExit(1)
 
 
 @app.command()
@@ -1357,6 +1528,21 @@ def annotation_export(
         "-i",
         help="Output path for ignore_intervals.parquet.",
     ),
+    provenance_output: str | None = typer.Option(
+        None,
+        "--provenance",
+        help=(
+            "Output path for event_provenance.parquet containing candidate traceability metadata."
+        ),
+    ),
+    candidate_mode: bool = typer.Option(
+        False,
+        "--candidate-mode",
+        help=(
+            "Enable candidate-backed export mode. Converts candidate-relative "
+            "timestamps to source-video timestamps using source_start_s offset."
+        ),
+    ),
     verbose: bool = typer.Option(
         False,
         "--verbose",
@@ -1369,27 +1555,57 @@ def annotation_export(
     Only accepted visible pickup/putdown events with
     complete_active_span_reviewed=true are exported to events.csv.
     Ignore intervals are exported to ignore_intervals.parquet.
+
+    In --candidate-mode, timestamps are converted from candidate-relative
+    to source-video timestamps using the source_start_s offset stored in
+    each task's data. Legacy tasks without source offset pass through
+    unchanged.
+
+    The --provenance option produces a separate event_provenance.parquet
+    with candidate traceability metadata (candidate_id, actor_id, etc.)
+    that is not included in the official canonical events.csv.
     """
     _setup_logging(verbose)
 
     import json
     from pathlib import Path
 
-    from pickup_putdown.annotation.import_export import (
-        export_events_csv,
-        export_ignore_intervals_parquet,
-    )
-
     export_data = json.loads(Path(input_path).read_text())
 
-    events_result = export_events_csv(export_data, events_output)
-    typer.echo(f"Events: {len(events_result.canonical_events)} rows ({events_output})")
-    if not events_result.is_valid:
-        for err in events_result.validation.errors:
-            typer.echo(f"  WARN: {err.message}", err=True)
+    if candidate_mode:
+        from pickup_putdown.annotation.import_export import (
+            export_candidate_annotations,
+        )
 
-    ignore_result = export_ignore_intervals_parquet(export_data, ignore_output)
-    typer.echo(f"Ignore intervals: {len(ignore_result.ignore_intervals)} rows ({ignore_output})")
+        result = export_candidate_annotations(
+            export_data,
+            events_output=events_output,
+            ignore_output=ignore_output,
+            provenance_output=provenance_output,
+        )
+        typer.echo(f"Events: {len(result.canonical_events)} rows ({events_output})")
+        typer.echo(f"Ignore intervals: {len(result.ignore_intervals)} rows ({ignore_output})")
+        if provenance_output:
+            typer.echo(f"Provenance: written to {provenance_output}")
+        if not result.is_valid:
+            for err in result.validation.errors:
+                typer.echo(f"  WARN: {err.message}", err=True)
+    else:
+        from pickup_putdown.annotation.import_export import (
+            export_events_csv,
+            export_ignore_intervals_parquet,
+        )
+
+        events_result = export_events_csv(export_data, events_output)
+        typer.echo(f"Events: {len(events_result.canonical_events)} rows ({events_output})")
+        if not events_result.is_valid:
+            for err in events_result.validation.errors:
+                typer.echo(f"  WARN: {err.message}", err=True)
+
+        ignore_result = export_ignore_intervals_parquet(export_data, ignore_output)
+        typer.echo(
+            f"Ignore intervals: {len(ignore_result.ignore_intervals)} rows ({ignore_output})"
+        )
 
 
 @app.command()
@@ -1474,6 +1690,93 @@ def annotation_roundtrip(
         typer.echo(f"Round-trip check passed ({len(original)} events, {fps} fps).")
     else:
         typer.echo("Round-trip check FAILED: timestamps differ beyond tolerance.", err=True)
+        raise SystemExit(1)
+
+
+@app.command("annotation-check-media")
+def annotation_check_media(
+    tasks_path: str = typer.Argument(
+        ...,
+        help="Path to Label Studio task JSON file.",
+    ),
+    video_url_mode: str = typer.Option(
+        "s3_key",
+        "--video-url-mode",
+        help=("Expected video URL mode: local, s3_key, s3_storage, or presigned."),
+    ),
+    local_video_dir: str | None = typer.Option(
+        None,
+        "--local-video-dir",
+        help="Local directory for candidate videos (required for local mode).",
+    ),
+    s3_bucket: str | None = typer.Option(
+        None,
+        "--s3-bucket",
+        help="S3 bucket name (required for s3_storage mode).",
+    ),
+    s3_endpoint_url: str | None = typer.Option(
+        None,
+        "--s3-endpoint-url",
+        help="S3 endpoint URL for object existence checks.",
+    ),
+    s3_region: str | None = typer.Option(
+        None,
+        "--s3-region",
+        help="S3 region for object existence checks.",
+    ),
+    s3_anonymous: bool = typer.Option(
+        False,
+        "--s3-anonymous",
+        help="Use anonymous S3 access for checks.",
+    ),
+    verbose: bool = typer.Option(
+        False,
+        "--verbose",
+        "-v",
+        help="Enable debug logging.",
+    ),
+) -> None:
+    """Verify media references in a Label Studio task file.
+
+    Checks that each task has a valid video reference for the configured
+    playback mode. For local mode, verifies files exist. For s3_storage
+    mode, checks S3 object existence (requires credentials). For s3_key
+    and presigned modes, validates URL format.
+    """
+    _setup_logging(verbose)
+
+    from pickup_putdown.annotation.import_export import check_media_references
+    from pickup_putdown.annotation.schemas import VideoUrlMode
+
+    try:
+        url_mode = VideoUrlMode(video_url_mode)
+    except ValueError as e:
+        typer.echo(
+            f"Error: invalid --video-url-mode {video_url_mode!r}. "
+            f"Choose from: {', '.join(v.value for v in VideoUrlMode)}",
+            err=True,
+        )
+        raise SystemExit(1) from e
+
+    report = check_media_references(
+        tasks_path,
+        video_url_mode=url_mode,
+        local_video_dir=local_video_dir,
+        s3_bucket=s3_bucket,
+        s3_endpoint_url=s3_endpoint_url,
+        s3_region=s3_region,
+        s3_anonymous=s3_anonymous,
+    )
+
+    typer.echo(f"Total tasks: {report.total}")
+    typer.echo(f"Passed: {report.passed}")
+    typer.echo(f"Failed: {report.failed}")
+
+    if report.failed > 0:
+        typer.echo("\nFailed checks:", err=True)
+        for r in report.results:
+            if not r.ok:
+                typer.echo(f"  [{r.task_id}/{r.candidate_id}] {r.message}", err=True)
         raise SystemExit(1)
 
 
