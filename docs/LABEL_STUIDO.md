@@ -15,23 +15,6 @@ aws s3 sync \
 
 Task 6.1 metadata contains one JSON file per source video, with candidates under `.candidates[]`.
 
-## 2. Fix S3 video content types
-
-Candidate MP4 objects must use:
-
-```text
-Content-Type: video/mp4
-```
-
-Run:
-
-```bash
-chmod +x scripts/fix_candidate_s3_content_type.sh
-
-./scripts/fix_candidate_s3_content_type.sh --dry-run
-./scripts/fix_candidate_s3_content_type.sh
-```
-
 Future uploads should set `ContentType="video/mp4"` directly.
 
 ## 3. Configure Label Studio S3 storage
