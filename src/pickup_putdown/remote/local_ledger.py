@@ -139,10 +139,17 @@ class LocalProcessingLedger:
         )
         return candidates[:target_count]
 
-    def select_ready_for_upload(self, target_count: int) -> list[LocalLedgerEntry]:
-        """Return entries where generated=true, uploaded=false."""
+    def select_ready_for_upload(
+        self, target_count: int, skip_names: set[str] | None = None
+    ) -> list[LocalLedgerEntry]:
+        """Return entries where generated=true, uploaded=false, excluding skip_names."""
+        skip_names = skip_names or set()
         candidates = sorted(
-            [e for e in self.entries.values() if e.generated and not e.uploaded],
+            [
+                e
+                for e in self.entries.values()
+                if e.generated and not e.uploaded and e.file_name not in skip_names
+            ],
             key=lambda e: e.file_name,
         )
         return candidates[:target_count]

@@ -2049,6 +2049,14 @@ def candidates_upload(
         "-t",
         help="Maximum sources to upload (0 = all ready).",
     ),
+    upload_ledger: str | None = typer.Option(
+        None,
+        "--upload-ledger",
+        help="Separate ledger file for tracking uploaded state. "
+        "When set, reads generated state from the main ledger but writes "
+        "uploaded=true here instead, avoiding race conditions with a running "
+        "processing pipeline. Use ledger-reconcile to merge back.",
+    ),
     verbose: bool = typer.Option(
         False,
         "--verbose",
@@ -2084,11 +2092,29 @@ def candidates_upload(
         anonymous=storage_cfg.anonymous,
     )
 
-    ledger_path = Path(local_output_dir) / "local_processing.csv"
-    local_ledger = LocalProcessingLedger(ledger_path)
-    local_ledger.load()
+    main_ledger_path = Path(local_output_dir) / "local_processing.csv"
+    main_ledger = LocalProcessingLedger(main_ledger_path)
+    main_ledger.load()
 
-    ready = local_ledger.select_ready_for_upload(target_count)
+    upload_ledger_path = None
+    upload_ledger_obj = None
+    if upload_ledger:
+        upload_ledger_path = Path(upload_ledger)
+        upload_ledger_obj = LocalProcessingLedger(upload_ledger_path)
+        upload_ledger_obj.load()
+        typer.echo(
+            f"Using separate upload ledger: {upload_ledger_path} (main ledger left unmodified)"
+        )
+
+    # When using a separate upload ledger, exclude already-uploaded entries
+    # from the main-ledger selection (since main ledger's uploaded flag isn't set).
+    already_uploaded: set[str] | None = None
+    if upload_ledger_obj:
+        already_uploaded = {fn for fn, e in upload_ledger_obj.entries.items() if e.uploaded}
+        if already_uploaded:
+            typer.echo(f"  Excluding {len(already_uploaded)} already-uploaded entries")
+
+    ready = main_ledger.select_ready_for_upload(target_count, skip_names=already_uploaded)
     if not ready:
         typer.echo("No candidates ready for upload.")
         raise SystemExit(0)
@@ -2102,7 +2128,6 @@ def candidates_upload(
         candidates_dir = Path(local_output_dir) / "candidates" / source_video_id
         if not candidates_dir.exists():
             typer.echo(f"  Missing candidates dir for {entry.file_name}, skipping", err=True)
-            local_ledger.set_error(entry.file_name, "candidates_dir_missing")
             failed += 1
             continue
 
@@ -2119,14 +2144,16 @@ def candidates_upload(
                 dest_key = f"anon/candidates/metadata/{source_video_id}/{mf.name}"
                 storage.upload(mf, dest_key)
 
-            local_ledger.mark_uploaded(entry.file_name)
-            local_ledger.save()
+            if upload_ledger_obj:
+                upload_ledger_obj.mark_uploaded(entry.file_name)
+                upload_ledger_obj.save()
+            else:
+                main_ledger.mark_uploaded(entry.file_name)
+                main_ledger.save()
             uploaded += 1
         except Exception as exc:
             failed += 1
             typer.echo(f"  Failed {entry.file_name}: {exc}", err=True)
-            local_ledger.set_error(entry.file_name, str(exc)[:500])
-            local_ledger.save()
 
     typer.echo("")
     typer.echo("=== Upload Summary ===")
@@ -2135,6 +2162,66 @@ def candidates_upload(
 
     if failed > 0:
         raise SystemExit(1)
+
+
+@app.command("ledger-reconcile")
+def ledger_reconcile(
+    main_ledger: str = typer.Option(
+        ".local/candidate_staging/local_processing.csv",
+        "--main-ledger",
+        "-m",
+        help="Path to the main processing ledger.",
+    ),
+    upload_ledger: str = typer.Option(
+        ".local/candidate_staging/local_processing_upload.csv",
+        "--upload-ledger",
+        "-u",
+        help="Path to the separate upload ledger.",
+    ),
+    verbose: bool = typer.Option(
+        False,
+        "--verbose",
+        "-v",
+        help="Enable debug logging.",
+    ),
+) -> None:
+    """Merge uploaded flags from a separate upload ledger into the main ledger.
+
+    After running candidates-upload with --upload-ledger, use this to
+    reconcile the two ledgers. Copies uploaded=true entries from the
+    upload ledger into the main ledger without overwriting other fields.
+    """
+    _setup_logging(verbose)
+
+    from pathlib import Path
+
+    from pickup_putdown.remote.local_ledger import LocalProcessingLedger
+
+    main = LocalProcessingLedger(Path(main_ledger))
+    main.load()
+
+    upload_path = Path(upload_ledger)
+    if not upload_path.exists():
+        typer.echo(f"Upload ledger not found: {upload_path}")
+        raise SystemExit(1)
+
+    upload = LocalProcessingLedger(upload_path)
+    upload.load()
+
+    merged = 0
+    for fn, entry in upload.entries.items():
+        if entry.uploaded:
+            main_entry = main.get_entry(fn)
+            if main_entry and not main_entry.uploaded:
+                main_entry.uploaded = True
+                main_entry.last_error = ""
+                merged += 1
+                logger.info("Reconciled: marked %s as uploaded in main ledger", fn)
+            elif not main_entry:
+                logger.warning("Entry %s uploaded but not in main ledger — skipping", fn)
+
+    main.save()
+    typer.echo(f"Reconciled {merged} uploaded entries into {main_ledger}")
 
 
 if __name__ == "__main__":
