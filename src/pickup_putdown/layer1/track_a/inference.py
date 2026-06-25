@@ -32,6 +32,7 @@ from pickup_putdown.layer1.track_a.state_types import (
 
 if TYPE_CHECKING:
     from pickup_putdown.common.schemas import Candidate, PoseObservation
+    from pickup_putdown.config import TrackAFeaturesConfig
     from pickup_putdown.perception.shelf_regions import Polygon
 
 #: Produces label-free features for one candidate (wraps the feature shim).
@@ -93,6 +94,35 @@ def infer_track_a(
             )
         )
     return decode_all(clip_id, groups, config)
+
+
+def build_feature_fn(video_path: Path, features_config: TrackAFeaturesConfig) -> FeatureFn:
+    """Build the real (encoder-backed) feature function for one video.
+
+    Wires the Task 9 encoder + crop extraction via the TEMPORARY feature shim.
+    Lazy-imports keep cv2/torch off the import path until this is actually used
+    (the real path is gated behind classifier availability by the caller).
+    """
+    from pickup_putdown.layer1.track_a.features import (
+        extract_inference_features,
+        make_crop_embedder,
+    )
+    from pickup_putdown.layer1.track_a.image_features import create_embedder
+
+    embedder = create_embedder(features_config)
+    crop_embed_fn = make_crop_embedder(video_path, embedder)
+
+    def _feature_fn(candidate_input: CandidateInput) -> list[SampleFeatures]:
+        return extract_inference_features(
+            video_path,
+            candidate_input.candidate,
+            list(candidate_input.pose_observations),
+            candidate_input.shelf_region,
+            features_config,
+            crop_embed_fn,
+        )
+
+    return _feature_fn
 
 
 def write_events_csv(path: Path, predictions: Sequence[TrackAPrediction]) -> Path:

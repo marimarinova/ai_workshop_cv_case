@@ -8,11 +8,15 @@ from typing import Any
 
 import typer
 
+from pickup_putdown.layer1.track_a.cli_track_a import infer_track_a_command
+
 app = typer.Typer(
     name="pickup-putdown",
     help="Pickup and putdown temporal action detection in store video.",
     add_completion=False,
 )
+# Track A interpretable detector (task_10): `pickup-putdown infer-track-a`.
+app.command("infer-track-a")(infer_track_a_command)
 
 logger = logging.getLogger(__name__)
 
