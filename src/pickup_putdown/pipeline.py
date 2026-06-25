@@ -69,12 +69,19 @@ _TRIAGE_STAGE = "triage"
 # ---------------------------------------------------------------------------
 @dataclass(frozen=True)
 class StageContext:
-    """Immutable inputs handed to a stage's :meth:`Stage.run`."""
+    """Immutable inputs handed to a stage's :meth:`Stage.run`.
+
+    ``stage_dir`` is the per-clip output directory for this stage; ``cache_dir``
+    is a cross-clip cache root (shared across the batch and across runs) where a
+    stage may keep reusable artifacts such as frozen embeddings keyed by source
+    checksum and encoder version.
+    """
 
     clip_id: str
     video_path: Path
     output_dir: Path
     stage_dir: Path
+    cache_dir: Path
     config: dict[str, Any]
     config_path: Path
     run_metadata: RunMetadata
@@ -300,6 +307,11 @@ def run_pipeline(
     output_dir = output_root / video_path.stem
     output_dir.mkdir(parents=True, exist_ok=True)
 
+    # Cross-clip cache root (frozen embeddings, etc.): derived from config so it
+    # is shared across every clip in a batch and across runs, not per-clip.
+    cache_dir = Path(config.cache_dir)
+    cache_dir.mkdir(parents=True, exist_ok=True)
+
     metadata = run_metadata if run_metadata is not None else build_run_metadata(config)
     resolved = metadata.resolved_config
     atomic_write_json(output_dir / "run_metadata.json", metadata.to_dict())
@@ -320,6 +332,7 @@ def run_pipeline(
             video_path=video_path,
             output_dir=output_dir,
             stage_dir=stage_dir,
+            cache_dir=cache_dir,
             config=resolved,
             config_path=config_path,
             run_metadata=metadata,

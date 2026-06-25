@@ -270,6 +270,30 @@ def test_failed_upstream_blocks_downstream_and_top_status(
     assert summary["status"] == "failed"
 
 
+def test_cache_dir_is_shared_across_clips(
+    tmp_path: Path,
+    app_config: AppConfig,
+    video_person: Path,
+    video_no_person: Path,
+) -> None:
+    cache_root = tmp_path / "shared_cache"
+    config = app_config.model_copy(update={"cache_dir": str(cache_root)})
+    seen: list[Path] = []
+
+    class CaptureTriage(FakeTriage):
+        def run(self, ctx: StageContext) -> StageResult:
+            seen.append(ctx.cache_dir)
+            return super().run(ctx)
+
+    out = tmp_path / "out"
+    run_pipeline(video_person, out, config, registry=[CaptureTriage({})])
+    run_pipeline(video_no_person, out, config, registry=[CaptureTriage({})])
+
+    # The cache root is derived from config and shared across clips/runs.
+    assert cache_root.is_dir()
+    assert seen == [cache_root, cache_root]
+
+
 def test_run_pipeline_materialises_resolved_config(
     tmp_path: Path, app_config: AppConfig, video_person: Path
 ) -> None:
