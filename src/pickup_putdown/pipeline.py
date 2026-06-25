@@ -212,8 +212,16 @@ def _write_canonical_events(output_dir: Path, results: dict[str, StageResult]) -
 
 
 def validate_events_csv(path: Path) -> bool:
-    """Return ``True`` when ``events.csv`` matches the canonical schema."""
-    with path.open(newline="", encoding="utf-8") as handle:
+    """Return ``True`` when ``events.csv`` matches the canonical schema.
+
+    A missing or unreadable file is treated as invalid (``False``) rather than
+    raising, so callers can validate optimistically.
+    """
+    try:
+        handle = path.open(newline="", encoding="utf-8")
+    except OSError:
+        return False
+    with handle:
         reader = csv.DictReader(handle)
         if tuple(reader.fieldnames or ()) != CANONICAL_EVENT_COLUMNS:
             return False
