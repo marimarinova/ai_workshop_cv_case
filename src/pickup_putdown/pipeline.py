@@ -302,6 +302,11 @@ def run_pipeline(
     run_metadata: RunMetadata | None = None,
 ) -> dict[str, Any]:
     """Run the full pipeline over a single video and return a JSON-able summary."""
+    # Validate the input before touching the filesystem so a bad path cannot
+    # leave behind an empty output directory (or fail later inside checksumming).
+    if not video_path.is_file():
+        raise FileNotFoundError(f"video not found: {video_path}")
+
     stages = registry if registry is not None else build_default_registry(config)
     clip_id = f"clip_{video_path.stem}"
     output_dir = output_root / video_path.stem
