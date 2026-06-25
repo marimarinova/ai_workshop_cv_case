@@ -367,9 +367,15 @@ def run_pipeline(
             and cached.get("status") in ("ok", "no_person")
         ):
             logger.info("stage %s resumed from cache", stage.name)
+            # Preserve a cached "no_person" outcome so early completion stays
+            # status-driven on resume too; everything else reads as "resumed".
+            cached_status = cached.get("status")
+            resumed_status: StageStatus = (
+                "no_person" if cached_status == "no_person" else "resumed"
+            )
             results[stage.name] = StageResult(
                 name=stage.name,
-                status="resumed",
+                status=resumed_status,
                 outputs=dict(cached.get("outputs", {})),
                 summary=dict(cached.get("summary", {})),
                 input_hash=input_hash,
@@ -377,7 +383,7 @@ def run_pipeline(
         else:
             results[stage.name] = _run_stage_atomic(stage, ctx, input_hash)
 
-        if stage.name == _TRIAGE_STAGE and results[stage.name].summary.get("has_person") is False:
+        if stage.name == _TRIAGE_STAGE and results[stage.name].status == "no_person":
             logger.info("no person detected in %s; completing early", clip_id)
             early_complete = True
             break
