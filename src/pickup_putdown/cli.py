@@ -10,11 +10,14 @@ from typing import Any
 
 import typer
 
+from pickup_putdown.cli_infer import infer_app
+
 app = typer.Typer(
     name="pickup-putdown",
     help="Pickup and putdown temporal action detection in store video.",
     add_completion=False,
 )
+app.add_typer(infer_app)
 
 logger = logging.getLogger(__name__)
 
