@@ -10,13 +10,16 @@ from typing import Any
 
 import typer
 
-from pickup_putdown.cli_infer import infer_app
+from pickup_putdown.cli_infer import infer, infer_app
 
 app = typer.Typer(
     name="pickup-putdown",
     help="Pickup and putdown temporal action detection in store video.",
     add_completion=False,
 )
+# `infer` is a top-level command (`pickup-putdown infer --input ...`); the
+# not-yet-implemented component stubs stay under the `pipeline` group.
+app.command("infer")(infer)
 app.add_typer(infer_app)
 
 logger = logging.getLogger(__name__)

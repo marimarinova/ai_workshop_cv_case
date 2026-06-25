@@ -97,7 +97,9 @@ def _record(summary: dict[str, Any]) -> dict[str, Any]:
     return {field: summary[field] for field in _RECORD_FIELDS if field in summary}
 
 
-@infer_app.command("infer")
+# Registered as a *top-level* command (``pickup-putdown infer``) in
+# :mod:`pickup_putdown.cli`, per the task_16 acceptance criteria. The stub
+# commands below stay under the ``pipeline`` group.
 def infer(
     input_path: str = typer.Option(
         ..., "--input", "-i", help="Path to a single video file or a directory of videos."
