@@ -20,7 +20,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, ValidationError, field_validator
 
 from pickup_putdown.annotation.schemas import (
     ConfidenceLevel,
@@ -74,6 +74,14 @@ class VlMCandidateResult(BaseModel):
     fps: float = 0.0
     notes: str = ""
 
+    # VLM execution metadata. A failed VLM call is not a valid no-event result.
+    vlm_status: str = "not_run"
+    vlm_error: str = ""
+    vlm_attempts: int = Field(default=0, ge=0)
+    vlm_finish_reason: str | None = None
+    vlm_usage: dict[str, Any] = Field(default_factory=dict)
+    vlm_raw_response: str = ""
+
     @field_validator("source_end_s")
     @classmethod
     def source_end_after_start(cls, v: float, info) -> float:
@@ -93,6 +101,11 @@ class ProcessingRecord(BaseModel):
     processed_at: str = ""
     frames_extracted: int = 0
     events_found: int = 0
+    vlm_status: str = ""
+    vlm_attempts: int = 0
+    vlm_finish_reason: str = ""
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
 
 
 # ---------------------------------------------------------------------------
@@ -293,21 +306,20 @@ def create_contact_sheet(
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     images = []
-    for fp in frame_paths:
+    for frame_idx, fp in enumerate(frame_paths):
         try:
             img = Image.open(fp)
             if img.width > frame_width:
                 ratio = frame_width / img.width
                 new_height = max(1, int(img.height * ratio))
                 img = img.resize((frame_width, new_height), Image.LANCZOS)
-            # Add timestamp from filename
+            # Add the zero-based review-frame index used by the VLM schema.
             draw = ImageDraw.Draw(img)
             try:
                 font = ImageFont.load_default()
             except Exception:
                 font = None
-            frame_num = int(fp.stem.split("_")[1])
-            ts = f"#{frame_num}"
+            ts = f"#{frame_idx}"
             draw.text((5, 5), ts, fill=(255, 255, 0), font=font)
             images.append(img)
         except Exception:
@@ -359,12 +371,16 @@ def analyze_candidate_frames(
     proposal_info: dict[str, Any] | None = None,
     vlm_config: VlmClientConfig | None = None,
 ) -> VlMCandidateResult:
-    """Analyze extracted frames to determine events via VLM.
+    """Analyze extracted frames with the VLM.
 
-    Sends the contact sheet to the VLM for visual inspection and parses
-    the structured JSON response into event annotations.
+    Expected inference failures are represented explicitly through
+    ``review_status="failed"`` and VLM metadata. They are never converted into
+    a successful empty-event annotation.
     """
+    del proposal_info  # Reserved for future prompt enrichment.
+
     from pickup_putdown.annotation.vlm_client import (
+        VlmClientError,
         call_vlm,
         vlm_result_to_annotations,
     )
@@ -376,37 +392,80 @@ def analyze_candidate_frames(
         candidate_duration_s=candidate_duration_s,
         source_start_s=0.0,
         source_end_s=candidate_duration_s,
+        review_status="pending_review",
+        complete_active_span_reviewed=False,
         fps=fps,
     )
 
     if vlm_config is None:
-        logger.info("VLM disabled for %s, skipping analysis", candidate_id)
+        result.vlm_status = "disabled"
+        result.notes = "VLM analysis disabled; manual review required."
+        logger.info("VLM disabled for %s; manual review required", candidate_id)
         return result
 
-    frame_count = len(frame_paths)
+    if not frame_paths:
+        result.review_status = "failed"
+        result.vlm_status = "failed"
+        result.vlm_error = "No review frames were extracted"
+        logger.error("VLM analysis failed for %s: %s", candidate_id, result.vlm_error)
+        return result
+
+    if not contact_sheet_path.is_file():
+        result.review_status = "failed"
+        result.vlm_status = "failed"
+        result.vlm_error = f"Contact sheet not found: {contact_sheet_path}"
+        logger.error("VLM analysis failed for %s: %s", candidate_id, result.vlm_error)
+        return result
+
     vlm_response = call_vlm(
-        contact_sheet_path,
-        frame_count,
-        fps,
-        candidate_duration_s,
-        vlm_config,
+        contact_sheet_path=contact_sheet_path,
+        frame_count=len(frame_paths),
+        fps=fps,
+        duration_s=candidate_duration_s,
+        config=vlm_config,
     )
 
-    reasoning = vlm_response.get("reasoning", "")
-    if reasoning:
-        logger.info("VLM reasoning for %s: %s", candidate_id, reasoning[:200])
+    result.vlm_status = str(vlm_response.get("status", "failed"))
+    result.vlm_error = str(vlm_response.get("error") or "")
+    result.vlm_attempts = int(vlm_response.get("attempts", 0) or 0)
+    result.vlm_finish_reason = vlm_response.get("finish_reason")
+    result.vlm_usage = dict(vlm_response.get("usage") or {})
+    result.vlm_raw_response = str(vlm_response.get("raw_response") or "")
 
-    annotations = vlm_result_to_annotations(vlm_response, fps)
-    events = []
-    for ann in annotations:
-        try:
-            evt = VlMEventAnnotation(**ann)
-            events.append(evt)
-        except Exception as exc:
-            logger.warning("Failed to create VlMEventAnnotation for %s: %s", candidate_id, exc)
+    if result.vlm_status != "success":
+        result.review_status = "failed"
+        result.complete_active_span_reviewed = False
+        logger.error(
+            "VLM annotation failed for %s after %d attempt(s): %s",
+            candidate_id,
+            result.vlm_attempts,
+            result.vlm_error or "unknown VLM error",
+        )
+        return result
 
+    reasoning = str(vlm_response.get("reasoning") or "").strip()
+
+    try:
+        annotations = vlm_result_to_annotations(vlm_response, fps)
+        events = [VlMEventAnnotation(**annotation) for annotation in annotations]
+    except (VlmClientError, ValidationError, TypeError, ValueError) as exc:
+        result.review_status = "failed"
+        result.complete_active_span_reviewed = False
+        result.vlm_status = "failed"
+        result.vlm_error = f"Failed to convert VLM response: {exc}"
+        logger.exception("Failed to convert VLM response for %s", candidate_id)
+        return result
+
+    result.review_status = "complete"
+    result.complete_active_span_reviewed = True
     result.events = events
-    result.notes = reasoning[:500] if reasoning else ""
+    result.notes = reasoning[:2_000]
+
+    if reasoning:
+        # Do not slice this log message: the previous implementation made valid
+        # reasoning appear truncated even when the JSON response was complete.
+        logger.info("VLM reasoning for %s: %s", candidate_id, reasoning)
+
     return result
 
 
@@ -548,7 +607,12 @@ class PipelineConfig:
     vlm_model: str = ""
     vlm_temperature: float = 0.0
     vlm_max_tokens: int = 2048
-    vlm_timeout_s: int = 120
+    vlm_retry_max_tokens: int = 4096
+    vlm_max_attempts: int = 2
+    vlm_retry_delay_s: float = 1.0
+    vlm_timeout_s: int = 180
+    vlm_disable_thinking: bool = True
+    vlm_enforce_json_schema: bool = True
     vlm_enabled: bool = True
 
 
@@ -566,12 +630,50 @@ class PipelineSummary:
     errors: list[str] = field(default_factory=list)
 
 
+def _write_json(path: Path, payload: dict[str, Any]) -> None:
+    """Write a JSON object atomically."""
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary_path = path.with_suffix(f"{path.suffix}.tmp")
+    temporary_path.write_text(
+        json.dumps(payload, indent=2, default=str),
+        encoding="utf-8",
+    )
+    temporary_path.replace(path)
+
+
+def _effective_review_fps(actual_fps: float, target_fps: float) -> float:
+    """Return the effective FPS produced by the extraction stride."""
+
+    if actual_fps <= 0:
+        return target_fps if target_fps > 0 else 5.0
+    if target_fps <= 0:
+        return actual_fps
+
+    stride = max(1, round(actual_fps / target_fps))
+    return actual_fps / stride
+
+
+def _update_processing_from_result(
+    record: ProcessingRecord,
+    result: VlMCandidateResult,
+) -> None:
+    """Copy VLM execution metadata into the processing ledger."""
+
+    usage = result.vlm_usage
+    record.vlm_status = result.vlm_status
+    record.vlm_attempts = result.vlm_attempts
+    record.vlm_finish_reason = result.vlm_finish_reason or ""
+    record.prompt_tokens = int(usage.get("prompt_tokens", 0) or 0)
+    record.completion_tokens = int(usage.get("completion_tokens", 0) or 0)
+
+
 def run_pipeline(config: PipelineConfig) -> PipelineSummary:
     """Run the VLM annotation pipeline.
 
-    1. Discover candidates
-    2. For each candidate: probe, extract frames, analyze, normalize
-    3. Write outputs: raw JSON, normalized JSON, events.csv, processing.csv, summary.json
+    Only successfully inferred and validated candidates are normalized into
+    canonical outputs. Failed VLM calls are persisted in ``raw/`` and recorded
+    in ``processing.csv`` without being converted into zero-event negatives.
     """
     import time
 
@@ -582,33 +684,36 @@ def run_pipeline(config: PipelineConfig) -> PipelineSummary:
     raw_dir = output_base / "raw"
     normalized_dir = output_base / "normalized"
     frames_dir = output_base / "review_frames"
-    for d in [raw_dir, normalized_dir, frames_dir]:
-        d.mkdir(parents=True, exist_ok=True)
+    for directory in (raw_dir, normalized_dir, frames_dir):
+        directory.mkdir(parents=True, exist_ok=True)
 
-    # Discover candidates
     candidates = discover_candidates(config.candidates_dir)
-    if config.limit:
+    if config.limit is not None:
         candidates = candidates[: config.limit]
+
     summary.total_candidates = len(candidates)
     logger.info("Discovered %d candidates", len(candidates))
 
     all_events: list[dict[str, Any]] = []
     all_processing: list[ProcessingRecord] = []
 
-    for idx, cand in enumerate(candidates):
-        candidate_id = cand.get("candidate_id", f"unknown_{idx}")
-        candidate_key = cand.get("candidate_key", "")
+    for idx, candidate in enumerate(candidates):
+        candidate_id = str(candidate.get("candidate_id", f"unknown_{idx}"))
+        candidate_key = str(candidate.get("candidate_key", ""))
         video_path = Path(candidate_key)
+        total_candidates = len(candidates)
 
-        # Print progress every 10 candidates
         if (idx + 1) % 10 == 0 or idx == 0:
-            pct = (idx + 1) / len(candidates) * 100
+            percentage = ((idx + 1) / total_candidates * 100) if total_candidates else 100.0
             print(
-                f"Progress: {idx + 1}/{len(candidates)} ({pct:.1f}%)", file=sys.stderr, flush=True
+                f"Progress: {idx + 1}/{total_candidates} ({percentage:.1f}%)",
+                file=sys.stderr,
+                flush=True,
             )
 
-        # Skip if output already exists (unless --force)
         norm_path = normalized_dir / f"{candidate_id}.json"
+        raw_path = raw_dir / f"{candidate_id}.json"
+
         if norm_path.exists() and not config.force:
             summary.skipped += 1
             all_processing.append(
@@ -621,7 +726,12 @@ def run_pipeline(config: PipelineConfig) -> PipelineSummary:
             )
             continue
 
-        rec = ProcessingRecord(
+        if config.force:
+            # A failed forced re-run must not leave an older successful result
+            # that could later be mistaken for the current output.
+            norm_path.unlink(missing_ok=True)
+
+        record = ProcessingRecord(
             candidate_id=candidate_id,
             video_path=str(video_path),
             status="pending",
@@ -629,34 +739,45 @@ def run_pipeline(config: PipelineConfig) -> PipelineSummary:
         )
 
         try:
-            # Probe video
             probe_info = probe_candidate_video(video_path)
-            fps = probe_info["fps"]
-            duration = probe_info["duration_s"]
+            source_fps = float(probe_info["fps"])
+            duration_s = float(probe_info["duration_s"])
+            review_fps = _effective_review_fps(source_fps, config.review_fps)
 
-            # Extract frames (skip if already extracted)
-            cand_frames_dir = frames_dir / candidate_id
-            existing_frames = sorted(cand_frames_dir.glob("frame_*.jpg"))
+            candidate_frames_dir = frames_dir / candidate_id
+            existing_frames = sorted(candidate_frames_dir.glob("frame_*.jpg"))
             if existing_frames and not config.force:
                 frame_paths = existing_frames
-                logger.info("Reusing %d existing frames for %s", len(frame_paths), candidate_id)
+                logger.info(
+                    "Reusing %d existing frames for %s",
+                    len(frame_paths),
+                    candidate_id,
+                )
             else:
                 frame_paths = extract_review_frames(
-                    video_path,
-                    cand_frames_dir,
+                    video_path=video_path,
+                    output_dir=candidate_frames_dir,
                     target_fps=config.review_fps,
                     max_width=config.max_frame_width,
                 )
-            rec.frames_extracted = len(frame_paths)
 
-            # Create contact sheet (skip if exists)
-            contact_sheet_path = cand_frames_dir / "contact_sheet.jpg"
+            record.frames_extracted = len(frame_paths)
+            if not frame_paths:
+                raise RuntimeError("No review frames were extracted")
+
+            contact_sheet_path = candidate_frames_dir / "contact_sheet.jpg"
             if not contact_sheet_path.exists() or config.force:
                 create_contact_sheet(
-                    frame_paths, contact_sheet_path, cols=config.contact_sheet_cols
+                    frame_paths=frame_paths,
+                    output_path=contact_sheet_path,
+                    cols=config.contact_sheet_cols,
                 )
 
-            # Build VLM client config
+            if not contact_sheet_path.is_file():
+                raise RuntimeError(
+                    f"Contact sheet was not created: {contact_sheet_path}"
+                )
+
             vlm_config: VlmClientConfig | None = None
             if config.vlm_enabled:
                 from pickup_putdown.annotation.vlm_client import VlmClientConfig
@@ -666,155 +787,231 @@ def run_pipeline(config: PipelineConfig) -> PipelineSummary:
                     model=config.vlm_model,
                     temperature=config.vlm_temperature,
                     max_tokens=config.vlm_max_tokens,
+                    retry_max_tokens=config.vlm_retry_max_tokens,
+                    max_attempts=config.vlm_max_attempts,
+                    retry_delay_s=config.vlm_retry_delay_s,
                     timeout_s=config.vlm_timeout_s,
+                    disable_thinking=config.vlm_disable_thinking,
+                    enforce_json_schema=config.vlm_enforce_json_schema,
                 )
 
-            # Analyze via VLM
             analysis_result = analyze_candidate_frames(
                 frame_paths=frame_paths,
-                fps=fps,
-                candidate_duration_s=duration,
+                fps=review_fps,
+                candidate_duration_s=duration_s,
                 candidate_id=candidate_id,
                 contact_sheet_path=contact_sheet_path,
                 vlm_config=vlm_config,
             )
 
-            # Merge candidate metadata into analysis result
-            result = VlMCandidateResult(
-                candidate_id=candidate_id,
-                clip_id=cand.get("clip_id", ""),
-                video_path=str(video_path),
-                candidate_duration_s=duration,
-                source_start_s=float(cand.get("source_start_s", 0.0)),
-                source_end_s=float(cand.get("source_end_s", 0.0)),
-                fps=fps,
-                review_status="complete" if vlm_config else "pending_review",
-                events=analysis_result.events,
-                notes=analysis_result.notes,
+            source_start_s = float(candidate.get("source_start_s", 0.0))
+            source_end_s = float(
+                candidate.get("source_end_s", source_start_s + duration_s)
             )
+            if source_end_s <= source_start_s:
+                source_end_s = source_start_s + duration_s
 
-            # Save raw result
-            raw_path = raw_dir / f"{candidate_id}.json"
+            result = analysis_result.model_copy(
+                update={
+                    "clip_id": str(candidate.get("clip_id", "")),
+                    "video_path": str(video_path),
+                    "source_start_s": source_start_s,
+                    "source_end_s": source_end_s,
+                    "fps": review_fps,
+                }
+            )
+            _update_processing_from_result(record, result)
+
             raw_data = result.model_dump()
-            raw_data["frame_count"] = len(frame_paths)
-            raw_data["contact_sheet"] = str(contact_sheet_path)
-            raw_data["probe_info"] = probe_info
-            raw_data["metadata"] = cand
-            raw_path.write_text(json.dumps(raw_data, indent=2, default=str))
+            raw_data.update(
+                {
+                    "frame_count": len(frame_paths),
+                    "contact_sheet": str(contact_sheet_path),
+                    "probe_info": probe_info,
+                    "source_video_fps": source_fps,
+                    "effective_review_fps": review_fps,
+                    "metadata": candidate,
+                }
+            )
+            _write_json(raw_path, raw_data)
 
-            # Validate
-            validation_errors = validate_candidate_annotation(result)
-            if validation_errors:
-                rec.status = "failure"
-                rec.error = "; ".join(validation_errors)
-                logger.warning("Validation errors for %s: %s", candidate_id, validation_errors)
+            if result.review_status == "failed":
+                record.status = "failure"
+                record.error = result.vlm_error or "VLM annotation failed"
+                summary.failed += 1
+                summary.errors.append(f"{candidate_id}: {record.error}")
+                print(
+                    f"[{idx + 1}/{total_candidates}] FAILED {candidate_id}: "
+                    f"{record.error}",
+                    file=sys.stderr,
+                    flush=True,
+                )
+
+            elif result.review_status != "complete":
+                record.status = "review_required"
+                record.error = result.notes
+                summary.review_required += 1
+                print(
+                    f"[{idx + 1}/{total_candidates}] REVIEW {candidate_id} "
+                    f"({record.frames_extracted} frames)",
+                    file=sys.stderr,
+                    flush=True,
+                )
+
             else:
-                rec.status = "success"
+                validation_errors = validate_candidate_annotation(result)
+                if validation_errors:
+                    result.review_status = "failed"
+                    result.complete_active_span_reviewed = False
+                    result.vlm_status = "failed"
+                    result.vlm_error = "; ".join(validation_errors)
+                    record.status = "failure"
+                    record.error = result.vlm_error
+                    summary.failed += 1
+                    summary.errors.append(f"{candidate_id}: {record.error}")
 
-            rec.events_found = len(result.events)
+                    raw_data.update(result.model_dump())
+                    _write_json(raw_path, raw_data)
 
-            # Normalize and save
-            events, ignores = normalize_candidate_result(result)
-            all_events.extend(events)
+                    logger.warning(
+                        "Validation errors for %s: %s",
+                        candidate_id,
+                        validation_errors,
+                    )
+                    print(
+                        f"[{idx + 1}/{total_candidates}] FAILED {candidate_id}: "
+                        f"{record.error}",
+                        file=sys.stderr,
+                        flush=True,
+                    )
+                else:
+                    events, ignores = normalize_candidate_result(result)
+                    all_events.extend(events)
 
-            norm_data = result.model_dump()
-            norm_data["ignore_intervals"] = ignores
-            norm_path.write_text(json.dumps(norm_data, indent=2, default=str))
+                    normalized_data = result.model_dump(
+                        exclude={"vlm_raw_response"}
+                    )
+                    normalized_data["ignore_intervals"] = ignores
+                    _write_json(norm_path, normalized_data)
 
-            summary.processed += 1
+                    record.status = "success"
+                    record.events_found = len(result.events)
+                    summary.processed += 1
+                    print(
+                        f"[{idx + 1}/{total_candidates}] OK {candidate_id} "
+                        f"({record.frames_extracted} frames, "
+                        f"{record.events_found} events, "
+                        f"{record.vlm_attempts} attempt(s))",
+                        file=sys.stderr,
+                        flush=True,
+                    )
+
+        except FileNotFoundError as exc:
+            record.status = "failure"
+            record.error = f"File not found: {exc}"
+            summary.failed += 1
+            summary.errors.append(f"{candidate_id}: {record.error}")
+            logger.warning("Failed %s: %s", candidate_id, exc)
             print(
-                f"[{idx + 1}/{len(candidates)}] OK {candidate_id} "
-                f"({rec.frames_extracted} frames, {rec.events_found} events)",
+                f"[{idx + 1}/{total_candidates}] FAILED {candidate_id}: "
+                f"{record.error}",
                 file=sys.stderr,
                 flush=True,
             )
 
-        except FileNotFoundError as exc:
-            rec.status = "failure"
-            rec.error = f"File not found: {exc}"
-            logger.warning("Failed %s: %s", candidate_id, exc)
-            summary.failed += 1
         except Exception as exc:
-            rec.status = "failure"
-            rec.error = str(exc)
-            logger.exception("Failed %s: %s", candidate_id, exc)
+            record.status = "failure"
+            record.error = str(exc)
             summary.failed += 1
+            summary.errors.append(f"{candidate_id}: {record.error}")
+            logger.exception("Failed %s: %s", candidate_id, exc)
+            print(
+                f"[{idx + 1}/{total_candidates}] FAILED {candidate_id}: "
+                f"{record.error}",
+                file=sys.stderr,
+                flush=True,
+            )
 
-        all_processing.append(rec)
+        all_processing.append(record)
 
-    # Sort events deterministically
-    all_events.sort(key=lambda e: (e["clip_id"], e["t_start"], e["type"], e["event_id"]))
-
-    # Write events.csv
-    events_csv = output_base / "events.csv"
-    if all_events:
-        csv_columns = [
-            "event_id",
-            "clip_id",
-            "type",
-            "t_start",
-            "t_end",
-            "hard_case",
-            "annotator",
-            "confidence",
-            "notes",
-        ]
-        with events_csv.open("w", newline="") as f:
-            writer = csv.DictWriter(f, fieldnames=csv_columns, extrasaction="ignore")
-            writer.writeheader()
-            writer.writerows(all_events)
-    else:
-        events_csv.write_text(
-            "event_id,clip_id,type,t_start,t_end,hard_case,annotator,confidence,notes\n"
-        )
-
-    # Write processing.csv
-    processing_csv = output_base / "processing.csv"
-    with processing_csv.open("w", newline="") as f:
-        writer = csv.DictWriter(
-            f,
-            fieldnames=[
-                "candidate_id",
-                "video_path",
-                "status",
-                "error",
-                "processed_at",
-                "frames_extracted",
-                "events_found",
-            ],
-        )
-        writer.writeheader()
-        for rec in all_processing:
-            writer.writerow(rec.model_dump())
-
-    # Write summary.json
-    summary.processing_time_s = round(time.time() - start_time, 2)
-    summary.events_found = len(all_events)
-    summary_json = output_base / "summary.json"
-    summary_json.write_text(
-        json.dumps(
-            {
-                "total_candidates": summary.total_candidates,
-                "processed": summary.processed,
-                "skipped": summary.skipped,
-                "failed": summary.failed,
-                "review_required": summary.review_required,
-                "events_found": summary.events_found,
-                "processing_time_s": summary.processing_time_s,
-                "annotator": config.annotator,
-                "review_fps": config.review_fps,
-                "force": config.force,
-                "timestamp": datetime.now(UTC).isoformat(),
-            },
-            indent=2,
+    all_events.sort(
+        key=lambda event: (
+            event["clip_id"],
+            event["t_start"],
+            event["type"],
+            event["event_id"],
         )
     )
 
+    events_csv = output_base / "events.csv"
+    event_columns = [
+        "event_id",
+        "clip_id",
+        "type",
+        "t_start",
+        "t_end",
+        "hard_case",
+        "annotator",
+        "confidence",
+        "notes",
+    ]
+    with events_csv.open("w", newline="", encoding="utf-8") as file_handle:
+        writer = csv.DictWriter(
+            file_handle,
+            fieldnames=event_columns,
+            extrasaction="ignore",
+        )
+        writer.writeheader()
+        writer.writerows(all_events)
+
+    processing_csv = output_base / "processing.csv"
+    processing_columns = [
+        "candidate_id",
+        "video_path",
+        "status",
+        "error",
+        "processed_at",
+        "frames_extracted",
+        "events_found",
+        "vlm_status",
+        "vlm_attempts",
+        "vlm_finish_reason",
+        "prompt_tokens",
+        "completion_tokens",
+    ]
+    with processing_csv.open("w", newline="", encoding="utf-8") as file_handle:
+        writer = csv.DictWriter(file_handle, fieldnames=processing_columns)
+        writer.writeheader()
+        for record in all_processing:
+            writer.writerow(record.model_dump())
+
+    summary.processing_time_s = round(time.time() - start_time, 2)
+    summary.events_found = len(all_events)
+    _write_json(
+        output_base / "summary.json",
+        {
+            "total_candidates": summary.total_candidates,
+            "processed": summary.processed,
+            "skipped": summary.skipped,
+            "failed": summary.failed,
+            "review_required": summary.review_required,
+            "events_found": summary.events_found,
+            "processing_time_s": summary.processing_time_s,
+            "errors": summary.errors,
+            "annotator": config.annotator,
+            "review_fps_target": config.review_fps,
+            "force": config.force,
+            "timestamp": datetime.now(UTC).isoformat(),
+        },
+    )
+
     logger.info(
-        "Pipeline complete: %d processed, %d skipped, %d failed, %d events",
+        "Pipeline complete: %d successful, %d skipped, %d failed, "
+        "%d review-required, %d event rows",
         summary.processed,
         summary.skipped,
         summary.failed,
+        summary.review_required,
         summary.events_found,
     )
     return summary
