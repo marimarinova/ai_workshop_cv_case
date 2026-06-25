@@ -270,6 +270,19 @@ def test_failed_upstream_blocks_downstream_and_top_status(
     assert summary["status"] == "failed"
 
 
+def test_missing_video_raises_before_creating_outputs(
+    tmp_path: Path, app_config: AppConfig
+) -> None:
+    out = tmp_path / "out"
+    missing = tmp_path / "does_not_exist.mp4"
+
+    with pytest.raises(FileNotFoundError, match="video not found"):
+        run_pipeline(missing, out, app_config, registry=_registry({}))
+
+    # The bad path must not leave an empty output directory behind.
+    assert not (out / missing.stem).exists()
+
+
 def test_cache_dir_is_shared_across_clips(
     tmp_path: Path,
     app_config: AppConfig,
