@@ -113,7 +113,17 @@ def infer(
     ),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Enable debug logging."),
 ) -> None:
-    """Run the full pipeline end-to-end on one video file or a directory of videos."""
+    """Run the full pipeline end-to-end on one video file or a directory of videos.
+
+    Exit codes:
+
+    \b
+      0  success (every clip ok / no_person)
+      1  directory mode: at least one clip failed
+      2  bad input (file/directory not found, or an empty directory)
+      4  single file: pipeline blocked (a stage's upstream dependency failed)
+      5  single file: pipeline failed (a stage crashed)
+    """
     _setup_logging(verbose)
     videos = _resolve_inputs(input_path)
     app_config = load_config(config)
