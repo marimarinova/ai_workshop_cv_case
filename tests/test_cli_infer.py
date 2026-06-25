@@ -94,3 +94,28 @@ def test_single_file_mode_prints_summary(tmp_path: Path, monkeypatch: pytest.Mon
     # Single-file mode emits the per-clip summary, not a batch summary.
     assert '"clip_id": "clip_clip"' in result.stdout
     assert not (out / "batch_summary.json").exists()
+
+
+def test_single_file_crash_exits_nonzero(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    video = tmp_path / "clip.mp4"
+    video.write_bytes(b"SYNTHETIC")
+    _patch_pipeline(monkeypatch, fail_stems={"clip"})
+
+    result = runner.invoke(infer_app, ["infer", "-i", str(video), "-o", str(tmp_path / "out")])
+
+    assert result.exit_code == 5
+    assert '"status": "failed"' in result.stdout
+
+
+def test_single_file_blocked_status_exits_nonzero(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    video = tmp_path / "clip.mp4"
+    video.write_bytes(b"SYNTHETIC")
+    _patch_pipeline(monkeypatch, fail_stems=set(), status="blocked")
+
+    result = runner.invoke(infer_app, ["infer", "-i", str(video), "-o", str(tmp_path / "out")])
+
+    # A blocked top-level status must not report success.
+    assert result.exit_code == 4
+    assert '"status": "blocked"' in result.stdout
