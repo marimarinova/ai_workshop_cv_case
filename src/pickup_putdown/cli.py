@@ -2527,5 +2527,138 @@ def ledger_reconcile(
     typer.echo(f"Reconciled {merged} uploaded entries into {main_ledger}")
 
 
+@app.command("annotate-vlm")
+def annotate_vlm(
+    candidates_dir: str = typer.Argument(
+        ...,
+        help="Path to candidate staging directory containing candidate videos and metadata.",
+    ),
+    output_dir: str = typer.Option(
+        ".local/vlm_annotations",
+        "--output-dir",
+        "-o",
+        help="Output directory for VLM annotation results.",
+    ),
+    review_fps: float = typer.Option(
+        5.0,
+        "--review-fps",
+        help="Frame extraction rate for review (frames per second).",
+    ),
+    max_frame_width: int = typer.Option(
+        640,
+        "--max-frame-width",
+        help="Maximum width for extracted review frames.",
+    ),
+    force: bool = typer.Option(
+        False,
+        "--force",
+        help="Reprocess already-annotated candidates.",
+    ),
+    limit: int | None = typer.Option(
+        None,
+        "--limit",
+        help="Process at most this many candidates.",
+    ),
+    annotator: str = typer.Option(
+        "vlm_pipeline",
+        "--annotator",
+        help="Annotator identifier for output records.",
+    ),
+    vlm_base_url: str = typer.Option(
+        "http://localhost:8080",
+        "--vlm-base-url",
+        help="llama.cpp server base URL for VLM calls.",
+    ),
+    vlm_model: str = typer.Option(
+        "",
+        "--vlm-model",
+        help="Model name for VLM (auto-detected if empty).",
+    ),
+    vlm_temperature: float = typer.Option(
+        0.0,
+        "--vlm-temperature",
+        help="Temperature for VLM sampling.",
+    ),
+    vlm_max_tokens: int = typer.Option(
+        2048,
+        "--vlm-max-tokens",
+        help="Max tokens for VLM response.",
+    ),
+    vlm_timeout_s: int = typer.Option(
+        120,
+        "--vlm-timeout",
+        help="Timeout in seconds for each VLM request.",
+    ),
+    no_vlm: bool = typer.Option(
+        False,
+        "--no-vlm",
+        help="Disable VLM calls, produce frames only for manual review.",
+    ),
+    verbose: bool = typer.Option(
+        False,
+        "--verbose",
+        "-v",
+        help="Enable debug logging.",
+    ),
+) -> None:
+    """VLM-assisted visual annotation of candidate videos.
+
+    Discovers candidate videos, extracts review frames, creates contact
+    sheets, sends them to a local VLM for analysis, and produces canonical
+    event annotations. Outputs are written to the output directory in the
+    canonical repository format.
+
+    Usage:
+        pickup-putdown annotate-vlm .local/candidate_staging/candidates \\
+            --output-dir .local/vlm_annotations --limit 5
+    """
+    _setup_logging(verbose)
+
+    from pathlib import Path
+
+    from pickup_putdown.annotation.vlm_annotate import PipelineConfig, run_pipeline
+
+    if not Path(candidates_dir).exists():
+        typer.echo(f"Candidates directory not found: {candidates_dir}", err=True)
+        raise SystemExit(1)
+
+    config = PipelineConfig(
+        candidates_dir=candidates_dir,
+        output_dir=output_dir,
+        review_fps=review_fps,
+        max_frame_width=max_frame_width,
+        force=force,
+        limit=limit,
+        annotator=annotator,
+        vlm_base_url=vlm_base_url,
+        vlm_model=vlm_model,
+        vlm_temperature=vlm_temperature,
+        vlm_max_tokens=vlm_max_tokens,
+        vlm_timeout_s=vlm_timeout_s,
+        vlm_enabled=not no_vlm,
+    )
+
+    summary = run_pipeline(config)
+
+    typer.echo("")
+    typer.echo("=== VLM Annotation Summary ===")
+    typer.echo(f"  Total candidates:  {summary.total_candidates}")
+    typer.echo(f"  Processed:         {summary.processed}")
+    typer.echo(f"  Skipped:           {summary.skipped}")
+    typer.echo(f"  Failed:            {summary.failed}")
+    typer.echo(f"  Events found:      {summary.events_found}")
+    typer.echo(f"  Time:              {summary.processing_time_s:.1f}s")
+    typer.echo(f"  Output:            {output_dir}")
+
+    if summary.errors:
+        typer.echo("")
+        typer.echo("Errors:")
+        for err in summary.errors:
+            typer.echo(f"  {err}")
+
+    if summary.failed > 0:
+        raise SystemExit(1)
+
+
 if __name__ == "__main__":
     app()

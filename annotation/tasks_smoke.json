@@ -1,0 +1,59 @@
+[
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260520135131_E20260520135549_anon/cand_20621ef364f9.mp4",
+      "candidate_id": "cand_20621ef364f9",
+      "clip_id": "D2_S20260520135131_E20260520135549_anon",
+      "source_start_s": 97.5,
+      "source_end_s": 102.1,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 4.6
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260520135131_E20260520135549_anon",
+    "fps": 0.0,
+    "duration_s": 4.6,
+    "video_path": "s3://chillnbite-cameras/.local/candidate_staging/candidates/D2_S20260520135131_E20260520135549_anon/cand_20621ef364f9.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260520141225_E20260520141509_anon/cand_6e9fd7ca51eb.mp4",
+      "candidate_id": "cand_6e9fd7ca51eb",
+      "clip_id": "D2_S20260520141225_E20260520141509_anon",
+      "source_start_s": 32.75,
+      "source_end_s": 42.5,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 9.75
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260520141225_E20260520141509_anon",
+    "fps": 0.0,
+    "duration_s": 9.75,
+    "video_path": "s3://chillnbite-cameras/.local/candidate_staging/candidates/D2_S20260520141225_E20260520141509_anon/cand_6e9fd7ca51eb.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260520140905_E20260520141207_anon/cand_87ce0042552a.mp4",
+      "candidate_id": "cand_87ce0042552a",
+      "clip_id": "D2_S20260520140905_E20260520141207_anon",
+      "source_start_s": 172.1,
+      "source_end_s": 176.9,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 4.8
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260520140905_E20260520141207_anon",
+    "fps": 0.0,
+    "duration_s": 4.8,
+    "video_path": "s3://chillnbite-cameras/.local/candidate_staging/candidates/D2_S20260520140905_E20260520141207_anon/cand_87ce0042552a.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  }
+]

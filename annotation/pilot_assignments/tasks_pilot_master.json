@@ -1,0 +1,2757 @@
+[
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260520151119_E20260520151519_anon/cand_01c61e5c7fe1.mp4",
+      "candidate_id": "cand_01c61e5c7fe1",
+      "clip_id": "D2_S20260520151119_E20260520151519_anon",
+      "source_start_s": 35.175,
+      "source_end_s": 45.175,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 10.0
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260520151119_E20260520151519_anon",
+    "fps": 0.0,
+    "duration_s": 10.0,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260520151119_E20260520151519_anon/cand_01c61e5c7fe1.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260523104347_E20260523104753_anon/cand_0662fd106600.mp4",
+      "candidate_id": "cand_0662fd106600",
+      "clip_id": "D2_S20260523104347_E20260523104753_anon",
+      "source_start_s": 4.25,
+      "source_end_s": 8.9,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 4.65
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260523104347_E20260523104753_anon",
+    "fps": 0.0,
+    "duration_s": 4.65,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260523104347_E20260523104753_anon/cand_0662fd106600.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260522151152_E20260522151804_anon/cand_0718718fdc22.mp4",
+      "candidate_id": "cand_0718718fdc22",
+      "clip_id": "D2_S20260522151152_E20260522151804_anon",
+      "source_start_s": 224.1,
+      "source_end_s": 228.9,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 4.8
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260522151152_E20260522151804_anon",
+    "fps": 0.0,
+    "duration_s": 4.8,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260522151152_E20260522151804_anon/cand_0718718fdc22.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260521112037_E20260521112553_anon/cand_0786ab5cf6c5.mp4",
+      "candidate_id": "cand_0786ab5cf6c5",
+      "clip_id": "D2_S20260521112037_E20260521112553_anon",
+      "source_start_s": 176.75,
+      "source_end_s": 181.25,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 4.5
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260521112037_E20260521112553_anon",
+    "fps": 0.0,
+    "duration_s": 4.5,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260521112037_E20260521112553_anon/cand_0786ab5cf6c5.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260521140835_E20260521141129_anon/cand_0b5b1ea3711a.mp4",
+      "candidate_id": "cand_0b5b1ea3711a",
+      "clip_id": "D2_S20260521140835_E20260521141129_anon",
+      "source_start_s": 90.9,
+      "source_end_s": 96.25,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 5.35
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260521140835_E20260521141129_anon",
+    "fps": 0.0,
+    "duration_s": 5.35,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260521140835_E20260521141129_anon/cand_0b5b1ea3711a.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260520171509_E20260520171843_anon/cand_0c6750d64ade.mp4",
+      "candidate_id": "cand_0c6750d64ade",
+      "clip_id": "D2_S20260520171509_E20260520171843_anon",
+      "source_start_s": 57.6,
+      "source_end_s": 62.4,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 4.8
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260520171509_E20260520171843_anon",
+    "fps": 0.0,
+    "duration_s": 4.8,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260520171509_E20260520171843_anon/cand_0c6750d64ade.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260521133647_E20260521134049_anon/cand_10120b87a453.mp4",
+      "candidate_id": "cand_10120b87a453",
+      "clip_id": "D2_S20260521133647_E20260521134049_anon",
+      "source_start_s": 31.5,
+      "source_end_s": 36.4,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 4.9
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260521133647_E20260521134049_anon",
+    "fps": 0.0,
+    "duration_s": 4.9,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260521133647_E20260521134049_anon/cand_10120b87a453.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260520151119_E20260520151519_anon/cand_10b127ad3e80.mp4",
+      "candidate_id": "cand_10b127ad3e80",
+      "clip_id": "D2_S20260520151119_E20260520151519_anon",
+      "source_start_s": 78.5,
+      "source_end_s": 83.1,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 4.6
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260520151119_E20260520151519_anon",
+    "fps": 0.0,
+    "duration_s": 4.6,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260520151119_E20260520151519_anon/cand_10b127ad3e80.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260526184718_E20260526184922_anon/cand_113592415f17.mp4",
+      "candidate_id": "cand_113592415f17",
+      "clip_id": "D2_S20260526184718_E20260526184922_anon",
+      "source_start_s": 28.75,
+      "source_end_s": 35.1,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 6.35
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260526184718_E20260526184922_anon",
+    "fps": 0.0,
+    "duration_s": 6.35,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260526184718_E20260526184922_anon/cand_113592415f17.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260526185126_E20260526185806_anon/cand_135b131d09fb.mp4",
+      "candidate_id": "cand_135b131d09fb",
+      "clip_id": "D2_S20260526185126_E20260526185806_anon",
+      "source_start_s": 259.25,
+      "source_end_s": 264.0,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 4.75
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260526185126_E20260526185806_anon",
+    "fps": 0.0,
+    "duration_s": 4.75,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260526185126_E20260526185806_anon/cand_135b131d09fb.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260526162956_E20260526163416_anon/cand_13f8293e5576.mp4",
+      "candidate_id": "cand_13f8293e5576",
+      "clip_id": "D2_S20260526162956_E20260526163416_anon",
+      "source_start_s": 153.25,
+      "source_end_s": 157.9,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 4.65
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260526162956_E20260526163416_anon",
+    "fps": 0.0,
+    "duration_s": 4.65,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260526162956_E20260526163416_anon/cand_13f8293e5576.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260522010204_E20260522010734_anon/cand_1492062bc24a.mp4",
+      "candidate_id": "cand_1492062bc24a",
+      "clip_id": "D2_S20260522010204_E20260522010734_anon",
+      "source_start_s": 84.75,
+      "source_end_s": 89.25,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 4.5
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260522010204_E20260522010734_anon",
+    "fps": 0.0,
+    "duration_s": 4.5,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260522010204_E20260522010734_anon/cand_1492062bc24a.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260521172245_E20260521172449_anon/cand_16cee0cca921.mp4",
+      "candidate_id": "cand_16cee0cca921",
+      "clip_id": "D2_S20260521172245_E20260521172449_anon",
+      "source_start_s": 39.0,
+      "source_end_s": 45.6,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 6.6
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260521172245_E20260521172449_anon",
+    "fps": 0.0,
+    "duration_s": 6.6,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260521172245_E20260521172449_anon/cand_16cee0cca921.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260526153840_E20260526154202_anon/cand_1a867db5f36a.mp4",
+      "candidate_id": "cand_1a867db5f36a",
+      "clip_id": "D2_S20260526153840_E20260526154202_anon",
+      "source_start_s": 83.25,
+      "source_end_s": 87.9,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 4.65
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260526153840_E20260526154202_anon",
+    "fps": 0.0,
+    "duration_s": 4.65,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260526153840_E20260526154202_anon/cand_1a867db5f36a.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260523104347_E20260523104753_anon/cand_1b0fca8894ed.mp4",
+      "candidate_id": "cand_1b0fca8894ed",
+      "clip_id": "D2_S20260523104347_E20260523104753_anon",
+      "source_start_s": 54.6,
+      "source_end_s": 59.5,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 4.9
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260523104347_E20260523104753_anon",
+    "fps": 0.0,
+    "duration_s": 4.9,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260523104347_E20260523104753_anon/cand_1b0fca8894ed.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260521112037_E20260521112553_anon/cand_1e92ae71a29e.mp4",
+      "candidate_id": "cand_1e92ae71a29e",
+      "clip_id": "D2_S20260521112037_E20260521112553_anon",
+      "source_start_s": 174.4,
+      "source_end_s": 179.0,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 4.6
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260521112037_E20260521112553_anon",
+    "fps": 0.0,
+    "duration_s": 4.6,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260521112037_E20260521112553_anon/cand_1e92ae71a29e.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260520141225_E20260520141509_anon/cand_1f7244c267d4.mp4",
+      "candidate_id": "cand_1f7244c267d4",
+      "clip_id": "D2_S20260520141225_E20260520141509_anon",
+      "source_start_s": 17.1,
+      "source_end_s": 21.4,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 4.3
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260520141225_E20260520141509_anon",
+    "fps": 0.0,
+    "duration_s": 4.3,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260520141225_E20260520141509_anon/cand_1f7244c267d4.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260522151152_E20260522151804_anon/cand_1f9594d0b117.mp4",
+      "candidate_id": "cand_1f9594d0b117",
+      "clip_id": "D2_S20260522151152_E20260522151804_anon",
+      "source_start_s": 135.6,
+      "source_end_s": 143.75,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 8.15
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260522151152_E20260522151804_anon",
+    "fps": 0.0,
+    "duration_s": 8.15,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260522151152_E20260522151804_anon/cand_1f9594d0b117.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260520151119_E20260520151519_anon/cand_2a4eff0c8c52.mp4",
+      "candidate_id": "cand_2a4eff0c8c52",
+      "clip_id": "D2_S20260520151119_E20260520151519_anon",
+      "source_start_s": 56.1,
+      "source_end_s": 61.1,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 5.0
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260520151119_E20260520151519_anon",
+    "fps": 0.0,
+    "duration_s": 5.0,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260520151119_E20260520151519_anon/cand_2a4eff0c8c52.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260523105657_E20260523110017_anon/cand_2c709976b309.mp4",
+      "candidate_id": "cand_2c709976b309",
+      "clip_id": "D2_S20260523105657_E20260523110017_anon",
+      "source_start_s": 67.6,
+      "source_end_s": 72.6,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 5.0
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260523105657_E20260523110017_anon",
+    "fps": 0.0,
+    "duration_s": 5.0,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260523105657_E20260523110017_anon/cand_2c709976b309.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260526192124_E20260526192522_anon/cand_30d62d132f87.mp4",
+      "candidate_id": "cand_30d62d132f87",
+      "clip_id": "D2_S20260526192124_E20260526192522_anon",
+      "source_start_s": 68.5,
+      "source_end_s": 96.1,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 27.6
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260526192124_E20260526192522_anon",
+    "fps": 0.0,
+    "duration_s": 27.6,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260526192124_E20260526192522_anon/cand_30d62d132f87.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260520171509_E20260520171843_anon/cand_319262dbc237.mp4",
+      "candidate_id": "cand_319262dbc237",
+      "clip_id": "D2_S20260520171509_E20260520171843_anon",
+      "source_start_s": 98.9,
+      "source_end_s": 106.5,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 7.6
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260520171509_E20260520171843_anon",
+    "fps": 0.0,
+    "duration_s": 7.6,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260520171509_E20260520171843_anon/cand_319262dbc237.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260526201630_E20260526201736_anon/cand_325761186071.mp4",
+      "candidate_id": "cand_325761186071",
+      "clip_id": "D2_S20260526201630_E20260526201736_anon",
+      "source_start_s": 51.0,
+      "source_end_s": 61.0,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 10.0
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260526201630_E20260526201736_anon",
+    "fps": 0.0,
+    "duration_s": 10.0,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260526201630_E20260526201736_anon/cand_325761186071.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260520141725_E20260520142151_anon/cand_326a40f32e81.mp4",
+      "candidate_id": "cand_326a40f32e81",
+      "clip_id": "D2_S20260520141725_E20260520142151_anon",
+      "source_start_s": 86.9,
+      "source_end_s": 92.25,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 5.35
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260520141725_E20260520142151_anon",
+    "fps": 0.0,
+    "duration_s": 5.35,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260520141725_E20260520142151_anon/cand_326a40f32e81.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260523104347_E20260523104753_anon/cand_33ed94ec7042.mp4",
+      "candidate_id": "cand_33ed94ec7042",
+      "clip_id": "D2_S20260523104347_E20260523104753_anon",
+      "source_start_s": 60.4,
+      "source_end_s": 65.0,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 4.6
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260523104347_E20260523104753_anon",
+    "fps": 0.0,
+    "duration_s": 4.6,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260523104347_E20260523104753_anon/cand_33ed94ec7042.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260521225257_E20260521225547_anon/cand_36ff8e1200bd.mp4",
+      "candidate_id": "cand_36ff8e1200bd",
+      "clip_id": "D2_S20260521225257_E20260521225547_anon",
+      "source_start_s": 19.0,
+      "source_end_s": 88.25,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 69.25
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260521225257_E20260521225547_anon",
+    "fps": 0.0,
+    "duration_s": 69.25,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260521225257_E20260521225547_anon/cand_36ff8e1200bd.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260520171509_E20260520171843_anon/cand_38d950cba625.mp4",
+      "candidate_id": "cand_38d950cba625",
+      "clip_id": "D2_S20260520171509_E20260520171843_anon",
+      "source_start_s": 17.4,
+      "source_end_s": 21.9,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 4.5
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260520171509_E20260520171843_anon",
+    "fps": 0.0,
+    "duration_s": 4.5,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260520171509_E20260520171843_anon/cand_38d950cba625.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260521133647_E20260521134049_anon/cand_3a43c8e360b8.mp4",
+      "candidate_id": "cand_3a43c8e360b8",
+      "clip_id": "D2_S20260521133647_E20260521134049_anon",
+      "source_start_s": 143.4,
+      "source_end_s": 149.0,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 5.6
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260521133647_E20260521134049_anon",
+    "fps": 0.0,
+    "duration_s": 5.6,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260521133647_E20260521134049_anon/cand_3a43c8e360b8.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260522151152_E20260522151804_anon/cand_3bc22822df71.mp4",
+      "candidate_id": "cand_3bc22822df71",
+      "clip_id": "D2_S20260522151152_E20260522151804_anon",
+      "source_start_s": 3.5,
+      "source_end_s": 9.75,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 6.25
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260522151152_E20260522151804_anon",
+    "fps": 0.0,
+    "duration_s": 6.25,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260522151152_E20260522151804_anon/cand_3bc22822df71.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260523102833_E20260523103217_anon/cand_3efbcdcc279b.mp4",
+      "candidate_id": "cand_3efbcdcc279b",
+      "clip_id": "D2_S20260523102833_E20260523103217_anon",
+      "source_start_s": 139.5,
+      "source_end_s": 145.5,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 6.0
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260523102833_E20260523103217_anon",
+    "fps": 0.0,
+    "duration_s": 6.0,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260523102833_E20260523103217_anon/cand_3efbcdcc279b.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260526155844_E20260526160148_anon/cand_405eb10e54a2.mp4",
+      "candidate_id": "cand_405eb10e54a2",
+      "clip_id": "D2_S20260526155844_E20260526160148_anon",
+      "source_start_s": 103.0,
+      "source_end_s": 108.1,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 5.1
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260526155844_E20260526160148_anon",
+    "fps": 0.0,
+    "duration_s": 5.1,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260526155844_E20260526160148_anon/cand_405eb10e54a2.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260522132934_E20260522133448_anon/cand_462ef0b84280.mp4",
+      "candidate_id": "cand_462ef0b84280",
+      "clip_id": "D2_S20260522132934_E20260522133448_anon",
+      "source_start_s": 193.4,
+      "source_end_s": 198.5,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 5.1
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260522132934_E20260522133448_anon",
+    "fps": 0.0,
+    "duration_s": 5.1,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260522132934_E20260522133448_anon/cand_462ef0b84280.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260522151152_E20260522151804_anon/cand_465e67b8b7f5.mp4",
+      "candidate_id": "cand_465e67b8b7f5",
+      "clip_id": "D2_S20260522151152_E20260522151804_anon",
+      "source_start_s": 135.75,
+      "source_end_s": 156.4,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 20.65
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260522151152_E20260522151804_anon",
+    "fps": 0.0,
+    "duration_s": 20.65,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260522151152_E20260522151804_anon/cand_465e67b8b7f5.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260520171509_E20260520171843_anon/cand_4682d07af906.mp4",
+      "candidate_id": "cand_4682d07af906",
+      "clip_id": "D2_S20260520171509_E20260520171843_anon",
+      "source_start_s": 57.6,
+      "source_end_s": 62.25,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 4.65
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260520171509_E20260520171843_anon",
+    "fps": 0.0,
+    "duration_s": 4.65,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260520171509_E20260520171843_anon/cand_4682d07af906.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260526185126_E20260526185806_anon/cand_47473d2b1f0d.mp4",
+      "candidate_id": "cand_47473d2b1f0d",
+      "clip_id": "D2_S20260526185126_E20260526185806_anon",
+      "source_start_s": 124.4,
+      "source_end_s": 131.0,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 6.6
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260526185126_E20260526185806_anon",
+    "fps": 0.0,
+    "duration_s": 6.6,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260526185126_E20260526185806_anon/cand_47473d2b1f0d.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260521133647_E20260521134049_anon/cand_4823dc3be530.mp4",
+      "candidate_id": "cand_4823dc3be530",
+      "clip_id": "D2_S20260521133647_E20260521134049_anon",
+      "source_start_s": 39.75,
+      "source_end_s": 68.6,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 28.85
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260521133647_E20260521134049_anon",
+    "fps": 0.0,
+    "duration_s": 28.85,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260521133647_E20260521134049_anon/cand_4823dc3be530.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260523104347_E20260523104753_anon/cand_49b232b8b66f.mp4",
+      "candidate_id": "cand_49b232b8b66f",
+      "clip_id": "D2_S20260523104347_E20260523104753_anon",
+      "source_start_s": 113.6,
+      "source_end_s": 118.1,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 4.5
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260523104347_E20260523104753_anon",
+    "fps": 0.0,
+    "duration_s": 4.5,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260523104347_E20260523104753_anon/cand_49b232b8b66f.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260522151810_E20260522152016_anon/cand_4a4adfc7dd20.mp4",
+      "candidate_id": "cand_4a4adfc7dd20",
+      "clip_id": "D2_S20260522151810_E20260522152016_anon",
+      "source_start_s": 43.1,
+      "source_end_s": 50.1,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 7.0
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260522151810_E20260522152016_anon",
+    "fps": 0.0,
+    "duration_s": 7.0,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260522151810_E20260522152016_anon/cand_4a4adfc7dd20.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260521112037_E20260521112553_anon/cand_4ae07ec74e69.mp4",
+      "candidate_id": "cand_4ae07ec74e69",
+      "clip_id": "D2_S20260521112037_E20260521112553_anon",
+      "source_start_s": 81.1,
+      "source_end_s": 88.5,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 7.4
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260521112037_E20260521112553_anon",
+    "fps": 0.0,
+    "duration_s": 7.4,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260521112037_E20260521112553_anon/cand_4ae07ec74e69.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260526155150_E20260526155432_anon/cand_4b43955817f4.mp4",
+      "candidate_id": "cand_4b43955817f4",
+      "clip_id": "D2_S20260526155150_E20260526155432_anon",
+      "source_start_s": 7.5,
+      "source_end_s": 48.25,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 40.75
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260526155150_E20260526155432_anon",
+    "fps": 0.0,
+    "duration_s": 40.75,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260526155150_E20260526155432_anon/cand_4b43955817f4.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260526201736_E20260526201856_anon/cand_4be6d4e2cd70.mp4",
+      "candidate_id": "cand_4be6d4e2cd70",
+      "clip_id": "D2_S20260526201736_E20260526201856_anon",
+      "source_start_s": 0.0,
+      "source_end_s": 3.9,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 3.9
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260526201736_E20260526201856_anon",
+    "fps": 0.0,
+    "duration_s": 3.9,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260526201736_E20260526201856_anon/cand_4be6d4e2cd70.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260520171509_E20260520171843_anon/cand_4def93b8283b.mp4",
+      "candidate_id": "cand_4def93b8283b",
+      "clip_id": "D2_S20260520171509_E20260520171843_anon",
+      "source_start_s": 103.5,
+      "source_end_s": 108.5,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 5.0
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260520171509_E20260520171843_anon",
+    "fps": 0.0,
+    "duration_s": 5.0,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260520171509_E20260520171843_anon/cand_4def93b8283b.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260523101833_E20260523102129_anon/cand_5062f9241ee5.mp4",
+      "candidate_id": "cand_5062f9241ee5",
+      "clip_id": "D2_S20260523101833_E20260523102129_anon",
+      "source_start_s": 22.4,
+      "source_end_s": 27.4,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 5.0
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260523101833_E20260523102129_anon",
+    "fps": 0.0,
+    "duration_s": 5.0,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260523101833_E20260523102129_anon/cand_5062f9241ee5.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260521112037_E20260521112553_anon/cand_548a780cc651.mp4",
+      "candidate_id": "cand_548a780cc651",
+      "clip_id": "D2_S20260521112037_E20260521112553_anon",
+      "source_start_s": 21.5,
+      "source_end_s": 29.25,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 7.75
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260521112037_E20260521112553_anon",
+    "fps": 0.0,
+    "duration_s": 7.75,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260521112037_E20260521112553_anon/cand_548a780cc651.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260522151152_E20260522151804_anon/cand_558c49fcd919.mp4",
+      "candidate_id": "cand_558c49fcd919",
+      "clip_id": "D2_S20260522151152_E20260522151804_anon",
+      "source_start_s": 181.4,
+      "source_end_s": 187.1,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 5.7
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260522151152_E20260522151804_anon",
+    "fps": 0.0,
+    "duration_s": 5.7,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260522151152_E20260522151804_anon/cand_558c49fcd919.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260522132934_E20260522133448_anon/cand_5a050adf25a0.mp4",
+      "candidate_id": "cand_5a050adf25a0",
+      "clip_id": "D2_S20260522132934_E20260522133448_anon",
+      "source_start_s": 61.9,
+      "source_end_s": 71.25,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 9.35
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260522132934_E20260522133448_anon",
+    "fps": 0.0,
+    "duration_s": 9.35,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260522132934_E20260522133448_anon/cand_5a050adf25a0.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260523104347_E20260523104753_anon/cand_5b2d531a5d9c.mp4",
+      "candidate_id": "cand_5b2d531a5d9c",
+      "clip_id": "D2_S20260523104347_E20260523104753_anon",
+      "source_start_s": 39.4,
+      "source_end_s": 43.75,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 4.35
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260523104347_E20260523104753_anon",
+    "fps": 0.0,
+    "duration_s": 4.35,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260523104347_E20260523104753_anon/cand_5b2d531a5d9c.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260521133647_E20260521134049_anon/cand_5f4a3f52ca9b.mp4",
+      "candidate_id": "cand_5f4a3f52ca9b",
+      "clip_id": "D2_S20260521133647_E20260521134049_anon",
+      "source_start_s": 153.75,
+      "source_end_s": 159.9,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 6.15
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260521133647_E20260521134049_anon",
+    "fps": 0.0,
+    "duration_s": 6.15,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260521133647_E20260521134049_anon/cand_5f4a3f52ca9b.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260526192124_E20260526192522_anon/cand_5fef3966acba.mp4",
+      "candidate_id": "cand_5fef3966acba",
+      "clip_id": "D2_S20260526192124_E20260526192522_anon",
+      "source_start_s": 64.1,
+      "source_end_s": 69.0,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 4.9
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260526192124_E20260526192522_anon",
+    "fps": 0.0,
+    "duration_s": 4.9,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260526192124_E20260526192522_anon/cand_5fef3966acba.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260520140905_E20260520141207_anon/cand_60a683d58a7f.mp4",
+      "candidate_id": "cand_60a683d58a7f",
+      "clip_id": "D2_S20260520140905_E20260520141207_anon",
+      "source_start_s": 156.75,
+      "source_end_s": 166.75,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 10.0
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260520140905_E20260520141207_anon",
+    "fps": 0.0,
+    "duration_s": 10.0,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260520140905_E20260520141207_anon/cand_60a683d58a7f.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260520135131_E20260520135549_anon/cand_61c065a26d23.mp4",
+      "candidate_id": "cand_61c065a26d23",
+      "clip_id": "D2_S20260520135131_E20260520135549_anon",
+      "source_start_s": 119.0,
+      "source_end_s": 129.0,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 10.0
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260520135131_E20260520135549_anon",
+    "fps": 0.0,
+    "duration_s": 10.0,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260520135131_E20260520135549_anon/cand_61c065a26d23.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260526123358_E20260526123814_anon/cand_620418d5381e.mp4",
+      "candidate_id": "cand_620418d5381e",
+      "clip_id": "D2_S20260526123358_E20260526123814_anon",
+      "source_start_s": 170.9,
+      "source_end_s": 175.5,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 4.6
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260526123358_E20260526123814_anon",
+    "fps": 0.0,
+    "duration_s": 4.6,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260526123358_E20260526123814_anon/cand_620418d5381e.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260520143523_E20260520143803_anon/cand_64b975d1f236.mp4",
+      "candidate_id": "cand_64b975d1f236",
+      "clip_id": "D2_S20260520143523_E20260520143803_anon",
+      "source_start_s": 5.4,
+      "source_end_s": 10.4,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 5.0
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260520143523_E20260520143803_anon",
+    "fps": 0.0,
+    "duration_s": 5.0,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260520143523_E20260520143803_anon/cand_64b975d1f236.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260520151119_E20260520151519_anon/cand_65892ff8db99.mp4",
+      "candidate_id": "cand_65892ff8db99",
+      "clip_id": "D2_S20260520151119_E20260520151519_anon",
+      "source_start_s": 101.9,
+      "source_end_s": 106.4,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 4.5
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260520151119_E20260520151519_anon",
+    "fps": 0.0,
+    "duration_s": 4.5,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260520151119_E20260520151519_anon/cand_65892ff8db99.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260521070815_E20260521071035_anon/cand_693d60f37d87.mp4",
+      "candidate_id": "cand_693d60f37d87",
+      "clip_id": "D2_S20260521070815_E20260521071035_anon",
+      "source_start_s": 25.0,
+      "source_end_s": 29.5,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 4.5
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260521070815_E20260521071035_anon",
+    "fps": 0.0,
+    "duration_s": 4.5,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260521070815_E20260521071035_anon/cand_693d60f37d87.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260520151119_E20260520151519_anon/cand_6c1fb6ac683d.mp4",
+      "candidate_id": "cand_6c1fb6ac683d",
+      "clip_id": "D2_S20260520151119_E20260520151519_anon",
+      "source_start_s": 59.5,
+      "source_end_s": 69.4,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 9.9
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260520151119_E20260520151519_anon",
+    "fps": 0.0,
+    "duration_s": 9.9,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260520151119_E20260520151519_anon/cand_6c1fb6ac683d.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260520140905_E20260520141207_anon/cand_6f82323ff14d.mp4",
+      "candidate_id": "cand_6f82323ff14d",
+      "clip_id": "D2_S20260520140905_E20260520141207_anon",
+      "source_start_s": 36.75,
+      "source_end_s": 41.5,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 4.75
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260520140905_E20260520141207_anon",
+    "fps": 0.0,
+    "duration_s": 4.75,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260520140905_E20260520141207_anon/cand_6f82323ff14d.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260520141725_E20260520142151_anon/cand_71ab006699a6.mp4",
+      "candidate_id": "cand_71ab006699a6",
+      "clip_id": "D2_S20260520141725_E20260520142151_anon",
+      "source_start_s": 150.5,
+      "source_end_s": 155.5,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 5.0
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260520141725_E20260520142151_anon",
+    "fps": 0.0,
+    "duration_s": 5.0,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260520141725_E20260520142151_anon/cand_71ab006699a6.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260522010204_E20260522010734_anon/cand_71f36db7e719.mp4",
+      "candidate_id": "cand_71f36db7e719",
+      "clip_id": "D2_S20260522010204_E20260522010734_anon",
+      "source_start_s": 96.75,
+      "source_end_s": 102.4,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 5.65
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260522010204_E20260522010734_anon",
+    "fps": 0.0,
+    "duration_s": 5.65,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260522010204_E20260522010734_anon/cand_71f36db7e719.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260522181742_E20260522182146_anon/cand_724e88026f13.mp4",
+      "candidate_id": "cand_724e88026f13",
+      "clip_id": "D2_S20260522181742_E20260522182146_anon",
+      "source_start_s": 6.6,
+      "source_end_s": 11.0,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 4.4
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260522181742_E20260522182146_anon",
+    "fps": 0.0,
+    "duration_s": 4.4,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260522181742_E20260522182146_anon/cand_724e88026f13.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260520151119_E20260520151519_anon/cand_742effef32a9.mp4",
+      "candidate_id": "cand_742effef32a9",
+      "clip_id": "D2_S20260520151119_E20260520151519_anon",
+      "source_start_s": 52.6,
+      "source_end_s": 57.4,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 4.8
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260520151119_E20260520151519_anon",
+    "fps": 0.0,
+    "duration_s": 4.8,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260520151119_E20260520151519_anon/cand_742effef32a9.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260522181742_E20260522182146_anon/cand_7587463b14ce.mp4",
+      "candidate_id": "cand_7587463b14ce",
+      "clip_id": "D2_S20260522181742_E20260522182146_anon",
+      "source_start_s": 76.75,
+      "source_end_s": 81.6,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 4.85
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260522181742_E20260522182146_anon",
+    "fps": 0.0,
+    "duration_s": 4.85,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260522181742_E20260522182146_anon/cand_7587463b14ce.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260521100509_E20260521100739_anon/cand_792545a87fb1.mp4",
+      "candidate_id": "cand_792545a87fb1",
+      "clip_id": "D2_S20260521100509_E20260521100739_anon",
+      "source_start_s": 4.25,
+      "source_end_s": 8.75,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 4.5
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260521100509_E20260521100739_anon",
+    "fps": 0.0,
+    "duration_s": 4.5,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260521100509_E20260521100739_anon/cand_792545a87fb1.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260526162718_E20260526162938_anon/cand_7a52ee5be3a3.mp4",
+      "candidate_id": "cand_7a52ee5be3a3",
+      "clip_id": "D2_S20260526162718_E20260526162938_anon",
+      "source_start_s": 57.75,
+      "source_end_s": 62.25,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 4.5
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260526162718_E20260526162938_anon",
+    "fps": 0.0,
+    "duration_s": 4.5,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260526162718_E20260526162938_anon/cand_7a52ee5be3a3.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260520140905_E20260520141207_anon/cand_7be4adf2c2c8.mp4",
+      "candidate_id": "cand_7be4adf2c2c8",
+      "clip_id": "D2_S20260520140905_E20260520141207_anon",
+      "source_start_s": 100.6,
+      "source_end_s": 105.5,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 4.9
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260520140905_E20260520141207_anon",
+    "fps": 0.0,
+    "duration_s": 4.9,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260520140905_E20260520141207_anon/cand_7be4adf2c2c8.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260526192124_E20260526192522_anon/cand_7c8cad6c9a27.mp4",
+      "candidate_id": "cand_7c8cad6c9a27",
+      "clip_id": "D2_S20260526192124_E20260526192522_anon",
+      "source_start_s": 138.25,
+      "source_end_s": 143.9,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 5.65
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260526192124_E20260526192522_anon",
+    "fps": 0.0,
+    "duration_s": 5.65,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260526192124_E20260526192522_anon/cand_7c8cad6c9a27.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260520142359_E20260520142613_anon/cand_7cfb3d1b3947.mp4",
+      "candidate_id": "cand_7cfb3d1b3947",
+      "clip_id": "D2_S20260520142359_E20260520142613_anon",
+      "source_start_s": 47.0,
+      "source_end_s": 55.6,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 8.6
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260520142359_E20260520142613_anon",
+    "fps": 0.0,
+    "duration_s": 8.6,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260520142359_E20260520142613_anon/cand_7cfb3d1b3947.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260523105427_E20260523105637_anon/cand_7d7db5d21f7c.mp4",
+      "candidate_id": "cand_7d7db5d21f7c",
+      "clip_id": "D2_S20260523105427_E20260523105637_anon",
+      "source_start_s": 6.9,
+      "source_end_s": 32.5,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 25.6
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260523105427_E20260523105637_anon",
+    "fps": 0.0,
+    "duration_s": 25.6,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260523105427_E20260523105637_anon/cand_7d7db5d21f7c.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260526123358_E20260526123814_anon/cand_7db08fbd6268.mp4",
+      "candidate_id": "cand_7db08fbd6268",
+      "clip_id": "D2_S20260526123358_E20260526123814_anon",
+      "source_start_s": 136.1,
+      "source_end_s": 140.4,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 4.3
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260526123358_E20260526123814_anon",
+    "fps": 0.0,
+    "duration_s": 4.3,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260526123358_E20260526123814_anon/cand_7db08fbd6268.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260526162956_E20260526163416_anon/cand_7fe5e90dcae1.mp4",
+      "candidate_id": "cand_7fe5e90dcae1",
+      "clip_id": "D2_S20260526162956_E20260526163416_anon",
+      "source_start_s": 151.6,
+      "source_end_s": 156.6,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 5.0
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260526162956_E20260526163416_anon",
+    "fps": 0.0,
+    "duration_s": 5.0,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260526162956_E20260526163416_anon/cand_7fe5e90dcae1.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260522181742_E20260522182146_anon/cand_8063df509256.mp4",
+      "candidate_id": "cand_8063df509256",
+      "clip_id": "D2_S20260522181742_E20260522182146_anon",
+      "source_start_s": 92.175,
+      "source_end_s": 102.175,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 10.0
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260522181742_E20260522182146_anon",
+    "fps": 0.0,
+    "duration_s": 10.0,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260522181742_E20260522182146_anon/cand_8063df509256.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260526153840_E20260526154202_anon/cand_810bd81dc34f.mp4",
+      "candidate_id": "cand_810bd81dc34f",
+      "clip_id": "D2_S20260526153840_E20260526154202_anon",
+      "source_start_s": 79.6,
+      "source_end_s": 84.25,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 4.65
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260526153840_E20260526154202_anon",
+    "fps": 0.0,
+    "duration_s": 4.65,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260526153840_E20260526154202_anon/cand_810bd81dc34f.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260523104347_E20260523104753_anon/cand_823fa7e96e49.mp4",
+      "candidate_id": "cand_823fa7e96e49",
+      "clip_id": "D2_S20260523104347_E20260523104753_anon",
+      "source_start_s": 112.6,
+      "source_end_s": 117.25,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 4.65
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260523104347_E20260523104753_anon",
+    "fps": 0.0,
+    "duration_s": 4.65,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260523104347_E20260523104753_anon/cand_823fa7e96e49.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260520171509_E20260520171843_anon/cand_8260315ef398.mp4",
+      "candidate_id": "cand_8260315ef398",
+      "clip_id": "D2_S20260520171509_E20260520171843_anon",
+      "source_start_s": 80.9,
+      "source_end_s": 86.0,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 5.1
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260520171509_E20260520171843_anon",
+    "fps": 0.0,
+    "duration_s": 5.1,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260520171509_E20260520171843_anon/cand_8260315ef398.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260523102833_E20260523103217_anon/cand_840c3375a1ad.mp4",
+      "candidate_id": "cand_840c3375a1ad",
+      "clip_id": "D2_S20260523102833_E20260523103217_anon",
+      "source_start_s": 144.0,
+      "source_end_s": 148.25,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 4.25
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260523102833_E20260523103217_anon",
+    "fps": 0.0,
+    "duration_s": 4.25,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260523102833_E20260523103217_anon/cand_840c3375a1ad.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260523094047_E20260523094221_anon/cand_853090e49519.mp4",
+      "candidate_id": "cand_853090e49519",
+      "clip_id": "D2_S20260523094047_E20260523094221_anon",
+      "source_start_s": 1.1,
+      "source_end_s": 5.5,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 4.4
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260523094047_E20260523094221_anon",
+    "fps": 0.0,
+    "duration_s": 4.4,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260523094047_E20260523094221_anon/cand_853090e49519.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260526162956_E20260526163416_anon/cand_876b0be4684c.mp4",
+      "candidate_id": "cand_876b0be4684c",
+      "clip_id": "D2_S20260526162956_E20260526163416_anon",
+      "source_start_s": 27.125,
+      "source_end_s": 37.125,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 10.0
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260526162956_E20260526163416_anon",
+    "fps": 0.0,
+    "duration_s": 10.0,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260526162956_E20260526163416_anon/cand_876b0be4684c.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260522151152_E20260522151804_anon/cand_878fffea0985.mp4",
+      "candidate_id": "cand_878fffea0985",
+      "clip_id": "D2_S20260522151152_E20260522151804_anon",
+      "source_start_s": 26.075,
+      "source_end_s": 36.075,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 10.0
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260522151152_E20260522151804_anon",
+    "fps": 0.0,
+    "duration_s": 10.0,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260522151152_E20260522151804_anon/cand_878fffea0985.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260523101833_E20260523102129_anon/cand_8a6963ab7d67.mp4",
+      "candidate_id": "cand_8a6963ab7d67",
+      "clip_id": "D2_S20260523101833_E20260523102129_anon",
+      "source_start_s": 43.9,
+      "source_end_s": 48.5,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 4.6
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260523101833_E20260523102129_anon",
+    "fps": 0.0,
+    "duration_s": 4.6,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260523101833_E20260523102129_anon/cand_8a6963ab7d67.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260521135201_E20260521135601_anon/cand_8aa9e15d4a7b.mp4",
+      "candidate_id": "cand_8aa9e15d4a7b",
+      "clip_id": "D2_S20260521135201_E20260521135601_anon",
+      "source_start_s": 50.75,
+      "source_end_s": 56.4,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 5.65
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260521135201_E20260521135601_anon",
+    "fps": 0.0,
+    "duration_s": 5.65,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260521135201_E20260521135601_anon/cand_8aa9e15d4a7b.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260520171509_E20260520171843_anon/cand_8afe9857b5f2.mp4",
+      "candidate_id": "cand_8afe9857b5f2",
+      "clip_id": "D2_S20260520171509_E20260520171843_anon",
+      "source_start_s": 82.75,
+      "source_end_s": 87.25,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 4.5
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260520171509_E20260520171843_anon",
+    "fps": 0.0,
+    "duration_s": 4.5,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260520171509_E20260520171843_anon/cand_8afe9857b5f2.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260520151119_E20260520151519_anon/cand_8c0701161c55.mp4",
+      "candidate_id": "cand_8c0701161c55",
+      "clip_id": "D2_S20260520151119_E20260520151519_anon",
+      "source_start_s": 87.675,
+      "source_end_s": 97.675,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 10.0
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260520151119_E20260520151519_anon",
+    "fps": 0.0,
+    "duration_s": 10.0,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260520151119_E20260520151519_anon/cand_8c0701161c55.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260520143523_E20260520143803_anon/cand_8dc1f5c3dd43.mp4",
+      "candidate_id": "cand_8dc1f5c3dd43",
+      "clip_id": "D2_S20260520143523_E20260520143803_anon",
+      "source_start_s": 46.575,
+      "source_end_s": 56.575,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 10.0
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260520143523_E20260520143803_anon",
+    "fps": 0.0,
+    "duration_s": 10.0,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260520143523_E20260520143803_anon/cand_8dc1f5c3dd43.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260526185126_E20260526185806_anon/cand_923bde6a918a.mp4",
+      "candidate_id": "cand_923bde6a918a",
+      "clip_id": "D2_S20260526185126_E20260526185806_anon",
+      "source_start_s": 21.6,
+      "source_end_s": 48.75,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 27.15
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260526185126_E20260526185806_anon",
+    "fps": 0.0,
+    "duration_s": 27.15,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260526185126_E20260526185806_anon/cand_923bde6a918a.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260520171509_E20260520171843_anon/cand_9449f36a3039.mp4",
+      "candidate_id": "cand_9449f36a3039",
+      "clip_id": "D2_S20260520171509_E20260520171843_anon",
+      "source_start_s": 95.1,
+      "source_end_s": 100.1,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 5.0
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260520171509_E20260520171843_anon",
+    "fps": 0.0,
+    "duration_s": 5.0,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260520171509_E20260520171843_anon/cand_9449f36a3039.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260520171509_E20260520171843_anon/cand_96060a5b0ff4.mp4",
+      "candidate_id": "cand_96060a5b0ff4",
+      "clip_id": "D2_S20260520171509_E20260520171843_anon",
+      "source_start_s": 47.5,
+      "source_end_s": 54.4,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 6.9
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260520171509_E20260520171843_anon",
+    "fps": 0.0,
+    "duration_s": 6.9,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260520171509_E20260520171843_anon/cand_96060a5b0ff4.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260520171509_E20260520171843_anon/cand_964687d9fa4a.mp4",
+      "candidate_id": "cand_964687d9fa4a",
+      "clip_id": "D2_S20260520171509_E20260520171843_anon",
+      "source_start_s": 48.9,
+      "source_end_s": 53.4,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 4.5
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260520171509_E20260520171843_anon",
+    "fps": 0.0,
+    "duration_s": 4.5,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260520171509_E20260520171843_anon/cand_964687d9fa4a.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260521135201_E20260521135601_anon/cand_98db4ec3f2d4.mp4",
+      "candidate_id": "cand_98db4ec3f2d4",
+      "clip_id": "D2_S20260521135201_E20260521135601_anon",
+      "source_start_s": 5.75,
+      "source_end_s": 11.6,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 5.85
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260521135201_E20260521135601_anon",
+    "fps": 0.0,
+    "duration_s": 5.85,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260521135201_E20260521135601_anon/cand_98db4ec3f2d4.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260521133647_E20260521134049_anon/cand_995b247a3517.mp4",
+      "candidate_id": "cand_995b247a3517",
+      "clip_id": "D2_S20260521133647_E20260521134049_anon",
+      "source_start_s": 69.4,
+      "source_end_s": 73.9,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 4.5
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260521133647_E20260521134049_anon",
+    "fps": 0.0,
+    "duration_s": 4.5,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260521133647_E20260521134049_anon/cand_995b247a3517.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260526185126_E20260526185806_anon/cand_9abf08830a7f.mp4",
+      "candidate_id": "cand_9abf08830a7f",
+      "clip_id": "D2_S20260526185126_E20260526185806_anon",
+      "source_start_s": 105.0,
+      "source_end_s": 109.5,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 4.5
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260526185126_E20260526185806_anon",
+    "fps": 0.0,
+    "duration_s": 4.5,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260526185126_E20260526185806_anon/cand_9abf08830a7f.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260522151152_E20260522151804_anon/cand_9ad529a363b3.mp4",
+      "candidate_id": "cand_9ad529a363b3",
+      "clip_id": "D2_S20260522151152_E20260522151804_anon",
+      "source_start_s": 19.9,
+      "source_end_s": 28.1,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 8.2
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260522151152_E20260522151804_anon",
+    "fps": 0.0,
+    "duration_s": 8.2,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260522151152_E20260522151804_anon/cand_9ad529a363b3.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260520141725_E20260520142151_anon/cand_9af42a80847c.mp4",
+      "candidate_id": "cand_9af42a80847c",
+      "clip_id": "D2_S20260520141725_E20260520142151_anon",
+      "source_start_s": 110.0,
+      "source_end_s": 114.4,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 4.4
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260520141725_E20260520142151_anon",
+    "fps": 0.0,
+    "duration_s": 4.4,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260520141725_E20260520142151_anon/cand_9af42a80847c.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260523105657_E20260523110017_anon/cand_9c4d74df93c7.mp4",
+      "candidate_id": "cand_9c4d74df93c7",
+      "clip_id": "D2_S20260523105657_E20260523110017_anon",
+      "source_start_s": 11.0,
+      "source_end_s": 15.75,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 4.75
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260523105657_E20260523110017_anon",
+    "fps": 0.0,
+    "duration_s": 4.75,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260523105657_E20260523110017_anon/cand_9c4d74df93c7.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260522151152_E20260522151804_anon/cand_a4989d0fb9a6.mp4",
+      "candidate_id": "cand_a4989d0fb9a6",
+      "clip_id": "D2_S20260522151152_E20260522151804_anon",
+      "source_start_s": 120.6,
+      "source_end_s": 125.9,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 5.3
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260522151152_E20260522151804_anon",
+    "fps": 0.0,
+    "duration_s": 5.3,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260522151152_E20260522151804_anon/cand_a4989d0fb9a6.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260520171509_E20260520171843_anon/cand_a4a7ae833a74.mp4",
+      "candidate_id": "cand_a4a7ae833a74",
+      "clip_id": "D2_S20260520171509_E20260520171843_anon",
+      "source_start_s": 120.1,
+      "source_end_s": 125.4,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 5.3
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260520171509_E20260520171843_anon",
+    "fps": 0.0,
+    "duration_s": 5.3,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260520171509_E20260520171843_anon/cand_a4a7ae833a74.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260520151119_E20260520151519_anon/cand_a50d4cd6c64c.mp4",
+      "candidate_id": "cand_a50d4cd6c64c",
+      "clip_id": "D2_S20260520151119_E20260520151519_anon",
+      "source_start_s": 58.5,
+      "source_end_s": 63.5,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 5.0
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260520151119_E20260520151519_anon",
+    "fps": 0.0,
+    "duration_s": 5.0,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260520151119_E20260520151519_anon/cand_a50d4cd6c64c.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260520141725_E20260520142151_anon/cand_a53ee792a420.mp4",
+      "candidate_id": "cand_a53ee792a420",
+      "clip_id": "D2_S20260520141725_E20260520142151_anon",
+      "source_start_s": 109.6,
+      "source_end_s": 114.4,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 4.8
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260520141725_E20260520142151_anon",
+    "fps": 0.0,
+    "duration_s": 4.8,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260520141725_E20260520142151_anon/cand_a53ee792a420.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260522151152_E20260522151804_anon/cand_a5b0d9df3b84.mp4",
+      "candidate_id": "cand_a5b0d9df3b84",
+      "clip_id": "D2_S20260522151152_E20260522151804_anon",
+      "source_start_s": 140.5,
+      "source_end_s": 144.75,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 4.25
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260522151152_E20260522151804_anon",
+    "fps": 0.0,
+    "duration_s": 4.25,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260522151152_E20260522151804_anon/cand_a5b0d9df3b84.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260521100509_E20260521100739_anon/cand_a600e37da146.mp4",
+      "candidate_id": "cand_a600e37da146",
+      "clip_id": "D2_S20260521100509_E20260521100739_anon",
+      "source_start_s": 57.125,
+      "source_end_s": 67.125,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 10.0
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260521100509_E20260521100739_anon",
+    "fps": 0.0,
+    "duration_s": 10.0,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260521100509_E20260521100739_anon/cand_a600e37da146.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260521140835_E20260521141129_anon/cand_a7414e913d1e.mp4",
+      "candidate_id": "cand_a7414e913d1e",
+      "clip_id": "D2_S20260521140835_E20260521141129_anon",
+      "source_start_s": 89.25,
+      "source_end_s": 93.9,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 4.65
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260521140835_E20260521141129_anon",
+    "fps": 0.0,
+    "duration_s": 4.65,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260521140835_E20260521141129_anon/cand_a7414e913d1e.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260520141725_E20260520142151_anon/cand_a89cacfa89f8.mp4",
+      "candidate_id": "cand_a89cacfa89f8",
+      "clip_id": "D2_S20260520141725_E20260520142151_anon",
+      "source_start_s": 170.6,
+      "source_end_s": 178.25,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 7.65
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260520141725_E20260520142151_anon",
+    "fps": 0.0,
+    "duration_s": 7.65,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260520141725_E20260520142151_anon/cand_a89cacfa89f8.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260522151152_E20260522151804_anon/cand_a9b578e667f1.mp4",
+      "candidate_id": "cand_a9b578e667f1",
+      "clip_id": "D2_S20260522151152_E20260522151804_anon",
+      "source_start_s": 120.25,
+      "source_end_s": 124.9,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 4.65
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260522151152_E20260522151804_anon",
+    "fps": 0.0,
+    "duration_s": 4.65,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260522151152_E20260522151804_anon/cand_a9b578e667f1.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260520183617_E20260520183835_anon/cand_a9d207c4cdae.mp4",
+      "candidate_id": "cand_a9d207c4cdae",
+      "clip_id": "D2_S20260520183617_E20260520183835_anon",
+      "source_start_s": 51.6,
+      "source_end_s": 60.25,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 8.65
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260520183617_E20260520183835_anon",
+    "fps": 0.0,
+    "duration_s": 8.65,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260520183617_E20260520183835_anon/cand_a9d207c4cdae.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260522151152_E20260522151804_anon/cand_aa58a2aed2bb.mp4",
+      "candidate_id": "cand_aa58a2aed2bb",
+      "clip_id": "D2_S20260522151152_E20260522151804_anon",
+      "source_start_s": 154.4,
+      "source_end_s": 162.5,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 8.1
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260522151152_E20260522151804_anon",
+    "fps": 0.0,
+    "duration_s": 8.1,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260522151152_E20260522151804_anon/cand_aa58a2aed2bb.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260523082937_E20260523083139_anon/cand_ab8ce8fb6b36.mp4",
+      "candidate_id": "cand_ab8ce8fb6b36",
+      "clip_id": "D2_S20260523082937_E20260523083139_anon",
+      "source_start_s": 4.9,
+      "source_end_s": 11.5,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 6.6
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260523082937_E20260523083139_anon",
+    "fps": 0.0,
+    "duration_s": 6.6,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260523082937_E20260523083139_anon/cand_ab8ce8fb6b36.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260520135131_E20260520135549_anon/cand_ac4e0125a82f.mp4",
+      "candidate_id": "cand_ac4e0125a82f",
+      "clip_id": "D2_S20260520135131_E20260520135549_anon",
+      "source_start_s": 97.0,
+      "source_end_s": 101.4,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 4.4
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260520135131_E20260520135549_anon",
+    "fps": 0.0,
+    "duration_s": 4.4,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260520135131_E20260520135549_anon/cand_ac4e0125a82f.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260526123358_E20260526123814_anon/cand_b00d05e8352c.mp4",
+      "candidate_id": "cand_b00d05e8352c",
+      "clip_id": "D2_S20260526123358_E20260526123814_anon",
+      "source_start_s": 11.575,
+      "source_end_s": 21.575,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 10.0
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260526123358_E20260526123814_anon",
+    "fps": 0.0,
+    "duration_s": 10.0,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260526123358_E20260526123814_anon/cand_b00d05e8352c.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260520171509_E20260520171843_anon/cand_b3706d57494e.mp4",
+      "candidate_id": "cand_b3706d57494e",
+      "clip_id": "D2_S20260520171509_E20260520171843_anon",
+      "source_start_s": 71.4,
+      "source_end_s": 77.0,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 5.6
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260520171509_E20260520171843_anon",
+    "fps": 0.0,
+    "duration_s": 5.6,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260520171509_E20260520171843_anon/cand_b3706d57494e.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260522151152_E20260522151804_anon/cand_b547ad63bddf.mp4",
+      "candidate_id": "cand_b547ad63bddf",
+      "clip_id": "D2_S20260522151152_E20260522151804_anon",
+      "source_start_s": 12.9,
+      "source_end_s": 19.5,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 6.6
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260522151152_E20260522151804_anon",
+    "fps": 0.0,
+    "duration_s": 6.6,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260522151152_E20260522151804_anon/cand_b547ad63bddf.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260521070815_E20260521071035_anon/cand_b99f11435497.mp4",
+      "candidate_id": "cand_b99f11435497",
+      "clip_id": "D2_S20260521070815_E20260521071035_anon",
+      "source_start_s": 50.75,
+      "source_end_s": 56.25,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 5.5
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260521070815_E20260521071035_anon",
+    "fps": 0.0,
+    "duration_s": 5.5,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260521070815_E20260521071035_anon/cand_b99f11435497.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260522181742_E20260522182146_anon/cand_c0c177ca490b.mp4",
+      "candidate_id": "cand_c0c177ca490b",
+      "clip_id": "D2_S20260522181742_E20260522182146_anon",
+      "source_start_s": 143.1,
+      "source_end_s": 149.1,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 6.0
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260522181742_E20260522182146_anon",
+    "fps": 0.0,
+    "duration_s": 6.0,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260522181742_E20260522182146_anon/cand_c0c177ca490b.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260520141725_E20260520142151_anon/cand_c25905672695.mp4",
+      "candidate_id": "cand_c25905672695",
+      "clip_id": "D2_S20260520141725_E20260520142151_anon",
+      "source_start_s": 69.75,
+      "source_end_s": 74.4,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 4.65
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260520141725_E20260520142151_anon",
+    "fps": 0.0,
+    "duration_s": 4.65,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260520141725_E20260520142151_anon/cand_c25905672695.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260526123358_E20260526123814_anon/cand_c51571bade94.mp4",
+      "candidate_id": "cand_c51571bade94",
+      "clip_id": "D2_S20260526123358_E20260526123814_anon",
+      "source_start_s": 46.9,
+      "source_end_s": 55.75,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 8.85
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260526123358_E20260526123814_anon",
+    "fps": 0.0,
+    "duration_s": 8.85,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260526123358_E20260526123814_anon/cand_c51571bade94.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260521112037_E20260521112553_anon/cand_c56e62a9bf76.mp4",
+      "candidate_id": "cand_c56e62a9bf76",
+      "clip_id": "D2_S20260521112037_E20260521112553_anon",
+      "source_start_s": 30.6,
+      "source_end_s": 35.5,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 4.9
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260521112037_E20260521112553_anon",
+    "fps": 0.0,
+    "duration_s": 4.9,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260521112037_E20260521112553_anon/cand_c56e62a9bf76.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260522132934_E20260522133448_anon/cand_c5eb2554e309.mp4",
+      "candidate_id": "cand_c5eb2554e309",
+      "clip_id": "D2_S20260522132934_E20260522133448_anon",
+      "source_start_s": 63.125,
+      "source_end_s": 73.125,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 10.0
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260522132934_E20260522133448_anon",
+    "fps": 0.0,
+    "duration_s": 10.0,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260522132934_E20260522133448_anon/cand_c5eb2554e309.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260521134451_E20260521134721_anon/cand_c5f59119047e.mp4",
+      "candidate_id": "cand_c5f59119047e",
+      "clip_id": "D2_S20260521134451_E20260521134721_anon",
+      "source_start_s": 45.1,
+      "source_end_s": 51.1,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 6.0
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260521134451_E20260521134721_anon",
+    "fps": 0.0,
+    "duration_s": 6.0,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260521134451_E20260521134721_anon/cand_c5f59119047e.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260526162956_E20260526163416_anon/cand_c6f0a6234619.mp4",
+      "candidate_id": "cand_c6f0a6234619",
+      "clip_id": "D2_S20260526162956_E20260526163416_anon",
+      "source_start_s": 114.75,
+      "source_end_s": 121.75,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 7.0
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260526162956_E20260526163416_anon",
+    "fps": 0.0,
+    "duration_s": 7.0,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260526162956_E20260526163416_anon/cand_c6f0a6234619.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260526201348_E20260526201630_anon/cand_c858563eb446.mp4",
+      "candidate_id": "cand_c858563eb446",
+      "clip_id": "D2_S20260526201348_E20260526201630_anon",
+      "source_start_s": 84.175,
+      "source_end_s": 94.175,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 10.0
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260526201348_E20260526201630_anon",
+    "fps": 0.0,
+    "duration_s": 10.0,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260526201348_E20260526201630_anon/cand_c858563eb446.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260522151810_E20260522152016_anon/cand_c89b67a6076f.mp4",
+      "candidate_id": "cand_c89b67a6076f",
+      "clip_id": "D2_S20260522151810_E20260522152016_anon",
+      "source_start_s": 1.9,
+      "source_end_s": 11.25,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 9.35
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260522151810_E20260522152016_anon",
+    "fps": 0.0,
+    "duration_s": 9.35,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260522151810_E20260522152016_anon/cand_c89b67a6076f.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260522132934_E20260522133448_anon/cand_c92024c18e29.mp4",
+      "candidate_id": "cand_c92024c18e29",
+      "clip_id": "D2_S20260522132934_E20260522133448_anon",
+      "source_start_s": 36.4,
+      "source_end_s": 42.4,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 6.0
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260522132934_E20260522133448_anon",
+    "fps": 0.0,
+    "duration_s": 6.0,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260522132934_E20260522133448_anon/cand_c92024c18e29.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260520143523_E20260520143803_anon/cand_c9c63e08733a.mp4",
+      "candidate_id": "cand_c9c63e08733a",
+      "clip_id": "D2_S20260520143523_E20260520143803_anon",
+      "source_start_s": 8.95,
+      "source_end_s": 18.95,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 10.0
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260520143523_E20260520143803_anon",
+    "fps": 0.0,
+    "duration_s": 10.0,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260520143523_E20260520143803_anon/cand_c9c63e08733a.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260526123358_E20260526123814_anon/cand_ccb4b5f3e924.mp4",
+      "candidate_id": "cand_ccb4b5f3e924",
+      "clip_id": "D2_S20260526123358_E20260526123814_anon",
+      "source_start_s": 6.4,
+      "source_end_s": 12.25,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 5.85
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260526123358_E20260526123814_anon",
+    "fps": 0.0,
+    "duration_s": 5.85,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260526123358_E20260526123814_anon/cand_ccb4b5f3e924.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260523101833_E20260523102129_anon/cand_cd1e4702dd1a.mp4",
+      "candidate_id": "cand_cd1e4702dd1a",
+      "clip_id": "D2_S20260523101833_E20260523102129_anon",
+      "source_start_s": 51.6,
+      "source_end_s": 57.0,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 5.4
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260523101833_E20260523102129_anon",
+    "fps": 0.0,
+    "duration_s": 5.4,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260523101833_E20260523102129_anon/cand_cd1e4702dd1a.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260522181742_E20260522182146_anon/cand_d1456ebbd1b6.mp4",
+      "candidate_id": "cand_d1456ebbd1b6",
+      "clip_id": "D2_S20260522181742_E20260522182146_anon",
+      "source_start_s": 9.1,
+      "source_end_s": 13.6,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 4.5
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260522181742_E20260522182146_anon",
+    "fps": 0.0,
+    "duration_s": 4.5,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260522181742_E20260522182146_anon/cand_d1456ebbd1b6.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260520135131_E20260520135549_anon/cand_d1aa00fd339d.mp4",
+      "candidate_id": "cand_d1aa00fd339d",
+      "clip_id": "D2_S20260520135131_E20260520135549_anon",
+      "source_start_s": 113.25,
+      "source_end_s": 119.75,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 6.5
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260520135131_E20260520135549_anon",
+    "fps": 0.0,
+    "duration_s": 6.5,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260520135131_E20260520135549_anon/cand_d1aa00fd339d.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260522132934_E20260522133448_anon/cand_d5b54a58dcb0.mp4",
+      "candidate_id": "cand_d5b54a58dcb0",
+      "clip_id": "D2_S20260522132934_E20260522133448_anon",
+      "source_start_s": 184.6,
+      "source_end_s": 189.75,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 5.15
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260522132934_E20260522133448_anon",
+    "fps": 0.0,
+    "duration_s": 5.15,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260522132934_E20260522133448_anon/cand_d5b54a58dcb0.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260520141725_E20260520142151_anon/cand_d8cb2ea884bf.mp4",
+      "candidate_id": "cand_d8cb2ea884bf",
+      "clip_id": "D2_S20260520141725_E20260520142151_anon",
+      "source_start_s": 24.6,
+      "source_end_s": 42.5,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 17.9
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260520141725_E20260520142151_anon",
+    "fps": 0.0,
+    "duration_s": 17.9,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260520141725_E20260520142151_anon/cand_d8cb2ea884bf.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260522151152_E20260522151804_anon/cand_dc3839f52be8.mp4",
+      "candidate_id": "cand_dc3839f52be8",
+      "clip_id": "D2_S20260522151152_E20260522151804_anon",
+      "source_start_s": 108.0,
+      "source_end_s": 112.5,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 4.5
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260522151152_E20260522151804_anon",
+    "fps": 0.0,
+    "duration_s": 4.5,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260522151152_E20260522151804_anon/cand_dc3839f52be8.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260523104347_E20260523104753_anon/cand_dc76b14fb6dd.mp4",
+      "candidate_id": "cand_dc76b14fb6dd",
+      "clip_id": "D2_S20260523104347_E20260523104753_anon",
+      "source_start_s": 86.0,
+      "source_end_s": 91.0,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 5.0
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260523104347_E20260523104753_anon",
+    "fps": 0.0,
+    "duration_s": 5.0,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260523104347_E20260523104753_anon/cand_dc76b14fb6dd.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260521225257_E20260521225547_anon/cand_dc8a3f25e5ff.mp4",
+      "candidate_id": "cand_dc8a3f25e5ff",
+      "clip_id": "D2_S20260521225257_E20260521225547_anon",
+      "source_start_s": 42.6,
+      "source_end_s": 47.1,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 4.5
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260521225257_E20260521225547_anon",
+    "fps": 0.0,
+    "duration_s": 4.5,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260521225257_E20260521225547_anon/cand_dc8a3f25e5ff.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260520171509_E20260520171843_anon/cand_ded98c8edef6.mp4",
+      "candidate_id": "cand_ded98c8edef6",
+      "clip_id": "D2_S20260520171509_E20260520171843_anon",
+      "source_start_s": 84.1,
+      "source_end_s": 89.9,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 5.8
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260520171509_E20260520171843_anon",
+    "fps": 0.0,
+    "duration_s": 5.8,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260520171509_E20260520171843_anon/cand_ded98c8edef6.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260526162956_E20260526163416_anon/cand_dfb6d9771b47.mp4",
+      "candidate_id": "cand_dfb6d9771b47",
+      "clip_id": "D2_S20260526162956_E20260526163416_anon",
+      "source_start_s": 34.9,
+      "source_end_s": 50.25,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 15.35
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260526162956_E20260526163416_anon",
+    "fps": 0.0,
+    "duration_s": 15.35,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260526162956_E20260526163416_anon/cand_dfb6d9771b47.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260523104347_E20260523104753_anon/cand_e43d83f5463c.mp4",
+      "candidate_id": "cand_e43d83f5463c",
+      "clip_id": "D2_S20260523104347_E20260523104753_anon",
+      "source_start_s": 7.75,
+      "source_end_s": 12.5,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 4.75
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260523104347_E20260523104753_anon",
+    "fps": 0.0,
+    "duration_s": 4.75,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260523104347_E20260523104753_anon/cand_e43d83f5463c.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260526185126_E20260526185806_anon/cand_e54d23877b2a.mp4",
+      "candidate_id": "cand_e54d23877b2a",
+      "clip_id": "D2_S20260526185126_E20260526185806_anon",
+      "source_start_s": 60.1,
+      "source_end_s": 66.25,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 6.15
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260526185126_E20260526185806_anon",
+    "fps": 0.0,
+    "duration_s": 6.15,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260526185126_E20260526185806_anon/cand_e54d23877b2a.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260520141725_E20260520142151_anon/cand_e6a2c25fbbfc.mp4",
+      "candidate_id": "cand_e6a2c25fbbfc",
+      "clip_id": "D2_S20260520141725_E20260520142151_anon",
+      "source_start_s": 16.0,
+      "source_end_s": 26.0,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 10.0
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260520141725_E20260520142151_anon",
+    "fps": 0.0,
+    "duration_s": 10.0,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260520141725_E20260520142151_anon/cand_e6a2c25fbbfc.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260522151152_E20260522151804_anon/cand_ec4b81a316fa.mp4",
+      "candidate_id": "cand_ec4b81a316fa",
+      "clip_id": "D2_S20260522151152_E20260522151804_anon",
+      "source_start_s": 120.25,
+      "source_end_s": 124.5,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 4.25
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260522151152_E20260522151804_anon",
+    "fps": 0.0,
+    "duration_s": 4.25,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260522151152_E20260522151804_anon/cand_ec4b81a316fa.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260520171509_E20260520171843_anon/cand_f0a772fba34a.mp4",
+      "candidate_id": "cand_f0a772fba34a",
+      "clip_id": "D2_S20260520171509_E20260520171843_anon",
+      "source_start_s": 85.6,
+      "source_end_s": 90.1,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 4.5
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260520171509_E20260520171843_anon",
+    "fps": 0.0,
+    "duration_s": 4.5,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260520171509_E20260520171843_anon/cand_f0a772fba34a.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260522151152_E20260522151804_anon/cand_f1414c672790.mp4",
+      "candidate_id": "cand_f1414c672790",
+      "clip_id": "D2_S20260522151152_E20260522151804_anon",
+      "source_start_s": 288.5,
+      "source_end_s": 293.6,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 5.1
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260522151152_E20260522151804_anon",
+    "fps": 0.0,
+    "duration_s": 5.1,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260522151152_E20260522151804_anon/cand_f1414c672790.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260523105427_E20260523105637_anon/cand_f18ae9e61cd2.mp4",
+      "candidate_id": "cand_f18ae9e61cd2",
+      "clip_id": "D2_S20260523105427_E20260523105637_anon",
+      "source_start_s": 3.0,
+      "source_end_s": 7.25,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 4.25
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260523105427_E20260523105637_anon",
+    "fps": 0.0,
+    "duration_s": 4.25,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260523105427_E20260523105637_anon/cand_f18ae9e61cd2.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260523105657_E20260523110017_anon/cand_f2c9d233ad13.mp4",
+      "candidate_id": "cand_f2c9d233ad13",
+      "clip_id": "D2_S20260523105657_E20260523110017_anon",
+      "source_start_s": 116.75,
+      "source_end_s": 121.25,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 4.5
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260523105657_E20260523110017_anon",
+    "fps": 0.0,
+    "duration_s": 4.5,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260523105657_E20260523110017_anon/cand_f2c9d233ad13.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260520141725_E20260520142151_anon/cand_f48b0407c4af.mp4",
+      "candidate_id": "cand_f48b0407c4af",
+      "clip_id": "D2_S20260520141725_E20260520142151_anon",
+      "source_start_s": 126.5,
+      "source_end_s": 131.4,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 4.9
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260520141725_E20260520142151_anon",
+    "fps": 0.0,
+    "duration_s": 4.9,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260520141725_E20260520142151_anon/cand_f48b0407c4af.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260521133647_E20260521134049_anon/cand_facd15825024.mp4",
+      "candidate_id": "cand_facd15825024",
+      "clip_id": "D2_S20260521133647_E20260521134049_anon",
+      "source_start_s": 2.6,
+      "source_end_s": 7.1,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 4.5
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260521133647_E20260521134049_anon",
+    "fps": 0.0,
+    "duration_s": 4.5,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260521133647_E20260521134049_anon/cand_facd15825024.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260522151152_E20260522151804_anon/cand_fc684acc0a05.mp4",
+      "candidate_id": "cand_fc684acc0a05",
+      "clip_id": "D2_S20260522151152_E20260522151804_anon",
+      "source_start_s": 125.6,
+      "source_end_s": 133.6,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 8.0
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260522151152_E20260522151804_anon",
+    "fps": 0.0,
+    "duration_s": 8.0,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260522151152_E20260522151804_anon/cand_fc684acc0a05.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260523105657_E20260523110017_anon/cand_fd555de2d6f4.mp4",
+      "candidate_id": "cand_fd555de2d6f4",
+      "clip_id": "D2_S20260523105657_E20260523110017_anon",
+      "source_start_s": 75.1,
+      "source_end_s": 79.5,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 4.4
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260523105657_E20260523110017_anon",
+    "fps": 0.0,
+    "duration_s": 4.4,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260523105657_E20260523110017_anon/cand_fd555de2d6f4.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  },
+  {
+    "data": {
+      "video": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260526185126_E20260526185806_anon/cand_fe2de5cc651f.mp4",
+      "candidate_id": "cand_fe2de5cc651f",
+      "clip_id": "D2_S20260526185126_E20260526185806_anon",
+      "source_start_s": 122.1,
+      "source_end_s": 126.4,
+      "annotation_unit": "candidate_clip",
+      "duration_s": 4.3
+    },
+    "predictions": [],
+    "clip_id": "D2_S20260526185126_E20260526185806_anon",
+    "fps": 0.0,
+    "duration_s": 4.3,
+    "video_path": "s3://chillnbite-cameras/anon/candidates/videos/D2_S20260526185126_E20260526185806_anon/cand_fe2de5cc651f.mp4",
+    "active_start_s": null,
+    "active_end_s": null,
+    "source_frame_index": null
+  }
+]
