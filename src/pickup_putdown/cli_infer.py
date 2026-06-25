@@ -16,7 +16,7 @@ from typing import Any
 import typer
 
 from pickup_putdown.config import AppConfig, load_config
-from pickup_putdown.pipeline import run_pipeline
+from pickup_putdown.pipeline import atomic_write_json, run_pipeline
 
 infer_app = typer.Typer(
     name="pipeline",
@@ -28,6 +28,21 @@ logger = logging.getLogger(__name__)
 
 #: Container extensions accepted in directory mode (matches the triage CLI).
 _VIDEO_EXTENSIONS = frozenset({".mp4", ".mov", ".avi", ".mkv", ".webm", ".m4v"})
+
+#: Top-level pipeline statuses that must not be reported as a success.
+_FAILURE_STATUSES = frozenset({"failed", "blocked"})
+
+#: Compact per-file fields surfaced in ``batch_summary.json``.
+_RECORD_FIELDS = ("clip_id", "input", "status", "output_dir", "error")
+
+
+def _exit_code_for(status: str) -> int:
+    """Map a single-clip top-level status to a process exit code."""
+    if status == "failed":
+        return 5
+    if status == "blocked":
+        return 4
+    return 0
 
 
 def _setup_logging(verbose: bool) -> None:
@@ -54,7 +69,12 @@ def _resolve_inputs(input_path: str) -> list[Path]:
 
 
 def _run_one(video: Path, output_root: Path, config: AppConfig, *, resume: bool) -> dict[str, Any]:
-    """Run the pipeline for one video, isolating failures into a status record."""
+    """Run the pipeline for one video, turning any crash into a failed summary.
+
+    Returns the full per-clip summary on success (enriched with input/output
+    paths), or a synthetic ``status="failed"`` summary when ``run_pipeline``
+    raises—so one bad clip can never abort a batch.
+    """
     clip_dir = output_root / video.stem
     try:
         summary = run_pipeline(video, output_root, config, resume=resume)
@@ -67,12 +87,14 @@ def _run_one(video: Path, output_root: Path, config: AppConfig, *, resume: bool)
             "output_dir": str(clip_dir),
             "error": f"{type(exc).__name__}: {exc}",
         }
-    return {
-        "clip_id": summary.get("clip_id", f"clip_{video.stem}"),
-        "input": str(video),
-        "status": summary.get("status", "ok"),
-        "output_dir": str(clip_dir),
-    }
+    summary.setdefault("input", str(video))
+    summary.setdefault("output_dir", str(clip_dir))
+    return summary
+
+
+def _record(summary: dict[str, Any]) -> dict[str, Any]:
+    """Project a per-clip summary to the compact fields kept in the batch file."""
+    return {field: summary[field] for field in _RECORD_FIELDS if field in summary}
 
 
 @infer_app.command("infer")
@@ -97,27 +119,27 @@ def infer(
     app_config = load_config(config)
     output_root = Path(output_dir)
 
-    # Single-file mode: emit the full per-clip summary on stdout.
+    # Single-file mode: emit the full per-clip summary on stdout. A crash or a
+    # blocked/failed top-level status maps to a non-zero exit code.
     if Path(input_path).is_file():
-        summary = run_pipeline(videos[0], output_root, app_config, resume=resume)
+        summary = _run_one(videos[0], output_root, app_config, resume=resume)
         typer.echo(json.dumps(summary, indent=2, default=str))
-        if summary.get("status") == "failed":
-            raise typer.Exit(code=5)
+        code = _exit_code_for(str(summary.get("status", "ok")))
+        if code:
+            raise typer.Exit(code=code)
         return
 
     # Directory/batch mode: isolate per-file failures and aggregate a summary.
-    results = [_run_one(video, output_root, app_config, resume=resume) for video in videos]
-    n_failed = sum(1 for record in results if record["status"] == "failed")
+    summaries = [_run_one(video, output_root, app_config, resume=resume) for video in videos]
+    n_failed = sum(1 for summary in summaries if summary.get("status") in _FAILURE_STATUSES)
     batch_summary: dict[str, Any] = {
-        "n_total": len(results),
-        "n_ok": len(results) - n_failed,
+        "n_total": len(summaries),
+        "n_ok": len(summaries) - n_failed,
         "n_failed": n_failed,
-        "results": results,
+        "results": [_record(summary) for summary in summaries],
     }
     output_root.mkdir(parents=True, exist_ok=True)
-    (output_root / "batch_summary.json").write_text(
-        json.dumps(batch_summary, indent=2, default=str), encoding="utf-8"
-    )
+    atomic_write_json(output_root / "batch_summary.json", batch_summary)
     typer.echo(json.dumps(batch_summary, indent=2, default=str))
     if n_failed:
         raise typer.Exit(code=1)

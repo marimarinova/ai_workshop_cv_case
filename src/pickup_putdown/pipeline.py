@@ -42,7 +42,10 @@ from pickup_putdown.config import AppConfig
 
 logger = logging.getLogger(__name__)
 
-StageStatus = Literal["ok", "no_person", "resumed", "unavailable", "failed"]
+StageStatus = Literal["ok", "no_person", "resumed", "unavailable", "blocked", "failed"]
+
+#: Upstream statuses that satisfy a downstream stage's declared input.
+_SATISFIED_INPUT_STATUSES: frozenset[StageStatus] = frozenset({"ok", "resumed"})
 
 #: Column order of the canonical per-clip predictions file (``events.csv``).
 #: Mirrors :class:`pickup_putdown.common.schemas.Prediction` and the columns
@@ -114,7 +117,8 @@ def _atomic_write_text(path: Path, text: str) -> None:
     os.replace(tmp, path)
 
 
-def _atomic_write_json(path: Path, payload: dict[str, Any]) -> None:
+def atomic_write_json(path: Path, payload: dict[str, Any]) -> None:
+    """Serialise ``payload`` to ``path`` as JSON via a temp file + atomic rename."""
     _atomic_write_text(path, json.dumps(payload, indent=2, sort_keys=True, default=str))
 
 
@@ -245,7 +249,7 @@ def _run_stage_atomic(stage: Stage, ctx: StageContext, input_hash: str) -> Stage
 
     # Marker LAST: its presence now implies the outputs are complete.
     result.input_hash = input_hash
-    _atomic_write_json(
+    atomic_write_json(
         final_dir / _STAGE_META_NAME,
         {
             "name": stage.name,
@@ -256,6 +260,29 @@ def _run_stage_atomic(stage: Stage, ctx: StageContext, input_hash: str) -> Stage
         },
     )
     return result
+
+
+def _gate_status(stage: Stage, results: dict[str, StageResult]) -> tuple[StageStatus, str] | None:
+    """Decide whether ``stage`` may run given its upstream results.
+
+    Returns ``None`` when every declared input is satisfied. Otherwise returns
+    the status to record for the gated stage plus the offending dependency: a
+    *failed* (or missing) upstream is a hard dependency failure (``"blocked"``),
+    while a merely *unavailable*/blocked upstream cascades unavailability through
+    the subtree (``"unavailable"``). This keeps a real detector with
+    ``inputs=("propose",)`` from running—and crashing—when propose produced no
+    outputs.
+    """
+    for dep in stage.inputs:
+        upstream = results.get(dep)
+        if upstream is None:
+            return ("blocked", dep)
+        if upstream.status in _SATISFIED_INPUT_STATUSES:
+            continue
+        if upstream.status == "failed":
+            return ("blocked", dep)
+        return ("unavailable", dep)
+    return None
 
 
 def run_pipeline(
@@ -275,7 +302,7 @@ def run_pipeline(
 
     metadata = run_metadata if run_metadata is not None else build_run_metadata(config)
     resolved = metadata.resolved_config
-    _atomic_write_json(output_dir / "run_metadata.json", metadata.to_dict())
+    atomic_write_json(output_dir / "run_metadata.json", metadata.to_dict())
 
     # Materialise the resolved config so CLI-based stages run under the exact
     # configuration that feeds the input hash (keeping behaviour and resume
@@ -304,6 +331,15 @@ def run_pipeline(
             results[stage.name] = StageResult(stage.name, "unavailable")
             continue
 
+        gate = _gate_status(stage, results)
+        if gate is not None:
+            gated_status, dep = gate
+            logger.info("stage %s %s: upstream %r not satisfied", stage.name, gated_status, dep)
+            results[stage.name] = StageResult(
+                stage.name, gated_status, summary={"blocked_on": dep}
+            )
+            continue
+
         input_hash = _stage_input_hash(stage, ctx)
         cached = _read_stage_meta(stage_dir)
         if (
@@ -328,7 +364,17 @@ def run_pipeline(
             early_complete = True
             break
 
-    status: Literal["no_person", "ok"] = "no_person" if early_complete else "ok"
+    # A blocked/failed stage must not let the run report success.
+    all_statuses = {result.status for result in results.values()}
+    status: StageStatus
+    if early_complete:
+        status = "no_person"
+    elif "failed" in all_statuses:
+        status = "failed"
+    elif "blocked" in all_statuses:
+        status = "blocked"
+    else:
+        status = "ok"
     events_path = _write_canonical_events(output_dir, results)
     return _write_summary(output_dir, clip_id, status, results, events_path, metadata)
 
@@ -358,7 +404,7 @@ def _write_summary(
             for name, result in results.items()
         },
     }
-    _atomic_write_json(output_dir / "summary.json", summary)
+    atomic_write_json(output_dir / "summary.json", summary)
     return summary
 
 
@@ -468,7 +514,7 @@ class EvaluateStage:
                 if isinstance(row, dict):
                     predictions.append(row)
         metrics = {"n_predictions": len(predictions), "evaluated": False}
-        _atomic_write_json(ctx.stage_dir / "metrics.json", metrics)
+        atomic_write_json(ctx.stage_dir / "metrics.json", metrics)
         return StageResult(
             name=self.name,
             status="ok",

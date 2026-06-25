@@ -134,6 +134,32 @@ class FailingPropose:
         raise RuntimeError("boom")
 
 
+class UnavailablePropose:
+    name = "propose"
+    inputs: tuple[str, ...] = ("triage",)
+    outputs: tuple[str, ...] = ()
+
+    def is_available(self) -> bool:
+        return False
+
+    def run(self, ctx: StageContext) -> StageResult:  # pragma: no cover - must not run
+        raise AssertionError("unavailable stage must not run")
+
+
+class FailedStatusPropose:
+    """A stage that completes but reports failure (without raising)."""
+
+    name = "propose"
+    inputs: tuple[str, ...] = ("triage",)
+    outputs: tuple[str, ...] = ()
+
+    def is_available(self) -> bool:
+        return True
+
+    def run(self, ctx: StageContext) -> StageResult:
+        return StageResult(name=self.name, status="failed")
+
+
 def _registry(calls: dict[str, int]) -> list[Stage]:
     return [FakeTriage(calls), FakePropose(calls), FakeDetector(), FakeEvaluate()]
 
@@ -211,6 +237,37 @@ def test_failed_stage_leaves_no_marker_or_partial(
     assert not any(p.name.startswith("propose.partial") for p in clip_dir.iterdir())
     # The successful upstream stage kept its marker.
     assert (clip_dir / "triage" / ".stage_meta.json").is_file()
+
+
+def test_unavailable_upstream_cascades_to_downstream(
+    tmp_path: Path, app_config: AppConfig, video_person: Path
+) -> None:
+    out = tmp_path / "out"
+    # FakeDetector declares inputs=("propose",); propose is unavailable here.
+    registry: list[Stage] = [FakeTriage({}), UnavailablePropose(), FakeDetector()]
+
+    summary = run_pipeline(video_person, out, app_config, registry=registry)
+
+    # Downstream must be gated (not run -> no KeyError), labelled unavailable,
+    # and an expected-unavailable subtree must not fail the whole run.
+    assert summary["stages"]["propose"]["status"] == "unavailable"
+    assert summary["stages"]["track_a"]["status"] == "unavailable"
+    assert summary["status"] == "ok"
+
+
+def test_failed_upstream_blocks_downstream_and_top_status(
+    tmp_path: Path, app_config: AppConfig, video_person: Path
+) -> None:
+    out = tmp_path / "out"
+    registry: list[Stage] = [FakeTriage({}), FailedStatusPropose(), FakeDetector()]
+
+    summary = run_pipeline(video_person, out, app_config, registry=registry)
+
+    assert summary["stages"]["propose"]["status"] == "failed"
+    assert summary["stages"]["track_a"]["status"] == "blocked"
+    assert summary["stages"]["track_a"]["summary"]["blocked_on"] == "propose"
+    # A failed/blocked stage must not let the run report success.
+    assert summary["status"] == "failed"
 
 
 def test_run_pipeline_materialises_resolved_config(
