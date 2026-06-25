@@ -19,7 +19,7 @@ from pathlib import Path
 
 from typer.testing import CliRunner
 
-from pickup_putdown.cli_infer import infer_app
+from pickup_putdown.cli import app
 from pickup_putdown.pipeline import validate_events_csv
 
 runner = CliRunner()
@@ -30,11 +30,17 @@ def _tiny_video(path: Path) -> Path:
     return path
 
 
+def test_infer_is_top_level_command() -> None:
+    # Acceptance: `pickup-putdown infer --input ...`, not `... pipeline infer`.
+    assert runner.invoke(app, ["infer", "--help"]).exit_code == 0
+    assert runner.invoke(app, ["pipeline", "infer", "--help"]).exit_code != 0
+
+
 def test_infer_single_file_real_registry_no_models(tmp_path: Path) -> None:
     video = _tiny_video(tmp_path / "clip_tiny.mp4")
     out = tmp_path / "out"
 
-    result = runner.invoke(infer_app, ["infer", "-i", str(video), "-o", str(out)])
+    result = runner.invoke(app, ["infer", "-i", str(video), "-o", str(out)])
 
     assert result.exit_code == 0
     clip_dir = out / "clip_tiny"
@@ -62,7 +68,7 @@ def test_infer_directory_real_registry_writes_batch_summary(tmp_path: Path) -> N
     _tiny_video(videos / "b.mp4")
     out = tmp_path / "out"
 
-    result = runner.invoke(infer_app, ["infer", "-i", str(videos), "-o", str(out)])
+    result = runner.invoke(app, ["infer", "-i", str(videos), "-o", str(out)])
 
     assert result.exit_code == 0
     batch = json.loads((out / "batch_summary.json").read_text(encoding="utf-8"))

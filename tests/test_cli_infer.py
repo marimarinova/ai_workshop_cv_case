@@ -14,7 +14,7 @@ from typing import Any
 import pytest
 from typer.testing import CliRunner
 
-from pickup_putdown.cli_infer import infer_app
+from pickup_putdown.cli import app
 
 runner = CliRunner()
 
@@ -44,7 +44,7 @@ def test_directory_mode_isolates_failures(tmp_path: Path, monkeypatch: pytest.Mo
     _patch_pipeline(monkeypatch, fail_stems={"bad"})
     out = tmp_path / "out"
 
-    result = runner.invoke(infer_app, ["infer", "-i", str(videos), "-o", str(out)])
+    result = runner.invoke(app, ["infer", "-i", str(videos), "-o", str(out)])
 
     # One failing clip must not stop the others, but must fail the batch overall.
     assert result.exit_code == 1
@@ -63,7 +63,7 @@ def test_directory_mode_all_ok_exits_zero(tmp_path: Path, monkeypatch: pytest.Mo
     _patch_pipeline(monkeypatch, fail_stems=set())
     out = tmp_path / "out"
 
-    result = runner.invoke(infer_app, ["infer", "-i", str(videos), "-o", str(out)])
+    result = runner.invoke(app, ["infer", "-i", str(videos), "-o", str(out)])
 
     assert result.exit_code == 0
     batch = json.loads((out / "batch_summary.json").read_text(encoding="utf-8"))
@@ -76,7 +76,7 @@ def test_empty_directory_exits_nonzero(tmp_path: Path, monkeypatch: pytest.Monke
     empty.mkdir()
     _patch_pipeline(monkeypatch, fail_stems=set())
 
-    result = runner.invoke(infer_app, ["infer", "-i", str(empty), "-o", str(tmp_path / "o")])
+    result = runner.invoke(app, ["infer", "-i", str(empty), "-o", str(tmp_path / "o")])
 
     assert result.exit_code == 2
     assert not (tmp_path / "o" / "batch_summary.json").exists()
@@ -88,7 +88,7 @@ def test_single_file_mode_prints_summary(tmp_path: Path, monkeypatch: pytest.Mon
     _patch_pipeline(monkeypatch, fail_stems=set())
     out = tmp_path / "out"
 
-    result = runner.invoke(infer_app, ["infer", "-i", str(video), "-o", str(out)])
+    result = runner.invoke(app, ["infer", "-i", str(video), "-o", str(out)])
 
     assert result.exit_code == 0
     # Single-file mode emits the per-clip summary, not a batch summary.
@@ -101,7 +101,7 @@ def test_single_file_crash_exits_nonzero(tmp_path: Path, monkeypatch: pytest.Mon
     video.write_bytes(b"SYNTHETIC")
     _patch_pipeline(monkeypatch, fail_stems={"clip"})
 
-    result = runner.invoke(infer_app, ["infer", "-i", str(video), "-o", str(tmp_path / "out")])
+    result = runner.invoke(app, ["infer", "-i", str(video), "-o", str(tmp_path / "out")])
 
     assert result.exit_code == 5
     assert '"status": "failed"' in result.stdout
@@ -114,7 +114,7 @@ def test_single_file_blocked_status_exits_nonzero(
     video.write_bytes(b"SYNTHETIC")
     _patch_pipeline(monkeypatch, fail_stems=set(), status="blocked")
 
-    result = runner.invoke(infer_app, ["infer", "-i", str(video), "-o", str(tmp_path / "out")])
+    result = runner.invoke(app, ["infer", "-i", str(video), "-o", str(tmp_path / "out")])
 
     # A blocked top-level status must not report success.
     assert result.exit_code == 4
