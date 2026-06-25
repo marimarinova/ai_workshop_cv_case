@@ -94,6 +94,21 @@ def test_below_score_gate_is_suppressed() -> None:
     assert len(decode_events(obs, clip_id="c", candidate_id="cand", config=TrackAConfig())) == 1
 
 
+def test_score_gate_uses_unrounded_value_and_output_is_4dp() -> None:
+    # Raw score 0.94999 is just under a 0.95 gate -> rejected, even though it
+    # would round up to exactly 0.95.
+    reject_cfg = TrackAConfig(min_event_score=0.95, min_persistence_samples=1)
+    obs = [_o(0, 0.1, 0.9), _o(1, 0.94999, 0.05001)]
+    assert decode_events(obs, clip_id="c", candidate_id="cand", config=reject_cfg) == []
+
+    # A passing score is rounded to 4 decimals on output.
+    pass_cfg = TrackAConfig(min_event_score=0.5, min_persistence_samples=1)
+    obs2 = [_o(0, 0.1, 0.9), _o(1, 0.96666, 0.03334)]
+    events = decode_events(obs2, clip_id="c", candidate_id="cand", config=pass_cfg)
+    assert len(events) == 1
+    assert events[0].score == 0.9667
+
+
 def test_merge_same_type_only_when_configured() -> None:
     p1 = TrackAPrediction("c", "c-0", "pickup", 1.0, 2.0, 0.8)
     p2 = TrackAPrediction("c", "c-1", "pickup", 2.2, 3.0, 0.7)

@@ -117,9 +117,12 @@ def decode_events(
         else:
             hand_ev = _mean([1.0 - o.p_hand_holding for o in window])
             shelf_ev = _mean([o.p_shelf_occupied for o in window])
-        score = round(_clamp01((hand_ev + shelf_ev) / 2.0), 4)
-        if score < config.min_event_score:
+        # Gate on the full-precision score; round only for the emitted value so
+        # a score just under the threshold cannot slip through via rounding.
+        raw_score = _clamp01((hand_ev + shelf_ev) / 2.0)
+        if raw_score < config.min_event_score:
             continue
+        score = round(raw_score, 4)
 
         events.append(
             TrackAPrediction(
