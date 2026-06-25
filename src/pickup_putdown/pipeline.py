@@ -16,7 +16,10 @@ Design notes
   resumability honest.
 * Resumability is keyed on a content hash of the stage inputs (source checksum,
   resolved config, git commit, upstream hashes), not merely on output-file
-  existence.
+  existence. Note that only the resolved :class:`~pickup_putdown.config.AppConfig`
+  feeds this hash: secondary CLI configs that are *not* part of ``AppConfig``
+  (``--shelves-config``, ``--camera-id``, ``--tracker-config``) are left at
+  their command defaults and do **not** invalidate a resumed stage when changed.
 * A clip with no detected person short-circuits the remaining stages and still
   produces a valid, empty canonical ``events.csv``.
 """
