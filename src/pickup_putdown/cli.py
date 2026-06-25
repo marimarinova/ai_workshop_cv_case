@@ -2660,5 +2660,112 @@ def annotate_vlm(
         raise SystemExit(1)
 
 
+@app.command("finalize-task-7")
+def finalize_task_7(
+    vlm_output_dir: str = typer.Option(
+        ".local/vlm_annotations",
+        "--vlm-output-dir",
+        "-i",
+        help="Path to VLM annotation output directory.",
+    ),
+    candidate_metadata_dir: str | None = typer.Option(
+        None,
+        "--candidate-metadata-dir",
+        "-c",
+        help="Path to candidate staging directory for clip metadata discovery.",
+    ),
+    source_videos_dir: str | None = typer.Option(
+        None,
+        "--source-videos-dir",
+        "-s",
+        help="Path to source video files for duration probing.",
+    ),
+    output_dir: str = typer.Option(
+        ".local/task_7_vlm",
+        "--output-dir",
+        "-o",
+        help="Output directory for Task 7 artifacts.",
+    ),
+    verbose: bool = typer.Option(
+        False,
+        "--verbose",
+        "-v",
+        help="Enable debug logging.",
+    ),
+    copy_artifacts: bool = typer.Option(
+        False,
+        "--copy-artifacts",
+        help="Copy raw/ and normalized/ instead of symlinking (self-contained export).",
+    ),
+) -> None:
+    """Finalize Task 7: build canonical dataset artifacts from VLM annotations.
+
+    Reads normalized per-candidate JSON files and produces a reproducible
+    artifact directory with clips.csv, events.csv, processing.csv,
+    summary.json, provenance.json, and dedup_audit.json.
+
+    By default, raw/ and normalized/ are relative symlinks to the VLM output
+    directory. Use --copy-artifacts for a self-contained export.
+
+    Usage:
+        pickup-putdown finalize-task-7 \\
+            --vlm-output-dir .local/vlm_annotations \\
+            --output-dir .local/task_7_vlm
+    """
+    _setup_logging(verbose)
+
+    from pathlib import Path
+
+    from pickup_putdown.annotation.finalize_task7 import finalize_task_7 as run_finalizer
+
+    vlm_path = Path(vlm_output_dir)
+    if not vlm_path.is_dir():
+        typer.echo(f"VLM output directory not found: {vlm_path}", err=True)
+        raise SystemExit(1)
+
+    normalized_dir = vlm_path / "normalized"
+    if not normalized_dir.is_dir():
+        typer.echo(
+            f"Normalized candidates directory not found: {normalized_dir}",
+            err=True,
+        )
+        raise SystemExit(1)
+
+    result = run_finalizer(
+        vlm_output_dir=vlm_output_dir,
+        output_dir=output_dir,
+        candidate_metadata_dir=candidate_metadata_dir,
+        source_videos_dir=source_videos_dir,
+        copy_artifacts=copy_artifacts,
+    )
+
+    typer.echo("")
+    typer.echo("=== Task 7 Finalization Summary ===")
+    typer.echo(f"  Candidates:    {result.candidates_count}")
+    typer.echo(f"  Clips:         {result.clips_count}")
+    typer.echo(f"  Events:        {result.events_count}")
+    typer.echo(f"    Pickup:      {result.pickup_count}")
+    typer.echo(f"    Putdown:     {result.putdown_count}")
+    typer.echo(f"  Hard cases:    {result.hard_case_count}")
+    typer.echo(f"  Confidence:    {result.confidence_counts}")
+    typer.echo(f"  Output:        {result.output_dir}")
+    typer.echo(f"  Artifacts:     {'copied' if copy_artifacts else 'symlinked'}")
+
+    if not result.is_valid:
+        typer.echo("")
+        typer.echo(f"Validation errors: {len(result.errors)}")
+        for err in result.errors[:20]:
+            typer.echo(f"  [{err.source}] {err.message}")
+        if len(result.errors) > 20:
+            typer.echo(f"  ... and {len(result.errors) - 20} more")
+        raise SystemExit(1)
+
+    typer.echo("")
+    typer.echo("Artifacts written successfully.")
+    typer.echo("")
+    typer.echo("NOTE: These are VLM pseudo-labels, not human-adjudicated ground truth.")
+    typer.echo("Review required before use as final evaluation ground truth.")
+
+
 if __name__ == "__main__":
     app()

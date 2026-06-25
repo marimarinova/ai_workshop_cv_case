@@ -394,8 +394,24 @@ class TestResumeBehavior:
         output_dir = tmp_path / "output"
         normalized_dir = output_dir / "normalized"
         normalized_dir.mkdir(parents=True)
-        # Pre-create normalized output for first candidate
-        (normalized_dir / "done_1.json").write_text("{}")
+        # Pre-create normalized output for first candidate with valid minimal payload
+        (normalized_dir / "done_1.json").write_text(
+            json.dumps(
+                {
+                    "candidate_id": "done_1",
+                    "clip_id": "src_1",
+                    "video_path": str(tmp_path / "v.mp4"),
+                    "candidate_duration_s": 5.0,
+                    "source_start_s": 0.0,
+                    "source_end_s": 5.0,
+                    "review_status": "complete",
+                    "vlm_status": "success",
+                    "events": [],
+                    "ignore_intervals": [],
+                    "fps": 5.0,
+                }
+            )
+        )
 
         config = PipelineConfig(
             candidates_dir=str(cand_dir),
@@ -432,7 +448,23 @@ class TestResumeBehavior:
         output_dir = tmp_path / "output"
         normalized_dir = output_dir / "normalized"
         normalized_dir.mkdir(parents=True)
-        (normalized_dir / "redo_1.json").write_text("{}")
+        (normalized_dir / "redo_1.json").write_text(
+            json.dumps(
+                {
+                    "candidate_id": "redo_1",
+                    "clip_id": "src_1",
+                    "video_path": str(tmp_path / "v.mp4"),
+                    "candidate_duration_s": 5.0,
+                    "source_start_s": 0.0,
+                    "source_end_s": 5.0,
+                    "review_status": "complete",
+                    "vlm_status": "success",
+                    "events": [],
+                    "ignore_intervals": [],
+                    "fps": 5.0,
+                }
+            )
+        )
 
         config = PipelineConfig(
             candidates_dir=str(cand_dir),
@@ -573,7 +605,7 @@ class TestPipelineOutput:
             "events_found",
             "processing_time_s",
             "annotator",
-            "review_fps",
+            "review_fps_target",
             "force",
             "timestamp",
         }

@@ -721,13 +721,13 @@ def run_pipeline(config: PipelineConfig) -> PipelineSummary:
         if norm_path.exists() and not config.force:
             existing_data = json.loads(norm_path.read_text(encoding="utf-8"))
             existing_result = VlMCandidateResult.model_validate(existing_data)
-        
+
             # Ignore intervals in normalized files are already canonical.
             existing_result.ignore_intervals = []
-        
+
             existing_events, _ = normalize_candidate_result(existing_result)
             all_events.extend(existing_events)
-        
+
             summary.skipped += 1
             all_processing.append(
                 ProcessingRecord(
@@ -791,9 +791,7 @@ def run_pipeline(config: PipelineConfig) -> PipelineSummary:
                 )
 
             if not contact_sheet_path.is_file():
-                raise RuntimeError(
-                    f"Contact sheet was not created: {contact_sheet_path}"
-                )
+                raise RuntimeError(f"Contact sheet was not created: {contact_sheet_path}")
 
             vlm_config: VlmClientConfig | None = None
             if config.vlm_enabled:
@@ -822,9 +820,7 @@ def run_pipeline(config: PipelineConfig) -> PipelineSummary:
             )
 
             source_start_s = float(candidate.get("source_start_s", 0.0))
-            source_end_s = float(
-                candidate.get("source_end_s", source_start_s + duration_s)
-            )
+            source_end_s = float(candidate.get("source_end_s", source_start_s + duration_s))
             if source_end_s <= source_start_s:
                 source_end_s = source_start_s + duration_s
 
@@ -858,8 +854,7 @@ def run_pipeline(config: PipelineConfig) -> PipelineSummary:
                 summary.failed += 1
                 summary.errors.append(f"{candidate_id}: {record.error}")
                 print(
-                    f"[{idx + 1}/{total_candidates}] FAILED {candidate_id}: "
-                    f"{record.error}",
+                    f"[{idx + 1}/{total_candidates}] FAILED {candidate_id}: {record.error}",
                     file=sys.stderr,
                     flush=True,
                 )
@@ -896,8 +891,7 @@ def run_pipeline(config: PipelineConfig) -> PipelineSummary:
                         validation_errors,
                     )
                     print(
-                        f"[{idx + 1}/{total_candidates}] FAILED {candidate_id}: "
-                        f"{record.error}",
+                        f"[{idx + 1}/{total_candidates}] FAILED {candidate_id}: {record.error}",
                         file=sys.stderr,
                         flush=True,
                     )
@@ -905,9 +899,7 @@ def run_pipeline(config: PipelineConfig) -> PipelineSummary:
                     events, ignores = normalize_candidate_result(result)
                     all_events.extend(events)
 
-                    normalized_data = result.model_dump(
-                        exclude={"vlm_raw_response"}
-                    )
+                    normalized_data = result.model_dump(exclude={"vlm_raw_response"})
                     normalized_data["ignore_intervals"] = ignores
                     _write_json(norm_path, normalized_data)
 
@@ -930,8 +922,7 @@ def run_pipeline(config: PipelineConfig) -> PipelineSummary:
             summary.errors.append(f"{candidate_id}: {record.error}")
             logger.warning("Failed %s: %s", candidate_id, exc)
             print(
-                f"[{idx + 1}/{total_candidates}] FAILED {candidate_id}: "
-                f"{record.error}",
+                f"[{idx + 1}/{total_candidates}] FAILED {candidate_id}: {record.error}",
                 file=sys.stderr,
                 flush=True,
             )
@@ -943,8 +934,7 @@ def run_pipeline(config: PipelineConfig) -> PipelineSummary:
             summary.errors.append(f"{candidate_id}: {record.error}")
             logger.exception("Failed %s: %s", candidate_id, exc)
             print(
-                f"[{idx + 1}/{total_candidates}] FAILED {candidate_id}: "
-                f"{record.error}",
+                f"[{idx + 1}/{total_candidates}] FAILED {candidate_id}: {record.error}",
                 file=sys.stderr,
                 flush=True,
             )

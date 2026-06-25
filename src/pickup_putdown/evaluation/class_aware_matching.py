@@ -120,9 +120,7 @@ def validate_types(items: Any, *, kind: str = "record") -> None:
     for it in items:
         name = type_name(it.type)
         if name not in VALID_TYPES:
-            raise ValueError(
-                f"invalid {kind} type {name!r}; expected one of {list(VALID_TYPES)}"
-            )
+            raise ValueError(f"invalid {kind} type {name!r}; expected one of {list(VALID_TYPES)}")
 
 
 def evaluate_class_aware(
