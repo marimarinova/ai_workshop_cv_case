@@ -11,11 +11,13 @@ from pathlib import Path
 
 from pickup_putdown.config import TrackAConfig, load_config
 from pickup_putdown.evaluation.io import predictions_from_rows
+from pickup_putdown.layer1.track_a.state_machine import decode_events
 from pickup_putdown.layer1.track_a.state_types import (
     CANONICAL_PREDICTION_COLUMNS,
     Embedding,
     HandStateClassifier,
     ShelfStateClassifier,
+    StateObservation,
     TrackAPrediction,
 )
 
@@ -64,6 +66,31 @@ def test_prediction_row_is_consumable_by_task8_evaluator() -> None:
     assert evaluated.pred_id == "p1"
     assert evaluated.score == 0.0
     assert evaluated.t_start == 3.0 and evaluated.t_end == 4.5
+
+
+def test_boundary_fallback_flag_is_reserved_noop() -> None:
+    # The flag is RESERVED (task_7 follow-up): toggling it must not change
+    # decoding today. A simple pickup sequence decoded both ways must match.
+    obs = [
+        StateObservation(0.0, "pre", 0.1, 0.9),
+        StateObservation(1.0, "pre", 0.1, 0.9),
+        StateObservation(2.0, "contact", 0.9, 0.1),
+        StateObservation(3.0, "post", 0.9, 0.1),
+    ]
+    on = decode_events(
+        obs,
+        clip_id="c",
+        candidate_id="cand",
+        config=TrackAConfig(boundary_fallback_to_wrist_region=True),
+    )
+    off = decode_events(
+        obs,
+        clip_id="c",
+        candidate_id="cand",
+        config=TrackAConfig(boundary_fallback_to_wrist_region=False),
+    )
+    assert len(on) == 1
+    assert on == off
 
 
 def test_fake_classifiers_satisfy_protocols() -> None:

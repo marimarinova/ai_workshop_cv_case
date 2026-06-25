@@ -156,8 +156,10 @@ class TrackAConfig(BaseModel):
     # Same-type merge only (different types are never merged); 0.0 disables.
     same_type_merge_gap_s: float = 0.0
 
-    # Fall back to wrist region entry/exit for boundaries when the transfer
-    # action is ambiguous (documented fallback only).
+    # RESERVED — not yet implemented; toggling this currently has no effect.
+    # The state machine derives boundaries from the transition window. The
+    # wrist-region entry/exit fallback (task_10 step 6) needs wrist trajectory +
+    # shelf geometry and lands with task_7. See docs/tasks/task_10_followups.md.
     boundary_fallback_to_wrist_region: bool = True
 
     # Written into the `model` column of canonical Track A predictions.

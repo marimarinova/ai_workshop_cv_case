@@ -21,7 +21,8 @@ track_a:
   # Same-type merge only (different types are never merged); 0.0 disables.
   same_type_merge_gap_s: 0.0
 
-  # Documented fallback: wrist region entry/exit for boundaries when ambiguous.
+  # RESERVED — not yet implemented (no effect today). The wrist-region entry/exit
+  # boundary fallback lands with task_7. See docs/tasks/task_10_followups.md.
   boundary_fallback_to_wrist_region: true
 
   # Written into the `model` column of canonical Track A predictions.
