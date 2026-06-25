@@ -719,6 +719,15 @@ def run_pipeline(config: PipelineConfig) -> PipelineSummary:
         raw_path = raw_dir / f"{candidate_id}.json"
 
         if norm_path.exists() and not config.force:
+            existing_data = json.loads(norm_path.read_text(encoding="utf-8"))
+            existing_result = VlMCandidateResult.model_validate(existing_data)
+        
+            # Ignore intervals in normalized files are already canonical.
+            existing_result.ignore_intervals = []
+        
+            existing_events, _ = normalize_candidate_result(existing_result)
+            all_events.extend(existing_events)
+        
             summary.skipped += 1
             all_processing.append(
                 ProcessingRecord(
@@ -726,6 +735,10 @@ def run_pipeline(config: PipelineConfig) -> PipelineSummary:
                     video_path=str(video_path),
                     status="skipped",
                     processed_at=datetime.now(UTC).isoformat(),
+                    events_found=len(existing_result.events),
+                    vlm_status=existing_result.vlm_status,
+                    vlm_attempts=existing_result.vlm_attempts,
+                    vlm_finish_reason=existing_result.vlm_finish_reason or "",
                 )
             )
             continue
