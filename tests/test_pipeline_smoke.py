@@ -201,6 +201,25 @@ def test_no_person_clip_completes_early(
     assert events.read_text(encoding="utf-8").strip().count("\n") == 0
 
 
+def test_no_person_completes_early_on_resume(
+    tmp_path: Path, app_config: AppConfig, video_no_person: Path
+) -> None:
+    out = tmp_path / "out"
+    calls: dict[str, int] = {}
+
+    first = run_pipeline(video_no_person, out, app_config, registry=_registry(calls))
+    assert first["status"] == "no_person"
+    assert calls["triage"] == 1
+
+    # Second run resumes triage; early completion is status-driven, so the
+    # cached "no_person" outcome must still short-circuit the pipeline.
+    second = run_pipeline(video_no_person, out, app_config, registry=_registry(calls))
+    assert calls["triage"] == 1  # resumed, not re-run
+    assert second["status"] == "no_person"
+    assert second["stages"]["triage"]["status"] == "no_person"
+    assert "propose" not in second["stages"]
+
+
 def test_resume_skips_unchanged_then_reprocesses_on_invalidation(
     tmp_path: Path, app_config: AppConfig, video_person: Path
 ) -> None:
