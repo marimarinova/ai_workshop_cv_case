@@ -35,6 +35,8 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, Literal, Protocol, runtime_checkable
 
+import yaml
+
 from pickup_putdown.common.run_metadata import RunMetadata
 from pickup_putdown.config import AppConfig
 
@@ -71,6 +73,7 @@ class StageContext:
     output_dir: Path
     stage_dir: Path
     config: dict[str, Any]
+    config_path: Path
     run_metadata: RunMetadata
     upstream: dict[str, StageResult]
 
@@ -274,6 +277,12 @@ def run_pipeline(
     resolved = metadata.resolved_config
     _atomic_write_json(output_dir / "run_metadata.json", metadata.to_dict())
 
+    # Materialise the resolved config so CLI-based stages run under the exact
+    # configuration that feeds the input hash (keeping behaviour and resume
+    # honest, instead of letting each subprocess reload its own YAML default).
+    config_path = output_dir / "resolved_config.yaml"
+    _atomic_write_text(config_path, yaml.safe_dump(resolved, sort_keys=True))
+
     results: dict[str, StageResult] = {}
     early_complete = False
 
@@ -285,6 +294,7 @@ def run_pipeline(
             output_dir=output_dir,
             stage_dir=stage_dir,
             config=resolved,
+            config_path=config_path,
             run_metadata=metadata,
             upstream=dict(results),
         )
@@ -368,9 +378,9 @@ class _CliStage:
     def is_available(self) -> bool:  # pragma: no cover - overridden
         return False
 
-    def _invoke(self, args: list[str]) -> None:
+    def _invoke(self, args: list[str], config_path: Path) -> None:
         completed = subprocess.run(
-            [sys.executable, "-m", "pickup_putdown.cli", *args],
+            [sys.executable, "-m", "pickup_putdown.cli", *args, "--config", str(config_path)],
             check=False,
         )
         if completed.returncode != 0:
@@ -388,7 +398,10 @@ class TriageStage(_CliStage):
         return Path(self._config.triage.model_path).is_file()
 
     def run(self, ctx: StageContext) -> StageResult:
-        self._invoke(["triage", str(ctx.video_path), "--output-dir", str(ctx.stage_dir)])
+        self._invoke(
+            ["triage", str(ctx.video_path), "--output-dir", str(ctx.stage_dir)],
+            ctx.config_path,
+        )
         has_person = _clips_have_person(ctx.stage_dir / "clips.parquet")
         return StageResult(
             name=self.name,
@@ -420,7 +433,8 @@ class ProposeStage(_CliStage):
                 triage.outputs["active_spans.parquet"],
                 "--output-dir",
                 str(ctx.stage_dir),
-            ]
+            ],
+            ctx.config_path,
         )
         return StageResult(
             name=self.name,

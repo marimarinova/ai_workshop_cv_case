@@ -16,6 +16,7 @@ from pickup_putdown.pipeline import (
     Stage,
     StageContext,
     StageResult,
+    TriageStage,
     run_pipeline,
     validate_events_csv,
 )
@@ -210,6 +211,41 @@ def test_failed_stage_leaves_no_marker_or_partial(
     assert not any(p.name.startswith("propose.partial") for p in clip_dir.iterdir())
     # The successful upstream stage kept its marker.
     assert (clip_dir / "triage" / ".stage_meta.json").is_file()
+
+
+def test_run_pipeline_materialises_resolved_config(
+    tmp_path: Path, app_config: AppConfig, video_person: Path
+) -> None:
+    out = tmp_path / "out"
+    run_pipeline(video_person, out, app_config, registry=_registry({}))
+
+    resolved = out / video_person.stem / "resolved_config.yaml"
+    assert resolved.is_file()
+    # The materialised file must round-trip back into an AppConfig so CLI-based
+    # stages can load it and run under the exact same configuration.
+    assert load_config(resolved).model_dump() == app_config.model_dump()
+
+
+def test_cli_stage_invoke_forwards_resolved_config(
+    monkeypatch: pytest.MonkeyPatch, app_config: AppConfig
+) -> None:
+    captured: dict[str, list[str]] = {}
+
+    class _FakeCompleted:
+        returncode = 0
+
+    def _fake_run(argv: list[str], **kwargs: object) -> _FakeCompleted:
+        captured["argv"] = argv
+        return _FakeCompleted()
+
+    monkeypatch.setattr("pickup_putdown.pipeline.subprocess.run", _fake_run)
+
+    stage = TriageStage(app_config)
+    stage._invoke(["triage", "clip.mp4"], Path("cfg.yaml"))
+
+    argv = captured["argv"]
+    assert "--config" in argv
+    assert argv[argv.index("--config") + 1] == str(Path("cfg.yaml"))
 
 
 def test_events_csv_schema_rejects_bad_rows(tmp_path: Path) -> None:
