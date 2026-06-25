@@ -102,6 +102,32 @@ class ProposalsConfig(BaseModel):
     smoothing_window: int = 3
 
 
+class TrackAFeaturesConfig(BaseModel):
+    """Configuration for Track A feature extraction (Task 9)."""
+
+    # Sampling configuration
+    min_samples: int = 3
+    max_interval_s: float = 99999.0  # Large default = no intermediate splits (just pre/contact/post)
+
+    # Crop configuration
+    hand_crop_size: int = 224
+    shelf_patch_size: int = 224
+    crop_scale_method: str = "bbox"  # "bbox" or "limb_length"
+
+    # Encoder configuration (supported: mobilenet_v3_small, mobilenet_v3_large, resnet18, resnet50, efficientnet_b0)
+    encoder_name: str = "mobilenet_v3_small"
+    encoder_version: str = "v1.0"
+    encoder_device: str = "auto"
+    encoder_batch_size: int = 32
+
+    # Cache configuration
+    cache_dir: str = ".local/track_a_features"
+    save_crops: bool = True
+
+    # QA configuration
+    qa_samples_per_category: int = 20
+
+
 class PreviewConfig(BaseModel):
     """Configuration for candidate preview rendering."""
 
@@ -126,6 +152,7 @@ class AppConfig(BaseModel):
     region_measurements: RegionMeasurementConfig = Field(default_factory=RegionMeasurementConfig)
     proposals: ProposalsConfig = Field(default_factory=ProposalsConfig)
     preview: PreviewConfig = Field(default_factory=PreviewConfig)
+    track_a_features: TrackAFeaturesConfig = Field(default_factory=TrackAFeaturesConfig)
     data_dir: str = "data"
     output_dir: str = "outputs"
     cache_dir: str = "cache"
@@ -168,6 +195,7 @@ def _build_env_overrides() -> dict[str, Any]:
             "region_measurements",
             "proposals",
             "preview",
+            "track_a_features",
             "data",
             "output",
             "cache",
