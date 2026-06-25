@@ -375,3 +375,8 @@ def test_events_csv_schema_rejects_bad_rows(tmp_path: Path) -> None:
         encoding="utf-8",
     )
     assert not validate_events_csv(bad_score)
+
+
+def test_events_csv_missing_file_is_invalid_not_raising(tmp_path: Path) -> None:
+    # A missing/unreadable file must read as invalid rather than raise OSError.
+    assert validate_events_csv(tmp_path / "nope.csv") is False
