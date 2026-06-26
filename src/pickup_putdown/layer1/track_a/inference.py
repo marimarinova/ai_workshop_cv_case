@@ -538,6 +538,39 @@ def extract_features_for_candidate(
 
         # --- Shelf patch ---
         contact_pt = (wrist_x, wrist_y)
+
+        # ponytail: try estimated geometries for cache lookup before extraction.
+        # Contact-point geometry covers legacy cache keys from Phase 1 build.
+        shelf_cached = False
+        for est_geom in [
+            CropGeometry(
+                x=max(0, int(wrist_x)),
+                y=max(0, int(wrist_y)),
+                width=shelf_patch_size,
+                height=shelf_patch_size,
+            ),
+            CropGeometry(
+                x=max(0, int(wrist_x) - shelf_patch_size // 2),
+                y=max(0, int(wrist_y) - shelf_patch_size // 2),
+                width=shelf_patch_size,
+                height=shelf_patch_size,
+            ),
+        ]:
+            est_key = compute_crop_cache_key(video_checksum, ts, est_geom, "shelf")
+            est_emb_key = compute_embedding_cache_key(
+                est_key, embedder.model_name, embedder.version
+            )
+            if is_embedding_cached(cache_dir, est_emb_key):
+                emb = load_embedding(cache_dir, est_emb_key)
+                if emb is not None:
+                    result.shelf_embeddings.append((ts, emb))
+                    cache_hits += 1
+                    shelf_cached = True
+                    break
+
+        if shelf_cached:
+            continue
+
         shelf_crop, shelf_geom = extract_shelf_patch(
             frame, shelf_region, contact_pt, shelf_patch_size
         )

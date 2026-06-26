@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import json
 import logging
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import typer
@@ -3117,6 +3119,646 @@ def train_track_a(
 
     typer.echo("=== Training Complete ===")
     typer.echo(f"  Artifacts saved to: {output_dir}")
+
+
+# ---------------------------------------------------------------------------
+# Track A inference command (Phase 5)
+# ---------------------------------------------------------------------------
+
+
+@app.command(name="infer-track-a")
+def infer_track_a(
+    config: str = typer.Option(
+        "configs/track_a.yaml",
+        "--config",
+        "-c",
+        help="Path to Track A configuration YAML.",
+    ),
+    candidate_metadata: str = typer.Option(
+        ".local/candidate_staging/metadata",
+        "--candidate-metadata",
+        help="Directory containing candidate metadata JSON files.",
+    ),
+    candidates: str | None = typer.Option(
+        None,
+        "--candidates",
+        help=(
+            "Path to candidates parquet file. When provided, used instead of "
+            "candidate metadata directory."
+        ),
+    ),
+    pose_observations: str | None = typer.Option(
+        None,
+        "--pose-observations",
+        help=(
+            "Path to tracks_pose.parquet or directory containing per-clip "
+            "pose parquet files. Auto-detected from .local/remote_candidates/ "
+            "when omitted."
+        ),
+    ),
+    source_video_dir: str = typer.Option(
+        ".local/source_videos",
+        "--source-video-dir",
+        help="Directory containing source video files.",
+    ),
+    shelves_config: str = typer.Option(
+        "configs/shelves.yaml",
+        "--shelves-config",
+        help="Path to shelf/surface region configuration YAML.",
+    ),
+    camera_id: str = typer.Option(
+        "store_camera_01",
+        "--camera-id",
+        help="Camera ID from the shelf configuration.",
+    ),
+    artifact_dir: str = typer.Option(
+        ".local/track_a_artifacts",
+        "--artifact-dir",
+        help="Directory containing trained classifier artifacts.",
+    ),
+    cache_dir: str = typer.Option(
+        ".local/track_a_features",
+        "--cache-dir",
+        help="Directory for cached feature embeddings.",
+    ),
+    output_dir: str = typer.Option(
+        ".local/track_a_output",
+        "--output-dir",
+        "-o",
+        help="Output directory for predictions and diagnostics.",
+    ),
+    clip_id: str | None = typer.Option(
+        None,
+        "--clip-id",
+        help="Process only candidates from this clip.",
+    ),
+    candidate_id: str | None = typer.Option(
+        None,
+        "--candidate-id",
+        help="Process only this specific candidate.",
+    ),
+    debug_traces: bool = typer.Option(
+        False,
+        "--debug-traces",
+        help="Enable per-observation debug traces in diagnostics.",
+    ),
+    force: bool = typer.Option(
+        False,
+        "--force",
+        "-f",
+        help="Overwrite existing output files.",
+    ),
+    verbose: bool = typer.Option(
+        False,
+        "--verbose",
+        "-v",
+        help="Enable debug logging.",
+    ),
+) -> None:
+    """Run Track A inference pipeline on candidates.
+
+    Loads candidates, pose data, shelf regions, source videos, and classifier
+    artifacts, then runs the full inference pipeline with feature extraction,
+    classifier prediction, state-machine processing, boundary refinement, and
+    deduplication.
+    """
+    _setup_logging(verbose)
+
+    from pathlib import Path
+
+    import yaml
+
+    # ------------------------------------------------------------------
+    # Load config
+    # ------------------------------------------------------------------
+    cfg_path = Path(config)
+    if not cfg_path.exists():
+        typer.echo(f"Config not found: {cfg_path}", err=True)
+        raise SystemExit(1)
+
+    with open(cfg_path) as f:
+        cfg_data = yaml.safe_load(f) or {}
+
+    # ------------------------------------------------------------------
+    # Resolve inference config
+    # ------------------------------------------------------------------
+    from pickup_putdown.layer1.track_a.inference import (
+        InferenceConfig,
+        load_inference_config,
+    )
+    from pickup_putdown.layer1.track_a.state_machine import StateMachineConfig
+
+    inf_cfg = load_inference_config(cfg_path)
+    if debug_traces:
+        inf_cfg = InferenceConfig(
+            sampling=inf_cfg.sampling,
+            boundary_refinement=inf_cfg.boundary_refinement,
+            deduplication=inf_cfg.deduplication,
+            transition_grace_s=inf_cfg.transition_grace_s,
+            debug_traces=True,
+        )
+
+    sm_cfg_dict = cfg_data.get("state_machine", {})
+    # Map nested confidence_weights to flat fields expected by StateMachineConfig
+    if sm_cfg_dict:
+        cw = sm_cfg_dict.pop("confidence_weights", {})
+        if isinstance(cw, dict):
+            sm_cfg_dict.setdefault("confidence_weight_hand", cw.get("hand", 0.40))
+            sm_cfg_dict.setdefault("confidence_weight_shelf", cw.get("shelf", 0.40))
+            sm_cfg_dict.setdefault("confidence_weight_trajectory", cw.get("trajectory", 0.20))
+    sm_cfg = StateMachineConfig(**sm_cfg_dict) if sm_cfg_dict else StateMachineConfig()
+
+    # ------------------------------------------------------------------
+    # Resolve shelf regions
+    # ------------------------------------------------------------------
+    from pickup_putdown.perception.shelf_regions import (
+        get_regions_for_camera,
+        load_shelf_config,
+    )
+
+    shelf_cfg_path = Path(shelves_config)
+    if not shelf_cfg_path.exists():
+        typer.echo(f"Shelf config not found: {shelf_cfg_path}", err=True)
+        raise SystemExit(1)
+
+    shelf_cfg = load_shelf_config(shelf_cfg_path)
+    if camera_id not in shelf_cfg.cameras:
+        typer.echo(
+            f"Unknown camera ID {camera_id!r}. Available: {list(shelf_cfg.cameras)}",
+            err=True,
+        )
+        raise SystemExit(1)
+
+    camera_cfg = get_regions_for_camera(shelf_cfg, camera_id)
+    shelf_regions = {r.region_id: r.points for r in camera_cfg.regions}
+
+    # ------------------------------------------------------------------
+    # Resolve classifier artifacts
+    # ------------------------------------------------------------------
+    artifact_path = Path(artifact_dir)
+    hand_artifact = artifact_path / "hand_state.joblib"
+    shelf_artifact = artifact_path / "shelf_state.joblib"
+
+    if not hand_artifact.exists():
+        typer.echo(f"Hand classifier artifact not found: {hand_artifact}", err=True)
+        raise SystemExit(1)
+    if not shelf_artifact.exists():
+        typer.echo(f"Shelf classifier artifact not found: {shelf_artifact}", err=True)
+        raise SystemExit(1)
+
+    # ------------------------------------------------------------------
+    # Resolve output directory
+    # ------------------------------------------------------------------
+    output_path = Path(output_dir)
+    if output_path.exists():
+        existing_outputs = [
+            output_path / "predictions.csv",
+            output_path / "raw_state_machine_events.json",
+            output_path / "inference_summary.json",
+        ]
+        if any(p.exists() for p in existing_outputs) and not force:
+            typer.echo(f"Output directory exists with previous results: {output_path}", err=True)
+            typer.echo("Use --force to overwrite.", err=True)
+            raise SystemExit(1)
+    output_path.mkdir(parents=True, exist_ok=True)
+
+    # ------------------------------------------------------------------
+    # Load candidates
+    # ------------------------------------------------------------------
+    all_candidates = _load_candidates_for_inference(
+        candidate_metadata_dir=Path(candidate_metadata),
+        candidates_path=Path(candidates) if candidates else None,
+    )
+
+    if not all_candidates:
+        typer.echo("No candidates found. Check --candidate-metadata and --candidates.", err=True)
+        raise SystemExit(1)
+
+    # ------------------------------------------------------------------
+    # Enrich candidates with actor_id/hand_side/region_id from feature dataset
+    # ------------------------------------------------------------------
+    feature_manifest = Path(cache_dir) / "feature_dataset.parquet"
+    if feature_manifest.exists():
+        all_candidates = _enrich_candidates_from_feature_dataset(all_candidates, feature_manifest)
+
+    # ------------------------------------------------------------------
+    # Filter candidates
+    # ------------------------------------------------------------------
+    filtered_candidates = _filter_candidates(
+        all_candidates,
+        clip_id=clip_id,
+        candidate_id=candidate_id,
+    )
+
+    if not filtered_candidates:
+        if clip_id:
+            typer.echo(
+                f"No candidates found for clip {clip_id!r}.",
+                err=True,
+            )
+        elif candidate_id:
+            typer.echo(
+                f"Candidate {candidate_id!r} not found.",
+                err=True,
+            )
+        else:
+            typer.echo("No candidates matched the filter criteria.", err=True)
+        raise SystemExit(1)
+
+    # ------------------------------------------------------------------
+    # Resolve source videos
+    # ------------------------------------------------------------------
+    source_video_path = Path(source_video_dir)
+    source_videos = _resolve_source_videos(filtered_candidates, source_video_path)
+
+    # ------------------------------------------------------------------
+    # Resolve pose observations
+    # ------------------------------------------------------------------
+    all_pose_obs = _resolve_pose_observations(
+        filtered_candidates,
+        pose_path=Path(pose_observations) if pose_observations else None,
+        source_video_dir=source_video_path,
+    )
+
+    # ------------------------------------------------------------------
+    # Resolve clip durations
+    # ------------------------------------------------------------------
+    clip_durations = _probe_clip_durations(source_videos)
+
+    # ------------------------------------------------------------------
+    # Resolve embedder
+    # ------------------------------------------------------------------
+    from pickup_putdown.layer1.track_a.image_features import (
+        TorchVisionEmbedder,
+    )
+
+    embedder_cfg_dict = cfg_data.get("track_a_features", {})
+    encoder_name = embedder_cfg_dict.get("encoder_name", "mobilenet_v3_small")
+    hand_crop_size = embedder_cfg_dict.get("hand_crop_size", 224)
+    shelf_patch_size = embedder_cfg_dict.get("shelf_patch_size", 224)
+
+    embedder = TorchVisionEmbedder(encoder_name)
+
+    # ------------------------------------------------------------------
+    # Run pipeline
+    # ------------------------------------------------------------------
+    typer.echo("=== Track A Inference ===")
+    typer.echo(f"  Config:           {config}")
+    typer.echo(f"  Candidates:       {len(filtered_candidates)}")
+    typer.echo(f"  Pose obs:         {len(all_pose_obs)}")
+    typer.echo(f"  Source videos:    {len(source_videos)}")
+    typer.echo(f"  Shelf regions:    {len(shelf_regions)}")
+    typer.echo(f"  Artifacts:        {artifact_dir}")
+    typer.echo(f"  Cache dir:        {cache_dir}")
+    typer.echo(f"  Output dir:       {output_dir}")
+    typer.echo("")
+
+    from pickup_putdown.layer1.track_a.inference import TrackAInferencePipeline
+
+    pipeline = TrackAInferencePipeline(
+        config=inf_cfg,
+        state_machine_config=sm_cfg,
+    )
+
+    # Convert dicts to objects for pipeline getattr() compatibility
+    obj_candidates = [
+        SimpleNamespace(**c) if isinstance(c, dict) else c for c in filtered_candidates
+    ]
+    obj_poses = [SimpleNamespace(**p) if isinstance(p, dict) else p for p in all_pose_obs]
+
+    try:
+        result = pipeline.run(
+            candidates=obj_candidates,
+            pose_observations=obj_poses,
+            source_videos=source_videos,
+            hand_classifier_path=hand_artifact,
+            shelf_classifier_path=shelf_artifact,
+            output_dir=output_path,
+            shelf_regions=shelf_regions,
+            embedder=embedder,
+            cache_dir=cache_dir,
+            clip_durations=clip_durations,
+            hand_crop_size=hand_crop_size,
+            shelf_patch_size=shelf_patch_size,
+        )
+    except Exception as exc:
+        typer.echo(f"Inference failed: {exc}", err=True)
+        raise SystemExit(1) from exc
+
+    # ------------------------------------------------------------------
+    # Summary
+    # ------------------------------------------------------------------
+    typer.echo("")
+    typer.echo("=== Inference Summary ===")
+    typer.echo(f"  Candidates processed: {result.summary.candidates_processed}")
+    typer.echo(f"  Candidates skipped:   {result.summary.candidates_skipped}")
+    typer.echo(f"  Total samples:        {result.summary.total_samples}")
+    typer.echo(f"  Cache hits:           {result.summary.feature_cache_hits}")
+    typer.echo(f"  Cache misses:         {result.summary.feature_cache_misses}")
+    typer.echo(f"  Raw events:           {result.summary.raw_events_emitted}")
+    typer.echo(f"  Final predictions:    {result.summary.final_events_after_dedup}")
+    typer.echo(f"  Pickups:              {result.summary.pickup_count}")
+    typer.echo(f"  Putdowns:             {result.summary.putdown_count}")
+    if result.summary.final_events_after_dedup > 0:
+        typer.echo(f"  Mean confidence:    {result.summary.mean_confidence:.4f}")
+    typer.echo(f"  Output directory:     {output_path}")
+
+    if result.output_paths:
+        typer.echo("")
+        typer.echo("  Output files:")
+        for key, path in result.output_paths.items():
+            typer.echo(f"    {key}: {path}")
+
+    if result.summary.candidates_processed == 0 and result.summary.candidates_skipped > 0:
+        typer.echo("")
+        typer.echo("  Skip reasons:")
+        for reason, count in result.summary.skip_reasons.items():
+            typer.echo(f"    {reason}: {count}")
+
+
+def _load_candidates_for_inference(
+    candidate_metadata_dir: Path,
+    candidates_path: Path | None = None,
+) -> list[dict[str, object]]:
+    """Load candidates from metadata directory or parquet file.
+
+    Returns list of dicts with at least: candidate_id, clip_id,
+    source_start_s, source_end_s, actor_id, hand_side, region_id.
+    """
+    if candidates_path and candidates_path.exists():
+        import pyarrow.parquet as pq
+
+        table = pq.read_table(str(candidates_path))
+        df = table.to_pandas()
+        records = []
+        for _, row in df.iterrows():
+            records.append(
+                {
+                    "candidate_id": row.get("candidate_id", ""),
+                    "clip_id": row.get("clip_id", ""),
+                    "raw_start_s": float(row.get("raw_start_s", 0.0)),
+                    "raw_end_s": float(row.get("raw_end_s", 0.0)),
+                    "window_start_s": float(
+                        row.get("window_start_s", row.get("raw_start_s", 0.0))
+                    ),
+                    "window_end_s": float(row.get("window_end_s", row.get("raw_end_s", 0.0))),
+                    "actor_id": str(row.get("actor_id", ""))
+                    if pd_notna(row.get("actor_id"))
+                    else "",
+                    "hand_side": str(row.get("hand_side", ""))
+                    if pd_notna(row.get("hand_side"))
+                    else "",
+                    "region_id": str(row.get("region_id", ""))
+                    if pd_notna(row.get("region_id"))
+                    else "",
+                }
+            )
+        return records
+
+    # Load from candidate staging metadata
+    # Two layouts supported:
+    #   1) <dir>/candidates/<clip_id>/<clip_id>.json  (remote_candidates layout)
+    #   2) <dir>/<clip_id>/<clip_id>.json             (candidate_staging/metadata layout)
+    index: dict[str, dict] = {}
+
+    candidates_subdir = candidate_metadata_dir / "candidates"
+    if candidates_subdir.exists():
+        from pickup_putdown.layer1.track_a.reviewed_dataset import (
+            load_candidate_metadata_index,
+        )
+
+        index = load_candidate_metadata_index(candidate_metadata_dir)
+    elif candidate_metadata_dir.exists():
+        # ponytail: direct scan of <dir>/<clip_id>/<clip_id>.json
+        for clip_dir in sorted(candidate_metadata_dir.iterdir()):
+            if not clip_dir.is_dir():
+                continue
+            meta_file = clip_dir / f"{clip_dir.name}.json"
+            if not meta_file.exists():
+                continue
+            try:
+                data = json.loads(meta_file.read_text(encoding="utf-8"))
+            except (json.JSONDecodeError, OSError):
+                continue
+
+            clip_id = data.get("source_video_id", clip_dir.name)
+            for cand in data.get("candidates", []):
+                cid = cand.get("candidate_id")
+                if not cid:
+                    continue
+                index[cid] = {
+                    "candidate_id": cid,
+                    "clip_id": clip_id,
+                    "source_start_s": float(cand.get("source_start_s", 0)),
+                    "source_end_s": float(cand.get("source_end_s", 0)),
+                    "actor_id": cand.get("actor_id"),
+                    "hand_side": cand.get("hand_side"),
+                    "region_id": cand.get("region_id"),
+                }
+
+    records = []
+    for meta in index.values():
+        if isinstance(meta, dict):
+            records.append(
+                {
+                    "candidate_id": meta["candidate_id"],
+                    "clip_id": meta["clip_id"],
+                    "raw_start_s": meta["source_start_s"],
+                    "raw_end_s": meta["source_end_s"],
+                    "window_start_s": meta["source_start_s"],
+                    "window_end_s": meta["source_end_s"],
+                    "actor_id": meta.get("actor_id") or "",
+                    "hand_side": meta.get("hand_side") or "",
+                    "region_id": meta.get("region_id") or "",
+                }
+            )
+        else:
+            records.append(
+                {
+                    "candidate_id": meta.candidate_id,
+                    "clip_id": meta.clip_id,
+                    "raw_start_s": meta.source_start_s,
+                    "raw_end_s": meta.source_end_s,
+                    "window_start_s": meta.source_start_s,
+                    "window_end_s": meta.source_end_s,
+                    "actor_id": meta.actor_id or "",
+                    "hand_side": meta.hand_side or "",
+                    "region_id": meta.region_id or "",
+                }
+            )
+    return records
+
+
+def _enrich_candidates_from_feature_dataset(
+    candidates: list[dict[str, object]],
+    feature_manifest: Path,
+) -> list[dict[str, object]]:
+    """Enrich candidates with actor_id/hand_side/region_id from feature dataset."""
+    import pyarrow.parquet as pq
+
+    table = pq.read_table(str(feature_manifest))
+    df = table.to_pandas()
+
+    # Build lookup: candidate_id -> {actor_id, hand_side, region_id}
+    lookup: dict[str, dict[str, str]] = {}
+    for _, row in df.iterrows():
+        cid = row.get("candidate_id", "")
+        if not cid:
+            continue
+        if cid not in lookup:
+            lookup[cid] = {
+                "actor_id": str(row.get("actor_id", "")) if pd_notna(row.get("actor_id")) else "",
+                "hand_side": str(row.get("hand_side", ""))
+                if pd_notna(row.get("hand_side"))
+                else "",
+                "region_id": str(row.get("region_id", ""))
+                if pd_notna(row.get("region_id"))
+                else "",
+            }
+
+    enriched = []
+    for cand in candidates:
+        cid = cand["candidate_id"]
+        info = lookup.get(cid, {})
+        c = dict(cand)
+        if not c.get("actor_id") and info.get("actor_id"):
+            c["actor_id"] = info["actor_id"]
+        if not c.get("hand_side") and info.get("hand_side"):
+            c["hand_side"] = info["hand_side"]
+        if not c.get("region_id") and info.get("region_id"):
+            c["region_id"] = info["region_id"]
+        enriched.append(c)
+    return enriched
+
+
+def _filter_candidates(
+    candidates: list[dict[str, object]],
+    clip_id: str | None = None,
+    candidate_id: str | None = None,
+) -> list[dict[str, object]]:
+    """Filter candidates by clip_id and/or candidate_id."""
+    filtered = candidates
+    if candidate_id:
+        filtered = [c for c in filtered if c["candidate_id"] == candidate_id]
+    if clip_id:
+        filtered = [c for c in filtered if c["clip_id"] == clip_id]
+    return filtered
+
+
+def _resolve_source_videos(
+    candidates: list[dict[str, object]],
+    source_video_dir: Path,
+) -> dict[str, Path]:
+    """Resolve source video paths for unique clip IDs."""
+    clip_ids = sorted({c["clip_id"] for c in candidates})
+    videos: dict[str, Path] = {}
+    for clip_id in clip_ids:
+        video_path = source_video_dir / f"{clip_id}.mp4"
+        if video_path.exists():
+            videos[clip_id] = video_path
+    return videos
+
+
+def _resolve_pose_observations(
+    candidates: list[dict[str, object]],
+    pose_path: Path | None = None,
+    source_video_dir: Path | None = None,
+) -> list[dict[str, object]]:
+    """Resolve pose observations from parquet files.
+
+    Search order:
+    1. Explicit --pose-observations path (file or directory)
+    2. Auto-detect from .local/remote_candidates/
+    3. Empty list (pipeline will skip feature extraction)
+    """
+    import pyarrow.parquet as pq
+
+    clip_ids = sorted({c["clip_id"] for c in candidates})
+    all_obs: list[dict[str, object]] = []
+
+    pose_files: list[Path] = []
+
+    if pose_path:
+        if pose_path.is_file():
+            pose_files = [pose_path]
+        elif pose_path.is_dir():
+            pose_files = sorted(pose_path.glob("*.parquet"))
+    else:
+        # Auto-detect from .local/remote_candidates/
+        remote_dir = Path(".local/remote_candidates")
+        if remote_dir.exists():
+            for clip_id in clip_ids:
+                found = _find_pose_file_for_clip(remote_dir, clip_id)
+                if found:
+                    pose_files.append(found)
+
+    for pf in pose_files:
+        try:
+            table = pq.read_table(str(pf))
+            df = table.to_pandas()
+            for _, row in df.iterrows():
+                cid = str(row.get("clip_id", ""))
+                # ponytail: strip clip_ prefix to match candidate clip_id format
+                if cid.startswith("clip_"):
+                    cid = cid[5:]
+                all_obs.append(
+                    {
+                        "clip_id": cid,
+                        "timestamp_s": float(row.get("timestamp_s", 0.0)),
+                        "actor_id": str(row.get("actor_id", "")),
+                        "hand_side": str(row.get("hand_side", "")),
+                        "wrist_x": float(row.get("wrist_x", 0.0)),
+                        "wrist_y": float(row.get("wrist_y", 0.0)),
+                        "wrist_confidence": float(row.get("wrist_confidence", 0.5)),
+                    }
+                )
+        except Exception as exc:
+            logger.warning("Failed to load pose file %s: %s", pf, exc)
+
+    return all_obs
+
+
+def _find_pose_file_for_clip(
+    remote_dir: Path,
+    clip_id: str,
+) -> Path | None:
+    """Find tracks_pose.parquet for a clip in remote_candidates directory."""
+    import fnmatch
+
+    for parquet in remote_dir.rglob("tracks_pose.parquet"):
+        # The parquet is in <run>/<clip_id>/intermediate/task_5/tracks_pose.parquet
+        # or similar structure. Check if clip_id matches any ancestor.
+        parts = parquet.parts
+        for part in parts:
+            if fnmatch.fnmatch(part, clip_id) or part == clip_id:
+                return parquet
+    return None
+
+
+def _probe_clip_durations(
+    source_videos: dict[str, Path],
+) -> dict[str, float]:
+    """Probe video durations using ffprobe."""
+    from pickup_putdown.ingestion.video_probe import probe_video
+
+    durations: dict[str, float] = {}
+    for clip_id, video_path in source_videos.items():
+        try:
+            probe = probe_video(video_path)
+            if probe.decode_ok and probe.duration_s:
+                durations[clip_id] = float(probe.duration_s)
+        except Exception as exc:
+            logger.warning("Failed to probe %s: %s", video_path, exc)
+    return durations
+
+
+def pd_notna(val: object) -> bool:
+    """Check if a value is not NaN/None (handles pandas NaN)."""
+    if val is None:
+        return False
+    import math
+
+    return not (isinstance(val, float) and math.isnan(val))
 
 
 if __name__ == "__main__":

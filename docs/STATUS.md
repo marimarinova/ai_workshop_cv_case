@@ -18,6 +18,7 @@ Pickup and putdown event detection in store video.
 | 10 | Track A Phase 2 — hand-state + shelf-transition classifiers | ✅ Done |
 | 11 | Track A Phase 3 — repeating temporal state machine | ✅ Done |
 | 12 | Track A Phase 4 — inference pipeline, boundary refinement, dedup | ✅ Done |
+| 13 | Track A Phase 5 — CLI integration, Makefile, real-data smoke test | ✅ Done |
 
 ## Track A — Phase 1 (Feature Dataset)
 
@@ -171,6 +172,98 @@ result = pipeline.run(
 
 55/55 pass. Total Track A test suite: 195/195 pass.
 
+## Track A — Phase 5 (CLI Integration & Smoke Test)
+
+CLI command and Makefile target that expose the Phase 4 inference pipeline for
+real-data execution.
+
+### CLI Command
+
+```bash
+pickup-putdown infer-track-a \
+  --config configs/track_a.yaml \
+  --candidate-metadata .local/candidate_staging/metadata \
+  --source-video-dir .local/source_videos \
+  --shelves-config configs/shelves.yaml \
+  --camera-id store_camera_01 \
+  --artifact-dir .local/track_a_artifacts \
+  --cache-dir .local/track_a_features \
+  --output-dir .local/track_a_output \
+  --clip-id D2_S..._anon \
+  --debug-traces --force -v
+```
+
+Arguments: `--config`, `--candidate-metadata`, `--candidates`, `--pose-observations`,
+`--source-video-dir`, `--shelves-config`, `--camera-id`, `--artifact-dir`,
+`--cache-dir`, `--output-dir`, `--clip-id`, `--candidate-id`, `--debug-traces`,
+`--force`, `-v`.
+
+Scope: single candidate (`--candidate-id`), single clip (`--clip-id`), or all
+resolvable candidates.
+
+### Makefile
+
+```bash
+make infer-track-a
+make infer-track-a TRACK_A_CLIP_ID=D2_S20260520141725_E20260520142151_anon
+make infer-track-a TRACK_A_DEBUG_TRACES=1 TRACK_A_FORCE=1
+```
+
+### Input Resolution
+
+- **Candidates**: Loaded from `<metadata>/<clip_id>/<clip_id>.json` or
+  `<metadata>/candidates/<clip_id>/<clip_id>.json`.
+- **Identity enrichment**: `actor_id`/`hand_side`/`region_id` filled from
+  `feature_dataset.parquet` when metadata lacks them.
+- **Pose data**: Auto-detected from `.local/remote_candidates/*/tracks_pose.parquet`.
+  `clip_` prefix stripped to match candidate clip_id format.
+- **Videos**: `<source_video_dir>/<clip_id>.mp4`.
+- **Shelves**: From `configs/shelves.yaml` + `--camera-id`.
+- **Artifacts**: `<artifact_dir>/hand_state.joblib` + `shelf_state.joblib`.
+
+### Smoke Test Results
+
+```
+Clip: D2_S20260520141725_E20260520142151_anon
+Candidates processed:  5
+Candidates skipped:    69 (missing identity fields)
+Total samples:         94
+Cache hits:            2
+Cache misses:          184
+Raw events:            5
+Final predictions:     5
+  Pickups:             3
+  Putdowns:            2
+  Mean confidence:     0.5410
+```
+
+### Cache Reuse
+
+- **Hand embeddings**: Deterministic keys, full reuse on re-run (94/94 hits).
+- **Shelf embeddings**: Cache key depends on runtime-computed crop geometry.
+  Added fallback lookup for contact-point geometry to reuse Phase 1 build cache.
+  Subsequent runs may miss when `extract_shelf_patch` produces different geometry
+  than the contact point used during Phase 1 build.
+
+### Phase 4 Integration Checks
+
+- **Transition grace**: Requires BOTH hand AND shelf directional evidence
+  (`hand_carrying + shelf_removed` for pickup, `hand_empty + shelf_placed` for
+  putdown). Does NOT emit based on post-transfer hand state alone. ✅
+- **Deduplication**: Uses temporal IoU threshold AND transfer-time tolerance,
+  keeps highest-confidence prediction. ✅
+
+### Files
+
+- `src/pickup_putdown/cli.py` — `infer_track_a` command + helper functions
+- `src/pickup_putdown/layer1/track_a/inference.py` — shelf cache fallback lookup
+- `Makefile` — `infer-track-a` target
+- `tests/test_track_a_cli.py` — 26 tests (mocked pipeline, no GPU/videos)
+
+### Test Results
+
+26/26 CLI tests pass. Total Track A suite: 221/221 pass.
+
 ## Known Limitations
 
 - Small dataset: 50 reviewed candidates, imbalanced classes, limited val coverage
@@ -184,9 +277,16 @@ result = pipeline.run(
 - Event boundaries are refined but not calibrated against ground truth
 - Grace window uses fixed probability thresholds (0.55/0.50) matching state machine config
 - Shelf comparison during inference uses per-timestamp patches; not explicit pre/post reference comparison
+- **Shelf cache reuse**: Runtime geometry from `extract_shelf_patch` differs from
+  contact-point geometry used in Phase 1 build, so shelf cache keys don't match
+  across builds. Hand cache keys are deterministic and fully reusable.
+- **Candidate identity**: Only candidates present in Phase 1 feature dataset get
+  `actor_id`/`hand_side`/`region_id` enrichment. Candidates outside the build
+  are skipped with `missing_identity_fields`.
 
 ## Next
 
-- Track A Phase 5: public CLI, Makefile target, real-data smoke test, threshold tuning
+- Track A Phase 6: shelf cache key stabilization, full-dataset inference, threshold tuning
+- Task 8: evaluation (precision/recall/F1 against reviewed ground truth)
 - Track B1/B2: VideoMAE window classifiers
 - Layer 2/3: Qwen VLM verification and fusion

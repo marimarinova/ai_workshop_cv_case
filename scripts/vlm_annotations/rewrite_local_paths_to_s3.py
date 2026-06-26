@@ -60,7 +60,9 @@ class RewriteStats:
 class PathRewriter:
     """Handles the actual path replacement logic."""
 
-    def __init__(self, old_prefix: str = LOCAL_PATH_PREFIX, new_prefix: str = S3_PATH_PREFIX) -> None:
+    def __init__(
+        self, old_prefix: str = LOCAL_PATH_PREFIX, new_prefix: str = S3_PATH_PREFIX
+    ) -> None:
         self.old_prefix = old_prefix
         self.new_prefix = new_prefix
 
