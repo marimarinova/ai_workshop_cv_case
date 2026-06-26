@@ -1,0 +1,29 @@
+# Track A state-machine detector configuration (task_10).
+#
+# Merged into AppConfig by load_config. Task 7 fills the checkpoints and tunes
+# the thresholds on validation data; unblocking Track A must require only edits
+# here plus dropping in trained checkpoints — no code change.
+track_a:
+  # Trained classifier checkpoints (populated by Task 7).
+  hand_state_checkpoint: models/track_a/hand_state.joblib
+  shelf_state_checkpoint: models/track_a/shelf_state.joblib
+
+  # Classifier decision thresholds (tuned on validation in Task 7).
+  hand_holding_threshold: 0.5
+  shelf_occupied_threshold: 0.5
+
+  # Consecutive confirming samples required to accept a persistent transition.
+  min_persistence_samples: 2
+
+  # Minimum event score to emit a canonical prediction.
+  min_event_score: 0.5
+
+  # Same-type merge only (different types are never merged); 0.0 disables.
+  same_type_merge_gap_s: 0.0
+
+  # NOTE: the wrist-region entry/exit boundary fallback (task_10 step 6) is a
+  # follow-up; its knob will be added when implemented. See
+  # docs/tasks/task_10_followups.md.
+
+  # Written into the `model` column of canonical Track A predictions.
+  model_name: track_a_v1

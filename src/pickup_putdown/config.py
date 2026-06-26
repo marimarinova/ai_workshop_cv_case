@@ -107,7 +107,9 @@ class TrackAFeaturesConfig(BaseModel):
 
     # Sampling configuration
     min_samples: int = 3
-    max_interval_s: float = 99999.0  # Large default = no intermediate splits (just pre/contact/post)
+    max_interval_s: float = (
+        99999.0  # Large default = no intermediate splits (just pre/contact/post)
+    )
 
     # Crop configuration
     hand_crop_size: int = 224
@@ -126,6 +128,40 @@ class TrackAFeaturesConfig(BaseModel):
 
     # QA configuration
     qa_samples_per_category: int = 20
+
+
+class TrackAConfig(BaseModel):
+    """Configuration for the Track A state-machine detector (Task 10).
+
+    All thresholds and trained-checkpoint paths live here on purpose: the
+    Task 7 unblock (training + validation tuning) must be a config + checkpoint
+    swap with no code change.
+    """
+
+    # Trained classifier checkpoints (populated by Task 7).
+    hand_state_checkpoint: str = "models/track_a/hand_state.joblib"
+    shelf_state_checkpoint: str = "models/track_a/shelf_state.joblib"
+
+    # Classifier decision thresholds (tuned on validation in Task 7).
+    hand_holding_threshold: float = 0.5
+    shelf_occupied_threshold: float = 0.5
+
+    # State machine: consecutive confirming samples required to accept a
+    # persistent shelf<->hand transition.
+    min_persistence_samples: int = 2
+
+    # Minimum event score to emit a canonical prediction.
+    min_event_score: float = 0.5
+
+    # Same-type merge only (different types are never merged); 0.0 disables.
+    same_type_merge_gap_s: float = 0.0
+
+    # NOTE: the wrist-region entry/exit boundary fallback (task_10 step 6) is a
+    # follow-up; its config knob will be added when implemented (task_7). See
+    # docs/tasks/task_10_followups.md.
+
+    # Written into the `model` column of canonical Track A predictions.
+    model_name: str = "track_a_v1"
 
 
 class PreviewConfig(BaseModel):
@@ -153,6 +189,7 @@ class AppConfig(BaseModel):
     proposals: ProposalsConfig = Field(default_factory=ProposalsConfig)
     preview: PreviewConfig = Field(default_factory=PreviewConfig)
     track_a_features: TrackAFeaturesConfig = Field(default_factory=TrackAFeaturesConfig)
+    track_a: TrackAConfig = Field(default_factory=TrackAConfig)
     data_dir: str = "data"
     output_dir: str = "outputs"
     cache_dir: str = "cache"
@@ -196,6 +233,7 @@ def _build_env_overrides() -> dict[str, Any]:
             "proposals",
             "preview",
             "track_a_features",
+            "track_a",
             "data",
             "output",
             "cache",
