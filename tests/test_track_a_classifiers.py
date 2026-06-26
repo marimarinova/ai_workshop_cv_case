@@ -61,6 +61,17 @@ def test_placeholder_predictions_are_deterministic_and_in_range() -> None:
     assert shelf.predict_occupied(_emb(2.0)) > shelf.predict_occupied(_emb(-2.0))
 
 
+def test_placeholder_sigmoid_is_stable_for_extreme_values() -> None:
+    hand = hand_state.PlaceholderHandStateClassifier()
+    shelf = shelf_state.PlaceholderShelfStateClassifier()
+
+    # Large |x| must not raise OverflowError and must stay saturated in [0, 1].
+    assert hand.predict_holding(_emb(1000.0)) == 1.0
+    assert hand.predict_holding(_emb(-1000.0)) == 0.0
+    assert shelf.predict_occupied(_emb(1000.0)) == 1.0
+    assert shelf.predict_occupied(_emb(-1000.0)) == 0.0
+
+
 def test_is_available_true_and_loads_trained_when_checkpoint_exists(tmp_path: Path) -> None:
     hand_ckpt = tmp_path / "hand_state.joblib"
     shelf_ckpt = tmp_path / "shelf_state.joblib"

@@ -30,7 +30,12 @@ def is_available(config: TrackAConfig) -> bool:
 
 
 def _sigmoid(x: float) -> float:
-    return 1.0 / (1.0 + math.exp(-x))
+    # Branch on the sign so the exponent argument is always <= 0; this avoids the
+    # OverflowError that math.exp(-x) raises for large negative x.
+    if x >= 0.0:
+        return 1.0 / (1.0 + math.exp(-x))
+    exp_x = math.exp(x)
+    return exp_x / (1.0 + exp_x)
 
 
 class PlaceholderHandStateClassifier:
