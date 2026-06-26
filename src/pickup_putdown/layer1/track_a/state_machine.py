@@ -666,12 +666,12 @@ class _StreamStateMachine:
         """Build an event from accumulated evidence."""
         cfg = self.config
 
-        # Minimum event separation — still mark attempt to block withdrawal retry
+        # Minimum event separation — do NOT update _last_event_s for rejected
+        # events; a failed attempt must not suppress a later valid emission.
         if (
             self._last_event_s is not None
             and current_s - self._last_event_s < cfg.minimum_event_separation_s - _EPS
         ):
-            self._last_event_s = current_s
             return None
 
         # Build evidence summary

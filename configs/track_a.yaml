@@ -43,3 +43,27 @@ state_machine:
     hand: 0.40
     shelf: 0.40
     trajectory: 0.20
+
+# Inference pipeline configuration for Phase 4
+inference:
+  sampling:
+    sample_fps: 4.0
+    minimum_valid_samples: 3
+    maximum_feature_gap_s: 0.50
+    shelf_reference_from_start_s: 0.50
+
+  boundary_refinement:
+    use_contact_start: true
+    stabilization_window_s: 0.25
+    maximum_candidate_extension_s: 0.50
+    minimum_event_duration_s: 0.10
+
+  deduplication:
+    temporal_iou_threshold: 0.50
+    transfer_time_tolerance_s: 0.50
+    require_same_actor: true
+    require_same_hand: true
+    require_same_region: false
+
+  transition_grace_s: 0.25
+  debug_traces: false
