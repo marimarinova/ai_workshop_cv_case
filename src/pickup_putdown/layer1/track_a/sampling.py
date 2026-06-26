@@ -343,6 +343,29 @@ def get_wrist_trajectory_for_candidate(
         )
     ]
 
+    # Fallback: proposals use two actor_id formats (actor_N and
+    # clip_D2_S...:person:N) while the pose tracker only emits actor_N.
+    # When exact match fails AND the candidate uses person-tracker format,
+    # fall back to clip_id + hand_side + window.
+    if not relevant and ":" in candidate.actor_id:
+        relevant = [
+            obs
+            for obs in pose_observations
+            if (
+                obs.clip_id == candidate.clip_id
+                and obs.hand_side == candidate.hand_side
+                and candidate.window_start_s <= obs.timestamp_s <= candidate.window_end_s
+            )
+        ]
+        if relevant:
+            logger.debug(
+                "Pose fallback match for %s: actor=%s not found, "
+                "matched %d poses by clip+hand+window",
+                candidate.candidate_id,
+                candidate.actor_id,
+                len(relevant),
+            )
+
     if not relevant and pose_observations:
         clip_poses = [o for o in pose_observations if o.clip_id == candidate.clip_id]
         logger.debug(

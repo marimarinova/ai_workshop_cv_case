@@ -289,8 +289,8 @@ def _process_crop(
     # Create a placeholder geometry for cache key
     # (actual geometry determined after extraction)
     placeholder_geom = CropGeometry(
-        x=int(wrist_x) - crop_size // 2,
-        y=int(wrist_y) - crop_size // 2,
+        x=max(0, int(wrist_x) - crop_size // 2),
+        y=max(0, int(wrist_y) - crop_size // 2),
         width=crop_size,
         height=crop_size,
     )

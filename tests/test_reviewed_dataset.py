@@ -1119,6 +1119,30 @@ class TestPoseCandidateAssociation:
         matched = get_wrist_trajectory_for_candidate(cand, poses)
         assert len(matched) == 0
 
+    def test_actor_id_fallback_on_mismatch(self):
+        """When actor_id doesn't match (person-tracker format), fall back to clip+hand+window."""
+        poses = [self._make_pose(actor_id="actor_5", timestamp_s=10.0)]
+        cand = self._make_candidate(actor_id="clip_X:person:1")
+        matched = get_wrist_trajectory_for_candidate(cand, poses)
+        assert len(matched) == 1
+        assert matched[0].actor_id == "actor_5"
+
+    def test_fallback_respects_hand_side(self):
+        """Fallback still respects hand_side filter."""
+        poses = [self._make_pose(actor_id="actor_5", hand_side="left", timestamp_s=10.0)]
+        cand = self._make_candidate(actor_id="clip_X:person:1", hand_side="right")
+        matched = get_wrist_trajectory_for_candidate(cand, poses)
+        assert len(matched) == 0
+
+    def test_fallback_respects_window(self):
+        """Fallback still respects time window filter."""
+        poses = [self._make_pose(actor_id="actor_5", timestamp_s=50.0)]
+        cand = self._make_candidate(
+            actor_id="clip_X:person:1", window_start_s=8.0, window_end_s=12.0
+        )
+        matched = get_wrist_trajectory_for_candidate(cand, poses)
+        assert len(matched) == 0
+
 
 # ---------------------------------------------------------------------------
 # Test 14: Metadata passthrough
