@@ -122,3 +122,19 @@ def test_merge_same_type_only_when_configured() -> None:
     assert (merged[0].t_start, merged[0].t_end) == (1.0, 3.0)
     # Different types are never merged, even with a huge gap.
     assert len(merge_same_type([p1, p3], 10.0)) == 2
+
+
+def test_merge_same_type_accumulates_history_across_three_merges() -> None:
+    p0 = TrackAPrediction("c", "c-0", "pickup", 1.0, 2.0, 0.8, evidence={"flip_index": 1})
+    p1 = TrackAPrediction("c", "c-1", "pickup", 2.1, 3.0, 0.7)
+    p2 = TrackAPrediction("c", "c-2", "pickup", 3.1, 4.0, 0.9)
+
+    merged = merge_same_type([p0, p1, p2], 0.5)
+
+    assert len(merged) == 1
+    # Full, ordered merge history (not overwritten on the 3rd merge).
+    assert merged[0].evidence["merged_from"] == ["c-0", "c-1", "c-2"]
+    # Prior evidence from the first event is preserved.
+    assert merged[0].evidence["flip_index"] == 1
+    assert (merged[0].t_start, merged[0].t_end) == (1.0, 4.0)
+    assert merged[0].score == 0.9

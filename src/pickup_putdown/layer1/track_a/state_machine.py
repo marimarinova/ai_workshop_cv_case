@@ -159,6 +159,13 @@ def merge_same_type(events: list[TrackAPrediction], gap_s: float) -> list[TrackA
     for event in events[1:]:
         prev = merged[-1]
         if event.type == prev.type and event.t_start - prev.t_end <= gap_s:
+            # Preserve the prior event's evidence and accumulate the merge
+            # history so chains of >2 merges keep every contributing pred_id.
+            evidence = dict(prev.evidence)
+            prior = evidence.get("merged_from")
+            history = list(prior) if isinstance(prior, list) else [prev.pred_id]
+            history.append(event.pred_id)
+            evidence["merged_from"] = history
             merged[-1] = TrackAPrediction(
                 clip_id=prev.clip_id,
                 pred_id=prev.pred_id,
@@ -167,7 +174,7 @@ def merge_same_type(events: list[TrackAPrediction], gap_s: float) -> list[TrackA
                 t_end=max(prev.t_end, event.t_end),
                 score=max(prev.score, event.score),
                 model=prev.model,
-                evidence={"merged_from": [prev.pred_id, event.pred_id]},
+                evidence=evidence,
             )
         else:
             merged.append(event)
