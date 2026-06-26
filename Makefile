@@ -62,7 +62,7 @@ VIDEO ?= $(TRIAGE_INPUT)
 	annotation-pull annotation-up annotation-down annotation-restart annotation-status annotation-logs \
 	annotation-config-validate annotation-test annotation-acceptance annotation-reset \
  candidates-remote candidates-download candidates-upload candidates-generate candidates-process-local \
- track-a-dataset
+ track-a-dataset train-track-a
 
 # ---------------------------------------------------------------------------
 # General development targets
@@ -554,5 +554,21 @@ track-a-dataset: ## Build the reviewed Track A feature dataset
 		--config "$(TRACK_A_CONFIG)" \
 		--shelves-config "$(TRACK_A_SHELVES_CONFIG)" \
 		--camera-id "$(TRACK_A_CAMERA_ID)" \
+		-v
+
+# ---------------------------------------------------------------------------
+# Track A: classifier training
+# ---------------------------------------------------------------------------
+
+TRACK_A_ARTIFACT_DIR ?= .local/track_a_artifacts
+TRACK_A_CONFIG ?= configs/track_a.yaml
+TRACK_A_FEATURE_MANIFEST ?= .local/track_a_features/feature_dataset.parquet
+
+train-track-a: ## Train Track A hand-state and shelf-transition classifiers
+	@echo "=== Training Track A Classifiers ==="
+	@$(PICKUP_PUTDOWN) train-track-a \
+		--config "$(TRACK_A_CONFIG)" \
+		--feature-manifest "$(TRACK_A_FEATURE_MANIFEST)" \
+		--output-dir "$(TRACK_A_ARTIFACT_DIR)" \
 		-v
 

@@ -2913,5 +2913,211 @@ def build_track_a_dataset(
     typer.echo(f"  Build summary:     {output_dir}/build_summary.json")
 
 
+@app.command()
+def train_track_a(
+    config: str = typer.Option(
+        "configs/track_a.yaml",
+        "--config",
+        "-c",
+        help="Path to Track A classifier configuration YAML.",
+    ),
+    feature_manifest: str = typer.Option(
+        ".local/track_a_features/feature_dataset.parquet",
+        "--feature-manifest",
+        "-m",
+        help="Path to the Phase 1 feature dataset parquet.",
+    ),
+    output_dir: str = typer.Option(
+        ".local/track_a_artifacts",
+        "--output-dir",
+        "-o",
+        help="Output directory for classifier artifacts.",
+    ),
+    seed: int | None = typer.Option(
+        None,
+        "--seed",
+        help="Override random seed from config.",
+    ),
+    force: bool = typer.Option(
+        False,
+        "--force",
+        "-f",
+        help="Overwrite existing artifacts.",
+    ),
+    verbose: bool = typer.Option(
+        False,
+        "--verbose",
+        "-v",
+        help="Enable debug logging.",
+    ),
+) -> None:
+    """Train Track A hand-state and shelf-transition classifiers.
+
+    Loads the reviewed Phase 1 feature dataset, derives supervised labels,
+    trains logistic regression classifiers, evaluates on the validation split,
+    and persists artifacts with metadata and metrics.
+    """
+    _setup_logging(verbose)
+
+    import json
+
+    import yaml
+
+    from pickup_putdown.layer1.track_a.hand_state import (
+        train_hand_classifier,
+    )
+    from pickup_putdown.layer1.track_a.manifest import load_manifest
+    from pickup_putdown.layer1.track_a.shelf_state import (
+        train_shelf_classifier,
+    )
+
+    # Load config
+    cfg_path = Path(config)
+    if not cfg_path.exists():
+        typer.echo(f"Config not found: {cfg_path}", err=True)
+        raise SystemExit(1)
+
+    with open(cfg_path) as f:
+        cfg = yaml.safe_load(f) or {}
+
+    classifiers_cfg = cfg.get("classifiers", {})
+    seed = seed if seed is not None else classifiers_cfg.get("random_seed", 42)
+
+    hand_cfg = classifiers_cfg.get("hand_state", {})
+    shelf_cfg = classifiers_cfg.get("shelf_state", {})
+
+    # Check output directory
+    output_path = Path(output_dir)
+    if output_path.exists():
+        existing = list(output_path.glob("*.joblib"))
+        if existing and not force:
+            typer.echo(
+                f"Output directory exists with artifacts: {output_path}",
+                err=True,
+            )
+            typer.echo("Use --force to overwrite.", err=True)
+            raise SystemExit(1)
+    output_path.mkdir(parents=True, exist_ok=True)
+
+    # Load feature dataset
+    manifest_path = Path(feature_manifest)
+    if not manifest_path.exists():
+        typer.echo(f"Feature manifest not found: {manifest_path}", err=True)
+        raise SystemExit(1)
+
+    typer.echo("=== Training Track A Classifiers ===")
+    typer.echo(f"  Config:           {config}")
+    typer.echo(f"  Feature manifest: {feature_manifest}")
+    typer.echo(f"  Output dir:       {output_dir}")
+    typer.echo(f"  Seed:             {seed}")
+    typer.echo("")
+
+    dataset = load_manifest(manifest_path)
+    typer.echo(f"  Total records:    {len(dataset.records)}")
+    typer.echo(f"  Encoder:          {dataset.encoder_name}")
+    typer.echo("")
+
+    # --- Hand-state classifier ---
+    typer.echo("--- Hand-State Classifier ---")
+    try:
+        hand_classifier, hand_report = train_hand_classifier(
+            records=dataset.records,
+            confidence_threshold=hand_cfg.get("confidence_threshold", 0.60),
+            margin_threshold=hand_cfg.get("margin_threshold", 0.15),
+            random_seed=seed,
+            class_weight=hand_cfg.get("class_weight", "balanced"),
+            max_iter=hand_cfg.get("max_iter", 1000),
+        )
+
+        # Save artifacts
+        hand_joblib = output_path / "hand_state.joblib"
+        hand_metadata = hand_classifier.build_metadata(
+            encoder_name=dataset.encoder_name,
+            encoder_version=dataset.encoder_version,
+            training_record_counts=hand_report["train_class_counts"],
+            train_split_count=hand_report["train_records"],
+            val_split_count=hand_report["val_records"],
+        )
+        hand_classifier.save_pipeline(hand_joblib)
+        (output_path / "hand_state_metadata.json").write_text(
+            json.dumps(hand_metadata.to_dict(), indent=2) + "\n"
+        )
+        (output_path / "hand_state_metrics.json").write_text(
+            json.dumps(hand_report, indent=2, default=str) + "\n"
+        )
+
+        typer.echo(f"  Train records:  {hand_report['train_records']}")
+        typer.echo(f"  Train classes:  {hand_report['train_class_counts']}")
+        typer.echo(f"  Val records:    {hand_report['val_records']}")
+        if "val_class_counts" in hand_report:
+            typer.echo(f"  Val classes:    {hand_report['val_class_counts']}")
+        val = hand_report.get("validation", {})
+        if "accuracy" in val:
+            typer.echo(f"  Val accuracy:   {val['accuracy']:.4f}")
+            typer.echo(f"  Val bal. acc:   {val['balanced_accuracy']:.4f}")
+            typer.echo(f"  Val macro F1:   {val['macro_f1']:.4f}")
+            typer.echo(
+                f"  Uncertain:      {val.get('n_uncertain', '?')}/{val.get('n_samples', '?')}"
+            )
+        typer.echo(f"  Artifacts:      {hand_joblib}")
+        typer.echo("")
+
+    except Exception as exc:
+        typer.echo(f"Hand-state training failed: {exc}", err=True)
+        raise SystemExit(1) from exc
+
+    # --- Shelf-transition classifier ---
+    typer.echo("--- Shelf-Transition Classifier ---")
+    try:
+        shelf_classifier, shelf_report = train_shelf_classifier(
+            records=dataset.records,
+            confidence_threshold=shelf_cfg.get("confidence_threshold", 0.60),
+            margin_threshold=shelf_cfg.get("margin_threshold", 0.15),
+            random_seed=seed,
+            class_weight=shelf_cfg.get("class_weight", "balanced"),
+            max_iter=shelf_cfg.get("max_iter", 1000),
+        )
+
+        # Save artifacts
+        shelf_joblib = output_path / "shelf_state.joblib"
+        shelf_metadata = shelf_classifier.build_metadata(
+            encoder_name=dataset.encoder_name,
+            encoder_version=dataset.encoder_version,
+            training_record_counts=shelf_report["train_class_counts"],
+            train_split_count=shelf_report["train_records"],
+            val_split_count=shelf_report["val_records"],
+        )
+        shelf_classifier.save_pipeline(shelf_joblib)
+        (output_path / "shelf_state_metadata.json").write_text(
+            json.dumps(shelf_metadata.to_dict(), indent=2) + "\n"
+        )
+        (output_path / "shelf_state_metrics.json").write_text(
+            json.dumps(shelf_report, indent=2, default=str) + "\n"
+        )
+
+        typer.echo(f"  Train records:  {shelf_report['train_records']}")
+        typer.echo(f"  Train classes:  {shelf_report['train_class_counts']}")
+        typer.echo(f"  Val records:    {shelf_report['val_records']}")
+        if "val_class_counts" in shelf_report:
+            typer.echo(f"  Val classes:    {shelf_report['val_class_counts']}")
+        val = shelf_report.get("validation", {})
+        if "accuracy" in val:
+            typer.echo(f"  Val accuracy:   {val['accuracy']:.4f}")
+            typer.echo(f"  Val bal. acc:   {val['balanced_accuracy']:.4f}")
+            typer.echo(f"  Val macro F1:   {val['macro_f1']:.4f}")
+            typer.echo(
+                f"  Uncertain:      {val.get('n_uncertain', '?')}/{val.get('n_samples', '?')}"
+            )
+        typer.echo(f"  Artifacts:      {shelf_joblib}")
+        typer.echo("")
+
+    except Exception as exc:
+        typer.echo(f"Shelf-state training failed: {exc}", err=True)
+        raise SystemExit(1) from exc
+
+    typer.echo("=== Training Complete ===")
+    typer.echo(f"  Artifacts saved to: {output_dir}")
+
+
 if __name__ == "__main__":
     app()
