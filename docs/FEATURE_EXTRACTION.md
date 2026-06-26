@@ -5,11 +5,15 @@ Pipeline for building the reviewed Track A feature dataset from manually reviewe
 ## Overview
 
 ```
-review_manifest.csv + events.csv + clips.csv
+review_manifest.csv + reviewed candidate JSONs
+         │
+         ▼
+  Regenerate reviewed_events.csv from JSON events
+  (candidate-relative → source-video timestamps)
          │
          ▼
   Resolve reviewed examples
-  (positives → canonical events, negatives → zero-event)
+  (JSON events → positives, empty JSON → negatives)
          │
          ▼
   Assign train/val/test splits by recording day
@@ -21,8 +25,18 @@ review_manifest.csv + events.csv + clips.csv
   Extract hand/shelf crops → compute embeddings → cache
          │
          ▼
-  feature_dataset.parquet + splits.json + build_summary.json
+  reviewed_events.csv + feature_dataset.parquet + splits.json + build_summary.json
 ```
+
+## Ground Truth
+
+The reviewed candidate JSON files (`.local/vlm_annotations/normalized/cand_*.json`) are the ground truth. Each reviewed JSON contains:
+
+- `events[]` — reviewed event list with `label`, `start_s`, `end_s` (candidate-relative)
+- `source_start_s` — offset to convert to source-video timestamps
+- `clip_id` — source video identifier
+
+Events are regenerated from these JSONs into a compliant `reviewed_events.csv`. The original VLM `events.csv` is not used for labeling.
 
 ## Prerequisites
 
@@ -30,6 +44,7 @@ review_manifest.csv + events.csv + clips.csv
 - Pose model at `models/pose_detector.pt` (YOLO11n-pose)
 - Shelf config at `configs/shelves.yaml`
 - Review manifest with local paths (see Path Rewrite below)
+- Reviewed candidate JSONs at `.local/vlm_annotations/normalized/cand_*.json`
 
 ## Path Rewrite
 
@@ -117,6 +132,7 @@ make track-a-dataset \
 
 | File | Description |
 |------|-------------|
+| `reviewed_events.csv` | Regenerated events from reviewed JSONs (ground truth) |
 | `feature_dataset.parquet` | Feature dataset manifest with all records |
 | `splits.json` | Clip-to-split assignments and counts |
 | `build_summary.json` | Build statistics (positives, negatives, records by split/label/position) |
@@ -127,11 +143,11 @@ make track-a-dataset \
 
 Only reviewed data is used for supervised training:
 
-- **Reviewed positive**: candidate with `reviewed=true` and matching canonical event → labeled `pickup` or `putdown`
-- **Reviewed negative**: candidate with `reviewed=true` and zero events confirmed → labeled `negative`
-- **Excluded**: unreviewed candidates, candidates without metadata, reviewed positives without matching canonical event
+- **Reviewed positive**: candidate with `reviewed=true` and non-empty `events[]` in JSON → labeled from JSON `label` field
+- **Reviewed negative**: candidate with `reviewed=true` and empty `events[]` in JSON → labeled `negative`
+- **Excluded**: unreviewed candidates, candidates without metadata, candidates without reviewed JSON
 
-Unreviewed candidates are never treated as negatives.
+Unreviewed candidates are never treated as negatives. Labels come from the reviewed JSON events, not from the VLM `events.csv`.
 
 ## Split Assignment
 

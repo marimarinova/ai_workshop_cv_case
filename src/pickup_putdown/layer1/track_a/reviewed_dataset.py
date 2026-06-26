@@ -386,6 +386,136 @@ def _is_zero_event(notes: str, event_count: int) -> bool:
     return any(phrase in lower for phrase in zero_phrases)
 
 
+def load_reviewed_candidate_jsons(
+    review_records: list[ReviewRecord],
+) -> dict[str, dict]:
+    """Load reviewed candidate JSON files and index by candidate_id.
+
+    Returns only candidates that are marked as reviewed in the manifest.
+
+    Args:
+        review_records: Loaded review manifest records.
+
+    Returns:
+        Dict mapping candidate_id → JSON contents.
+    """
+    reviewed_ids = {r.candidate_id for r in review_records if r.reviewed}
+    index: dict[str, dict] = {}
+
+    for record in review_records:
+        if not record.reviewed:
+            continue
+        json_path = Path(record.json_path)
+        if not json_path.exists():
+            logger.warning(
+                "JSON not found for candidate %s: %s",
+                record.candidate_id,
+                json_path,
+            )
+            continue
+        try:
+            data = json.loads(json_path.read_text(encoding="utf-8"))
+            index[record.candidate_id] = data
+        except (json.JSONDecodeError, OSError) as e:
+            logger.warning("Failed to load JSON for %s: %s", record.candidate_id, e)
+
+    logger.info(
+        "Loaded %d reviewed candidate JSON(s) for %d reviewed records",
+        len(index),
+        len(reviewed_ids),
+    )
+    return index
+
+
+def export_reviewed_events(
+    review_records: list[ReviewRecord],
+    output_path: Path | str,
+) -> int:
+    """Export reviewed events from candidate JSONs to events.csv.
+
+    Loads each reviewed candidate JSON, converts candidate-relative
+    timestamps to source-video timestamps, and writes a compliant
+    events.csv with one row per reviewed event.
+
+    Args:
+        review_records: Loaded review manifest records.
+        output_path: Path for the output events.csv.
+
+    Returns:
+        Number of events written.
+    """
+    reviewed_jsons = load_reviewed_candidate_jsons(review_records)
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    rows: list[dict] = []
+    for cid, data in reviewed_jsons.items():
+        events = data.get("events", [])
+        if not events:
+            continue
+
+        source_start = float(data.get("source_start_s", 0))
+        clip_id = data.get("clip_id", "")
+
+        for evt in events:
+            start_s = float(evt.get("start_s", 0))
+            end_s = float(evt.get("end_s", 0))
+
+            # Convert to source-video timestamps
+            t_start = source_start + start_s
+            t_end = source_start + end_s
+
+            # Generate deterministic event_id
+            event_id = f"evt_{cid}_{start_s:.2f}_{end_s:.2f}"
+
+            rows.append(
+                {
+                    "event_id": event_id,
+                    "clip_id": clip_id,
+                    "type": evt.get("label", "pickup"),
+                    "t_start": t_start,
+                    "t_end": t_end,
+                    "hard_case": str(evt.get("hard_case", False) is True).capitalize(),
+                    "annotator": "reviewed_manifest",
+                    "confidence": evt.get("confidence", "high"),
+                    "notes": evt.get("notes", ""),
+                }
+            )
+
+    rows.sort(key=lambda r: (r["clip_id"], r["t_start"]))
+
+    fieldnames = [
+        "event_id",
+        "clip_id",
+        "type",
+        "t_start",
+        "t_end",
+        "hard_case",
+        "annotator",
+        "confidence",
+        "notes",
+    ]
+    with open(output_path, "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(rows)
+
+    logger.info("Exported %d reviewed events to %s", len(rows), output_path)
+    return len(rows)
+
+
+def load_reviewed_events_csv(events_path: Path | str) -> list[Event]:
+    """Load the reviewed events CSV (same schema as canonical events).
+
+    Args:
+        events_path: Path to reviewed_events.csv.
+
+    Returns:
+        List of Event objects.
+    """
+    return load_events_csv(events_path)
+
+
 def resolve_reviewed_examples(
     review_records: list[ReviewRecord],
     events: list[Event],
@@ -393,23 +523,29 @@ def resolve_reviewed_examples(
 ) -> tuple[list[ReviewedExample], BuildSummary]:
     """Resolve reviewed examples from the review manifest.
 
+    The review manifest is the ground truth. Labels come from the
+    reviewed candidate JSON events, not from VLM events.csv.
+
     For each reviewed task:
-    - If it has canonical events with matching overlap → positive with event label
-    - If it's explicitly reviewed with zero events → verified negative
-    - Otherwise → excluded
+    - JSON has events → positive examples with JSON-provided labels
+    - JSON has no events → verified negative
+    - Unreviewed or missing metadata → excluded
 
     Args:
         review_records: Loaded review manifest records.
-        events: Canonical events from events.csv.
+        events: Canonical events from events.csv (for temporal reference only).
         candidate_metadata: Indexed candidate metadata.
 
     Returns:
         Tuple of (resolved examples, build summary).
     """
-    # Index events by clip_id
+    # Index events by clip_id for optional temporal reference
     events_by_clip: dict[str, list[Event]] = {}
     for evt in events:
         events_by_clip.setdefault(evt.clip_id, []).append(evt)
+
+    # Load reviewed candidate JSONs
+    reviewed_jsons = load_reviewed_candidate_jsons(review_records)
 
     examples: list[ReviewedExample] = []
     summary = BuildSummary()
@@ -433,8 +569,20 @@ def resolve_reviewed_examples(
             summary.excluded_no_match += 1
             continue
 
-        # Check if zero-event
-        if _is_zero_event(record.review_notes, record.event_count):
+        # Load reviewed JSON
+        json_data = reviewed_jsons.get(record.candidate_id)
+        if json_data is None:
+            logger.warning(
+                "No reviewed JSON for candidate %s, skipping",
+                record.candidate_id,
+            )
+            summary.excluded_no_match += 1
+            continue
+
+        reviewed_events = json_data.get("events", [])
+
+        # Zero-event → verified negative
+        if not reviewed_events:
             examples.append(
                 ReviewedExample(
                     candidate_id=record.candidate_id,
@@ -449,27 +597,21 @@ def resolve_reviewed_examples(
             summary.negatives += 1
             continue
 
-        # Positive: match to canonical events
+        # Positive: use label from reviewed JSON events
+        # If multiple events, use the first one's label for the candidate
+        best_label = reviewed_events[0].get("label", "pickup")
+
+        # Optional: find matching canonical events for temporal reference
         clip_events = events_by_clip.get(record.clip_id, [])
         matched_events = _match_events_to_candidate(
             clip_events, meta.source_start_s, meta.source_end_s
         )
 
-        if not matched_events:
-            summary.errors.append(
-                f"Reviewed positive {record.candidate_id} has no matching "
-                f"canonical event in clip {record.clip_id}"
-            )
-            logger.error(
-                "Reviewed positive %s has no matching canonical event",
-                record.candidate_id,
-            )
-            continue
-
-        # Pick the label from the best-matching event
-        best_label = matched_events[0]["type"]
-        event_ids = [e["event_id"] for e in matched_events]
-        event_labels = [e["type"] for e in matched_events]
+        event_ids: list[str] = []
+        event_labels: list[str] = []
+        if matched_events:
+            event_ids = [e["event_id"] for e in matched_events]
+            event_labels = [e["type"] for e in matched_events]
 
         examples.append(
             ReviewedExample(
@@ -493,21 +635,26 @@ def _match_events_to_candidate(
     clip_events: list[Event],
     cand_start: float,
     cand_end: float,
-    min_overlap_ratio: float = 0.3,
+    min_overlap_ratio: float = 0.1,
 ) -> list[dict]:
     """Find events that overlap with a candidate's time window.
+
+    Uses event-relative overlap ratio: overlap / event_duration.
+    A candidate is considered a match if it captures at least
+    min_overlap_ratio of the event's duration.
 
     Returns matching events as dicts with event_id, type, overlap_ratio.
     """
     matched: list[dict] = []
-    cand_duration = cand_end - cand_start
 
     for evt in clip_events:
         overlap_start = max(cand_start, evt.t_start)
         overlap_end = min(cand_end, evt.t_end)
         overlap = max(0.0, overlap_end - overlap_start)
 
-        ratio = overlap / cand_duration if cand_duration > 0 else 0.0
+        # Event-relative ratio: what fraction of the event does the candidate cover?
+        event_duration = evt.t_end - evt.t_start
+        ratio = overlap / event_duration if event_duration > 0 else 0.0
 
         if ratio >= min_overlap_ratio:
             matched.append(
@@ -794,9 +941,18 @@ def build_reviewed_feature_dataset(
     # Step 1: Load inputs
     logger.info("Loading inputs...")
     review_records = load_review_manifest(review_manifest_path)
-    events = load_events_csv(events_path)
+    _events = load_events_csv(events_path)  # VLM events, not ground truth
     _clips = load_clips_csv(clips_path)  # loaded for diagnostics
     candidate_meta = load_candidate_metadata_index(candidate_staging_dir)
+
+    # Step 1b: Regenerate events.csv from reviewed JSONs
+    logger.info("Regenerating events.csv from reviewed candidate JSONs...")
+    reviewed_events_path = output_dir / "reviewed_events.csv"
+    n_exported = export_reviewed_events(review_records, reviewed_events_path)
+    logger.info("Exported %d reviewed events to %s", n_exported, reviewed_events_path)
+
+    # Load the regenerated events for downstream use
+    events = load_reviewed_events_csv(reviewed_events_path)
 
     # Step 2: Resolve reviewed examples
     logger.info("Resolving reviewed examples...")
@@ -804,14 +960,16 @@ def build_reviewed_feature_dataset(
 
     if summary.errors:
         for err in summary.errors:
-            logger.error(err)
-        raise ValueError(
-            f"Review resolution failed with {len(summary.errors)} error(s). "
-            f"First: {summary.errors[0]}"
-        )
+            logger.warning("Review resolution issue: %s", err)
 
     if not examples:
-        raise ValueError("No reviewed examples found. Check review manifest.")
+        raise ValueError(
+            f"No reviewed examples resolved. "
+            f"{summary.total_reviewed} reviewed, "
+            f"{summary.excluded_unreviewed} unreviewed, "
+            f"{summary.excluded_no_match} no metadata, "
+            f"{len(summary.errors)} no matching event."
+        )
 
     logger.info(
         "Resolved %d examples: %d positive, %d negative",

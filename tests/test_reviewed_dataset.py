@@ -49,7 +49,71 @@ from pickup_putdown.layer1.track_a.reviewed_dataset import (
 
 @pytest.fixture
 def review_manifest(tmp_path: Path) -> Path:
-    """Create a synthetic review manifest CSV."""
+    """Create a synthetic review manifest CSV with matching JSON files."""
+    json_dir = tmp_path / "json"
+    json_dir.mkdir()
+
+    # Create JSON files with reviewed events
+    json_data = {
+        "cand_p1": {
+            "candidate_id": "cand_p1",
+            "clip_id": "D2_S20260520141725_E20260520142151_anon",
+            "source_start_s": 9.0,
+            "source_end_s": 13.0,
+            "events": [
+                {
+                    "label": "pickup",
+                    "start_s": 1.0,
+                    "end_s": 2.0,
+                    "item_count": 1,
+                    "confidence": "high",
+                    "hard_case": False,
+                    "notes": "reviewed pickup",
+                }
+            ],
+        },
+        "cand_pd1": {
+            "candidate_id": "cand_pd1",
+            "clip_id": "D2_S20260520141725_E20260520142151_anon",
+            "source_start_s": 14.0,
+            "source_end_s": 18.0,
+            "events": [
+                {
+                    "label": "putdown",
+                    "start_s": 0.5,
+                    "end_s": 1.5,
+                    "item_count": 1,
+                    "confidence": "high",
+                    "hard_case": False,
+                    "notes": "reviewed putdown",
+                }
+            ],
+        },
+        "cand_n1": {
+            "candidate_id": "cand_n1",
+            "clip_id": "D2_S20260521112037_E20260521112553_anon",
+            "source_start_s": 20.0,
+            "source_end_s": 24.0,
+            "events": [],
+        },
+        "cand_n2": {
+            "candidate_id": "cand_n2",
+            "clip_id": "D2_S20260521112037_E20260521112553_anon",
+            "source_start_s": 30.0,
+            "source_end_s": 34.0,
+            "events": [],
+        },
+        "cand_unrev": {
+            "candidate_id": "cand_unrev",
+            "clip_id": "D2_S20260522132934_E20260522133448_anon",
+            "source_start_s": 49.0,
+            "source_end_s": 53.0,
+            "events": [],
+        },
+    }
+    for cid, data in json_data.items():
+        (json_dir / f"{cid}.json").write_text(json.dumps(data))
+
     p = tmp_path / "review_manifest.csv"
     with open(p, "w", newline="") as f:
         writer = csv.writer(f)
@@ -71,7 +135,7 @@ def review_manifest(tmp_path: Path) -> Path:
                 "D2_S20260520141725_E20260520142151_anon",
                 "vlm_positive",
                 "/v/cand_p1.mp4",
-                "/j/cand_p1.json",
+                str(json_dir / "cand_p1.json"),
                 1,
                 "true",
                 "confirmed pickup",
@@ -83,7 +147,7 @@ def review_manifest(tmp_path: Path) -> Path:
                 "D2_S20260520141725_E20260520142151_anon",
                 "vlm_positive",
                 "/v/cand_pd1.mp4",
-                "/j/cand_pd1.json",
+                str(json_dir / "cand_pd1.json"),
                 1,
                 "true",
                 "confirmed putdown",
@@ -95,7 +159,7 @@ def review_manifest(tmp_path: Path) -> Path:
                 "D2_S20260521112037_E20260521112553_anon",
                 "negative_sample",
                 "/v/cand_n1.mp4",
-                "/j/cand_n1.json",
+                str(json_dir / "cand_n1.json"),
                 0,
                 "true",
                 "confirmed no events",
@@ -107,7 +171,7 @@ def review_manifest(tmp_path: Path) -> Path:
                 "D2_S20260521112037_E20260521112553_anon",
                 "vlm_positive",
                 "/v/cand_n2.mp4",
-                "/j/cand_n2.json",
+                str(json_dir / "cand_n2.json"),
                 0,
                 "true",
                 "confirmed no event",
@@ -119,7 +183,7 @@ def review_manifest(tmp_path: Path) -> Path:
                 "D2_S20260522132934_E20260522133448_anon",
                 "vlm_positive",
                 "/v/cand_unrev.mp4",
-                "/j/cand_unrev.json",
+                str(json_dir / "cand_unrev.json"),
                 1,
                 "false",
                 "not reviewed yet",
@@ -131,7 +195,7 @@ def review_manifest(tmp_path: Path) -> Path:
                 "D2_S20260522132934_E20260522133448_anon",
                 "vlm_positive",
                 "/v/cand_nometa.mp4",
-                "/j/cand_nometa.json",
+                str(json_dir / "cand_nometa.json"),
                 1,
                 "true",
                 "confirmed pickup",
@@ -453,8 +517,161 @@ class TestResolveReviewedExamples:
         assert "cand_nometa" not in cids
         assert summary.excluded_no_match >= 1
 
-    def test_unmatched_positive_raises_error(self, tmp_path):
-        """A reviewed positive with no matching canonical event produces an error."""
+    def test_labels_from_reviewed_json(self, tmp_path):
+        """Labels come from reviewed JSON events, not VLM events."""
+        json_dir = tmp_path / "json"
+        json_dir.mkdir()
+
+        # JSON has pickup label
+        (json_dir / "cand_good.json").write_text(
+            json.dumps(
+                {
+                    "candidate_id": "cand_good",
+                    "clip_id": "clip1",
+                    "source_start_s": 10.0,
+                    "source_end_s": 12.0,
+                    "events": [
+                        {"label": "pickup", "start_s": 0.5, "end_s": 1.5, "confidence": "high"}
+                    ],
+                }
+            )
+        )
+
+        manifest = tmp_path / "m.csv"
+        with open(manifest, "w", newline="") as f:
+            writer = csv.writer(f)
+            writer.writerow(
+                [
+                    "candidate_id",
+                    "clip_id",
+                    "review_groups",
+                    "video_path",
+                    "json_path",
+                    "event_count",
+                    "reviewed",
+                    "review_notes",
+                ]
+            )
+            writer.writerow(
+                [
+                    "cand_good",
+                    "clip1",
+                    "vlm_positive",
+                    "/v/c.mp4",
+                    str(json_dir / "cand_good.json"),
+                    1,
+                    "true",
+                    "confirmed pickup",
+                ]
+            )
+
+        events = []  # No VLM events
+        meta = {
+            "cand_good": CandidateMetadata(
+                candidate_id="cand_good",
+                clip_id="clip1",
+                source_start_s=10.0,
+                source_end_s=12.0,
+                duration_s=2.0,
+            )
+        }
+
+        records = load_review_manifest(manifest)
+        examples, summary = resolve_reviewed_examples(records, events, meta)
+        assert len(examples) == 1
+        assert examples[0].label == "pickup"
+        assert summary.positives == 1
+
+    def test_missing_json_excluded(self, tmp_path):
+        """Candidate with missing JSON is excluded."""
+        manifest = tmp_path / "m.csv"
+        with open(manifest, "w", newline="") as f:
+            writer = csv.writer(f)
+            writer.writerow(
+                [
+                    "candidate_id",
+                    "clip_id",
+                    "review_groups",
+                    "video_path",
+                    "json_path",
+                    "event_count",
+                    "reviewed",
+                    "review_notes",
+                ]
+            )
+            writer.writerow(
+                [
+                    "cand_bad",
+                    "clip1",
+                    "vlm_positive",
+                    "/v/c.mp4",
+                    "/nonexistent/c.json",
+                    1,
+                    "true",
+                    "confirmed pickup",
+                ]
+            )
+
+        events = []
+        meta = {
+            "cand_bad": CandidateMetadata(
+                candidate_id="cand_bad",
+                clip_id="clip1",
+                source_start_s=10.0,
+                source_end_s=12.0,
+                duration_s=2.0,
+            )
+        }
+
+        records = load_review_manifest(manifest)
+        examples, summary = resolve_reviewed_examples(records, events, meta)
+        assert len(examples) == 0
+        assert summary.excluded_no_match >= 1
+
+    def test_event_relative_overlap(self):
+        """Event-relative overlap matches even when candidate is much wider."""
+        from pickup_putdown.layer1.track_a.reviewed_dataset import (
+            _match_events_to_candidate,
+        )
+
+        # Wide candidate (8s), short event (1s) — candidate fully covers event
+        events = [
+            Event(
+                event_id="evt1",
+                clip_id="clip1",
+                type=EventType.PICKUP,
+                t_start=5.0,
+                t_end=6.0,
+            )
+        ]
+        matched = _match_events_to_candidate(events, 2.0, 10.0)
+        assert len(matched) == 1
+        assert matched[0]["event_id"] == "evt1"
+        # Event-relative: 1s overlap / 1s event = 1.0
+        assert matched[0]["overlap_ratio"] == 1.0
+
+    def test_partial_event_overlap_matches(self):
+        """Partial event coverage still matches above threshold."""
+        from pickup_putdown.layer1.track_a.reviewed_dataset import (
+            _match_events_to_candidate,
+        )
+
+        # Event is 2s, candidate covers 0.5s of it → 25% > 10% threshold
+        events = [
+            Event(
+                event_id="evt1",
+                clip_id="clip1",
+                type=EventType.PICKUP,
+                t_start=5.0,
+                t_end=7.0,
+            )
+        ]
+        matched = _match_events_to_candidate(events, 5.0, 5.5)
+        assert len(matched) == 1
+        assert matched[0]["overlap_ratio"] == pytest.approx(0.25)
+
+    def test_no_examples_raises(self, tmp_path):
+        """Pipeline raises when no examples are resolved at all."""
         manifest = tmp_path / "m.csv"
         with open(manifest, "w", newline="") as f:
             writer = csv.writer(f)
@@ -476,23 +693,14 @@ class TestResolveReviewedExamples:
                     "D2_S20260599999999_E20260599999999_anon",
                     "vlm_positive",
                     "/v/c.mp4",
-                    "/j/c.json",
+                    "/nonexistent/c.json",
                     1,
                     "true",
                     "confirmed pickup",
                 ]
             )
 
-        events = [
-            Event(
-                event_id="evt_other",
-                clip_id="D2_S20260520141725_E20260520142151_anon",
-                type=EventType.PICKUP,
-                t_start=10.0,
-                t_end=12.0,
-            )
-        ]
-
+        events = []
         meta = {
             "cand_bad": CandidateMetadata(
                 candidate_id="cand_bad",
@@ -504,9 +712,9 @@ class TestResolveReviewedExamples:
         }
 
         records = load_review_manifest(manifest)
-        _, summary = resolve_reviewed_examples(records, events, meta)
-        assert len(summary.errors) >= 1
-        assert "no matching canonical event" in summary.errors[0]
+        examples, summary = resolve_reviewed_examples(records, events, meta)
+        assert len(examples) == 0
+        assert summary.excluded_no_match >= 1
 
 
 # ---------------------------------------------------------------------------
