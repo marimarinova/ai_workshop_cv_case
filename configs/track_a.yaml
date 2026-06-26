@@ -15,3 +15,31 @@ classifiers:
     margin_threshold: 0.15
     class_weight: balanced
     max_iter: 1000
+
+# State machine configuration for Phase 3 temporal detection
+state_machine:
+  # Spatial thresholds
+  region_entry_distance_px: 40.0
+
+  # Temporal durations (seconds)
+  minimum_approach_s: 0.10
+  minimum_contact_s: 0.15
+  minimum_transfer_s: 0.20
+  minimum_withdrawal_s: 0.10
+  maximum_observation_gap_s: 0.50
+  state_timeout_s: 3.00
+  cycle_reset_timeout_s: 2.00
+  debounce_s: 0.10
+  minimum_event_separation_s: 0.30
+
+  # Probability thresholds
+  hand_probability_threshold: 0.55
+  shelf_probability_threshold: 0.50
+  maximum_uncertainty_ratio: 0.50
+  event_confidence_threshold: 0.50
+
+  # Confidence weights (must sum to 1.0)
+  confidence_weights:
+    hand: 0.40
+    shelf: 0.40
+    trajectory: 0.20
