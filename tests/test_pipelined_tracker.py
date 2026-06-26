@@ -116,10 +116,7 @@ class TestSharedFrameBuffer:
             frame_width=640,
         )
 
-        frames = [
-            np.random.randint(0, 255, (480, 640, 3), dtype=np.uint8)
-            for _ in range(4)
-        ]
+        frames = [np.random.randint(0, 255, (480, 640, 3), dtype=np.uint8) for _ in range(4)]
 
         for i, frame in enumerate(frames):
             buffer.write_frame(i, frame)

@@ -271,9 +271,7 @@ def _post_json(
             response_body = response.read().decode("utf-8")
     except urllib.error.HTTPError as exc:
         error_body = exc.read().decode("utf-8", errors="replace")
-        raise VlmClientError(
-            f"VLM HTTP {exc.code}: {error_body[:1_000]}"
-        ) from exc
+        raise VlmClientError(f"VLM HTTP {exc.code}: {error_body[:1_000]}") from exc
     except (urllib.error.URLError, TimeoutError, socket.timeout) as exc:
         raise VlmClientError(f"VLM request failed: {exc}") from exc
 
@@ -281,14 +279,11 @@ def _post_json(
         decoded = json.loads(response_body)
     except json.JSONDecodeError as exc:
         raise VlmClientError(
-            "llama.cpp returned a non-JSON API response: "
-            f"{response_body[:1_000]!r}"
+            f"llama.cpp returned a non-JSON API response: {response_body[:1_000]!r}"
         ) from exc
 
     if not isinstance(decoded, dict):
-        raise VlmClientError(
-            f"Unexpected top-level API response type: {type(decoded).__name__}"
-        )
+        raise VlmClientError(f"Unexpected top-level API response type: {type(decoded).__name__}")
 
     return decoded
 
@@ -307,17 +302,13 @@ def _extract_assistant_response(
         ) from exc
 
     finish_reason_raw = choice.get("finish_reason")
-    finish_reason = (
-        str(finish_reason_raw) if finish_reason_raw is not None else None
-    )
+    finish_reason = str(finish_reason_raw) if finish_reason_raw is not None else None
 
     content_raw = message.get("content")
     content = content_raw if isinstance(content_raw, str) else ""
 
     reasoning_raw = message.get("reasoning_content")
-    reasoning_content = (
-        reasoning_raw if isinstance(reasoning_raw, str) else ""
-    )
+    reasoning_content = reasoning_raw if isinstance(reasoning_raw, str) else ""
 
     usage_raw = response.get("usage")
     usage = usage_raw if isinstance(usage_raw, dict) else {}
@@ -335,9 +326,7 @@ def _extract_assistant_response(
     )
 
     if finish_reason == "length":
-        raise VlmClientError(
-            "VLM response reached the output-token limit"
-        )
+        raise VlmClientError("VLM response reached the output-token limit")
 
     if not content.strip():
         if reasoning_content:
@@ -378,9 +367,7 @@ def _coerce_int(value: Any, field_name: str) -> int:
     try:
         converted = int(value)
     except (TypeError, ValueError) as exc:
-        raise VlmClientError(
-            f"{field_name} must be an integer, got {value!r}"
-        ) from exc
+        raise VlmClientError(f"{field_name} must be an integer, got {value!r}") from exc
 
     return converted
 
@@ -393,9 +380,7 @@ def _normalize_event(
     """Validate and normalize one event object."""
 
     if not isinstance(event, dict):
-        raise VlmClientError(
-            f"Event must be an object, got {type(event).__name__}"
-        )
+        raise VlmClientError(f"Event must be an object, got {type(event).__name__}")
 
     label = str(event.get("label", "")).strip().lower()
     if label not in {"pickup", "putdown"}:
@@ -409,9 +394,7 @@ def _normalize_event(
         raise VlmClientError("start_frame must be non-negative")
 
     if end_frame < start_frame:
-        raise VlmClientError(
-            f"end_frame {end_frame} is before start_frame {start_frame}"
-        )
+        raise VlmClientError(f"end_frame {end_frame} is before start_frame {start_frame}")
 
     if frame_count is not None and frame_count > 0:
         if start_frame >= frame_count or end_frame >= frame_count:
@@ -428,9 +411,7 @@ def _normalize_event(
         confidence = "med"
 
     if confidence not in {"high", "med", "low"}:
-        raise VlmClientError(
-            f"Unsupported confidence value: {confidence!r}"
-        )
+        raise VlmClientError(f"Unsupported confidence value: {confidence!r}")
 
     hard_case_raw = event.get("hard_case", False)
     if not isinstance(hard_case_raw, bool):
@@ -468,9 +449,7 @@ def _parse_vlm_response(
         ) from exc
 
     if not isinstance(parsed, dict):
-        raise VlmClientError(
-            f"VLM output must be a JSON object, got {type(parsed).__name__}"
-        )
+        raise VlmClientError(f"VLM output must be a JSON object, got {type(parsed).__name__}")
 
     events_raw = parsed.get("events")
     if not isinstance(events_raw, list):
@@ -480,10 +459,7 @@ def _parse_vlm_response(
     if not isinstance(reasoning_raw, str):
         raise VlmClientError("VLM output field 'reasoning' must be a string")
 
-    events = [
-        _normalize_event(event, frame_count=frame_count)
-        for event in events_raw
-    ]
+    events = [_normalize_event(event, frame_count=frame_count) for event in events_raw]
 
     return {
         "events": events,
@@ -548,9 +524,7 @@ def call_vlm(
 
     for attempt in range(1, config.max_attempts + 1):
         max_tokens = (
-            config.max_tokens
-            if attempt == 1
-            else max(config.max_tokens, config.retry_max_tokens)
+            config.max_tokens if attempt == 1 else max(config.max_tokens, config.retry_max_tokens)
         )
 
         payload = _build_payload(
@@ -570,9 +544,7 @@ def call_vlm(
                 timeout_s=config.timeout_s,
             )
 
-            content, finish_reason, _, usage = (
-                _extract_assistant_response(response)
-            )
+            content, finish_reason, _, usage = _extract_assistant_response(response)
 
             last_raw_response = content
             last_finish_reason = finish_reason
@@ -650,9 +622,7 @@ def vlm_result_to_annotations(
     """
 
     if vlm_response.get("status") == "failed":
-        raise VlmClientError(
-            str(vlm_response.get("error") or "VLM annotation failed")
-        )
+        raise VlmClientError(str(vlm_response.get("error") or "VLM annotation failed"))
 
     if fps <= 0:
         logger.warning(
@@ -682,20 +652,17 @@ def vlm_result_to_annotations(
 
         start_s = start_frame / fps
         end_s = (end_frame + 1) / fps
-        
+
         if duration_s is not None:
             start_s = min(start_s, duration_s)
             end_s = min(end_s, duration_s)
-        
+
         if end_s <= start_s:
             raise VlmClientError(
-                f"Invalid event interval after clamping: "
-                f"start_s={start_s}, end_s={end_s}"
+                f"Invalid event interval after clamping: start_s={start_s}, end_s={end_s}"
             )
 
-        confidence_str = str(
-            event.get("confidence", "med")
-        ).strip().lower()
+        confidence_str = str(event.get("confidence", "med")).strip().lower()
 
         annotations.append(
             {

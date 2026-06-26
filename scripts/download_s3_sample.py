@@ -119,9 +119,7 @@ def main() -> None:
                 size_bytes = obj["Size"]
                 size_mb = size_bytes / (1024 * 1024)
 
-                if key.lower().endswith(".mp4") and (
-                    args.all or size_mb >= args.min_size_mb
-                ):
+                if key.lower().endswith(".mp4") and (args.all or size_mb >= args.min_size_mb):
                     clips.append((key, size_bytes))
     except (BotoCoreError, ClientError) as exc:
         raise SystemExit(f"Could not list S3 objects: {exc}") from exc

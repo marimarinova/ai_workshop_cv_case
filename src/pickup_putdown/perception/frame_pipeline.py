@@ -146,7 +146,9 @@ class SharedFrameBuffer:
         if slot_index < 0 or slot_index >= self.n_slots:
             raise ValueError(f"slot_index {slot_index} out of range [0, {self.n_slots})")
         if frame.shape != self.frame_shape:
-            raise ValueError(f"Frame shape {frame.shape} doesn't match expected {self.frame_shape}")
+            raise ValueError(
+                f"Frame shape {frame.shape} doesn't match expected {self.frame_shape}"
+            )
 
         np.copyto(self._buffer[slot_index], frame)
 
@@ -634,10 +636,7 @@ class FrameReorderer:
         bool
             True if all frames have been received.
         """
-        return (
-            self.expected_sample_idx >= self.total_frames
-            and len(self.pending) == 0
-        )
+        return self.expected_sample_idx >= self.total_frames and len(self.pending) == 0
 
     @property
     def n_pending(self) -> int:
