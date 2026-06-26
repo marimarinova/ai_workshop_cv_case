@@ -78,6 +78,22 @@ class TrackAStage:
                 "TrackAStage default wiring is deferred until Task 16 lands; inject "
                 "candidate_loader and feature_fn (see module docstring)."
             )
+        # Defensive availability gate: if a classifier was not explicitly
+        # injected and no trained checkpoint exists, do NOT silently fall back to
+        # placeholder estimators — their output must never surface as a real
+        # prediction. Explicit injection (e.g. tests) bypasses this.
+        needs_load = self._hand_classifier is None or self._shelf_classifier is None
+        if needs_load and not self.is_available():
+            return {
+                "status": "unavailable",
+                "n_events": 0,
+                "predictions": [],
+                "reason": (
+                    "no trained Track A checkpoints (task_7 pending); refusing to "
+                    "emit placeholder predictions"
+                ),
+            }
+
         candidate_inputs = self._candidate_loader(ctx)
         hand = self._hand_classifier or load_hand_state_classifier(self._config.track_a)
         shelf = self._shelf_classifier or load_shelf_state_classifier(self._config.track_a)

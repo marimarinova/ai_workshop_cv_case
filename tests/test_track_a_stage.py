@@ -105,3 +105,21 @@ def test_run_delegates_with_injected_hooks() -> None:
     assert summary["status"] == "ok"
     assert summary["n_events"] == 1
     assert summary["predictions"][0]["type"] == "pickup"
+
+
+def test_run_is_gated_when_unavailable_and_no_injected_classifiers() -> None:
+    # No checkpoints (AppConfig defaults) and no injected classifiers: the stage
+    # must NOT fall back to placeholders and emit them as real predictions.
+    pickup = [_feat(0, 0.1, 0.9), _feat(1, 0.1, 0.9), _feat(2, 0.9, 0.1), _feat(3, 0.9, 0.1)]
+    stage = TrackAStage(
+        AppConfig(),
+        candidate_loader=lambda ctx: [_candidate_input()],
+        feature_fn=lambda ci: pickup,
+        # classifiers intentionally NOT injected
+    )
+
+    summary = stage.run(cast(StageContextLike, _Ctx()))
+
+    assert summary["status"] == "unavailable"
+    assert summary["n_events"] == 0
+    assert summary["predictions"] == []  # no placeholder events surfaced
