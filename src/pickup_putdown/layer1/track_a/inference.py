@@ -13,6 +13,7 @@ encoder wiring live in the CLI layer (next commit).
 from __future__ import annotations
 
 import csv
+import logging
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -29,6 +30,8 @@ from pickup_putdown.layer1.track_a.state_types import (
     StateObservation,
     TrackAPrediction,
 )
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from pickup_putdown.common.schemas import Candidate, PoseObservation
@@ -76,22 +79,39 @@ def infer_track_a(
 ) -> list[TrackAPrediction]:
     """Run Track A over one clip's candidates and return canonical predictions."""
     groups: list[GroupInput] = []
+    skipped = 0
     for candidate_input in candidate_inputs:
+        candidate = candidate_input.candidate
+        # A candidate without an actor hand and region cannot be attributed to a
+        # state machine. Skip it rather than defaulting to "" — that would fold
+        # unrelated candidates into a single ActorHandRegion key.
+        if candidate.hand_side is None or candidate.region_id is None:
+            logger.warning(
+                "skipping candidate %s: missing hand_side/region_id (%r/%r)",
+                candidate.candidate_id,
+                candidate.hand_side,
+                candidate.region_id,
+            )
+            skipped += 1
+            continue
         features = feature_fn(candidate_input)
         if not features:
             continue
         observations = observations_from_features(features, hand_classifier, shelf_classifier)
-        candidate = candidate_input.candidate
         groups.append(
             GroupInput(
                 group=ActorHandRegion(
                     actor_id=candidate.actor_id,
-                    hand_side=candidate.hand_side or "",
-                    region_id=candidate.region_id or "",
+                    hand_side=candidate.hand_side,
+                    region_id=candidate.region_id,
                 ),
                 candidate_id=candidate.candidate_id,
                 observations=tuple(observations),
             )
+        )
+    if skipped:
+        logger.info(
+            "Track A: skipped %d candidate(s) with missing actor/hand/region keys", skipped
         )
     return decode_all(clip_id, groups, config)
 

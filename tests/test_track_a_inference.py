@@ -104,6 +104,51 @@ def test_infer_track_a_writes_task8_consumable_events(tmp_path: Path) -> None:
     assert {e.pred_id for e in evaluated} == {p.pred_id for p in predictions}
 
 
+def _candidate_input_raw(
+    candidate_id: str, *, hand_side: str | None, region_id: str | None
+) -> CandidateInput:
+    candidate = Candidate(
+        candidate_id=candidate_id,
+        clip_id="clip_x",
+        actor_id="a1",
+        hand_side=hand_side,
+        region_id=region_id,
+        raw_start_s=0.0,
+        raw_end_s=20.0,
+        window_start_s=0.0,
+        window_end_s=20.0,
+    )
+    return CandidateInput(
+        candidate=candidate, pose_observations=(), shelf_region=cast("Polygon", object())
+    )
+
+
+def test_candidates_with_missing_hand_or_region_are_skipped_not_merged() -> None:
+    # Two same-actor candidates missing the hand/region key would, with an "" /
+    # "" default, fold into one ActorHandRegion — they must be skipped instead.
+    inputs = [
+        _candidate_input_raw("candA", hand_side=None, region_id="shelf1"),
+        _candidate_input_raw("candB", hand_side="left", region_id=None),
+        _candidate_input("candP"),  # valid -> a real pickup
+    ]
+
+    def feature_fn(candidate_input: CandidateInput) -> list[SampleFeatures]:
+        return _PICKUP  # every candidate would otherwise produce an event
+
+    predictions = infer_track_a(
+        "clip_x",
+        inputs,
+        TrackAConfig(),
+        hand_classifier=_ProbeHand(),
+        shelf_classifier=_ProbeShelf(),
+        feature_fn=feature_fn,
+    )
+
+    # Only the valid candidate is decoded.
+    assert len(predictions) == 1
+    assert predictions[0].pred_id.startswith("candP")
+
+
 def test_infer_track_a_skips_candidates_without_features(tmp_path: Path) -> None:
     def feature_fn(candidate_input: CandidateInput) -> list[SampleFeatures]:
         return []  # no features -> candidate contributes nothing
