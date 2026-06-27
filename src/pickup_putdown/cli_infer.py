@@ -79,8 +79,9 @@ def _select_registry(config: AppConfig, components: str | None) -> list[Stage]:
     """Build the default stage registry, optionally filtered to ``components``.
 
     ``components`` is a comma-separated allowlist of stage names; when omitted the
-    full default pipeline runs. Unknown names raise a clear error (exit 2) rather
-    than silently running a different pipeline.
+    full default pipeline runs. Unknown names — or a selection that omits a
+    selected stage's upstream dependency — raise a clear error (exit 2) rather
+    than silently running a different (or guaranteed-to-block) pipeline.
     """
     registry = build_default_registry(config)
     if not components:
@@ -95,7 +96,18 @@ def _select_registry(config: AppConfig, components: str | None) -> list[Stage]:
         )
         raise typer.Exit(code=2)
     selected = set(requested)
-    return [stage for stage in registry if stage.name in selected]
+    chosen = [stage for stage in registry if stage.name in selected]
+    # A selected stage whose upstream input is not also selected would always be
+    # gated as "blocked" at run time; fail fast with a clear, actionable error.
+    for stage in chosen:
+        for dep in stage.inputs:
+            if dep not in selected:
+                typer.echo(
+                    f"Component {stage.name!r} requires {dep!r}, which is not in the selection.",
+                    err=True,
+                )
+                raise typer.Exit(code=2)
+    return chosen
 
 
 def _run_one(
