@@ -173,6 +173,21 @@ class TrackB1Config(BaseModel):
     results_dir: str = "results/layer1_track_b1"
 
 
+class TrackAStageConfig(BaseModel):
+    """Wiring for the Track A detector stage in the batch pipeline (Task 16).
+
+    Defaults mirror the ``infer-track-a`` CLI so activating Track A is a
+    checkpoint drop-in (Task 7) with no code change. ``config_path`` points at
+    the Track A YAML — its own ``classifiers``/``state_machine``/``inference``
+    schema, distinct from the resolved :class:`AppConfig`.
+    """
+
+    config_path: str = "configs/track_a.yaml"
+    shelves_config: str = "configs/shelves.yaml"
+    camera_id: str = "store_camera_01"
+    artifact_dir: str = ".local/track_a_artifacts"
+
+
 class PreviewConfig(BaseModel):
     """Configuration for candidate preview rendering."""
 
@@ -199,6 +214,7 @@ class AppConfig(BaseModel):
     preview: PreviewConfig = Field(default_factory=PreviewConfig)
     track_a_features: TrackAFeaturesConfig = Field(default_factory=TrackAFeaturesConfig)
     track_b1: TrackB1Config = Field(default_factory=TrackB1Config)
+    track_a_stage: TrackAStageConfig = Field(default_factory=TrackAStageConfig)
     data_dir: str = "data"
     output_dir: str = "outputs"
     cache_dir: str = "cache"
