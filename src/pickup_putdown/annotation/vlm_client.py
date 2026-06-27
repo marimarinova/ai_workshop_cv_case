@@ -1,10 +1,9 @@
-"""llama.cpp OpenAI-compatible vision client for VLM annotation.
+"""Annotation-specific VLM client.
 
-Sends contact sheet images to a local llama.cpp server running a vision model
-and parses structured JSON responses into event annotations.
-
-Invalid, empty, or truncated responses are retried. Final failures are returned
-with ``status="failed"`` and must not be treated as valid zero-event results.
+Wraps the shared ``pickup_putdown.vlm`` client with annotation-specific
+prompts, JSON schemas, response validation, and frame-to-annotation
+conversion.  All public interfaces from the original ``vlm_client.py``
+are preserved for backward compatibility with ``vlm_annotate.py``.
 """
 
 from __future__ import annotations
@@ -12,45 +11,29 @@ from __future__ import annotations
 import base64
 import json
 import logging
-import socket
-import time
-import urllib.error
-import urllib.request
 from pathlib import Path
 from typing import Any, Final
 
-from pydantic import BaseModel, Field
-
 from pickup_putdown.annotation.schemas import ConfidenceLevel, EventLabel
+from pickup_putdown.vlm.client import VlmClientError as _SharedVlmClientError
+from pickup_putdown.vlm.client import call_vlm as _shared_call_vlm
+from pickup_putdown.vlm.schemas import VlmClientConfig as _SharedConfig
+from pickup_putdown.vlm.schemas import VlmRequest, VlmResponse
 
 logger = logging.getLogger(__name__)
 
 
-class VlmClientConfig(BaseModel):
-    """Configuration for the llama.cpp VLM client."""
+# ---------------------------------------------------------------------------
+# Re-export shared types so callers import from this module unchanged
+# ---------------------------------------------------------------------------
 
-    base_url: str = "http://localhost:8080"
-    model: str = ""
-    temperature: float = 0.0
-
-    # First-attempt output budget.
-    max_tokens: int = Field(default=2048, ge=256)
-
-    # Used after a truncated or malformed first response.
-    retry_max_tokens: int = Field(default=4096, ge=256)
-    max_attempts: int = Field(default=2, ge=1, le=5)
-    retry_delay_s: float = Field(default=1.0, ge=0.0)
-
-    timeout_s: int = Field(default=180, ge=1)
-
-    # Structured annotation should not spend tokens on hidden reasoning.
-    disable_thinking: bool = True
-    enforce_json_schema: bool = True
+VlmClientConfig = _SharedConfig
+VlmClientError = _SharedVlmClientError
 
 
-class VlmClientError(RuntimeError):
-    """Raised when a VLM response cannot be used safely."""
-
+# ---------------------------------------------------------------------------
+# Annotation JSON schema (unchanged from original)
+# ---------------------------------------------------------------------------
 
 ANNOTATION_JSON_SCHEMA: Final[dict[str, Any]] = {
     "type": "object",
@@ -111,6 +94,10 @@ ANNOTATION_JSON_SCHEMA: Final[dict[str, Any]] = {
 }
 
 
+# ---------------------------------------------------------------------------
+# Annotation system prompt (unchanged from original)
+# ---------------------------------------------------------------------------
+
 SYSTEM_PROMPT = """\
 You are a video event annotator for a retail pickup/putdown detection task.
 
@@ -151,9 +138,13 @@ Keep reasoning to at most two short sentences.
 """
 
 
+# ---------------------------------------------------------------------------
+# Helpers (moved from original vlm_client.py)
+# ---------------------------------------------------------------------------
+
+
 def _image_to_base64(image_path: Path) -> str:
     """Read an image file and return a base64-encoded string."""
-
     return base64.b64encode(image_path.read_bytes()).decode("ascii")
 
 
@@ -166,7 +157,6 @@ def _failure_result(
     usage: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Build an explicit failed VLM result."""
-
     return {
         "status": "failed",
         "events": [],
@@ -179,7 +169,7 @@ def _failure_result(
     }
 
 
-def _build_payload(
+def _build_request(
     *,
     image_b64: str,
     frame_count: int,
@@ -188,9 +178,8 @@ def _build_payload(
     config: VlmClientConfig,
     max_tokens: int,
     attempt: int,
-) -> dict[str, Any]:
+) -> VlmRequest:
     """Build one OpenAI-compatible chat-completions request."""
-
     retry_instruction = ""
     if attempt > 1:
         retry_instruction = (
@@ -206,169 +195,56 @@ def _build_payload(
         f"{retry_instruction}"
     )
 
-    payload: dict[str, Any] = {
+    messages = [
+        {
+            "role": "system",
+            "content": SYSTEM_PROMPT,
+        },
+        {
+            "role": "user",
+            "content": [
+                {
+                    "type": "text",
+                    "text": user_text,
+                },
+                {
+                    "type": "image_url",
+                    "image_url": {
+                        "url": f"data:image/jpeg;base64,{image_b64}",
+                    },
+                },
+            ],
+        },
+    ]
+
+    kwargs: dict[str, Any] = {
         "model": config.model,
         "stream": False,
         "temperature": config.temperature,
         "max_tokens": max_tokens,
-        "messages": [
-            {
-                "role": "system",
-                "content": SYSTEM_PROMPT,
-            },
-            {
-                "role": "user",
-                "content": [
-                    {
-                        "type": "text",
-                        "text": user_text,
-                    },
-                    {
-                        "type": "image_url",
-                        "image_url": {
-                            "url": f"data:image/jpeg;base64,{image_b64}",
-                        },
-                    },
-                ],
-            },
-        ],
+        "messages": messages,
     }
 
     if config.disable_thinking:
-        payload["chat_template_kwargs"] = {
-            "enable_thinking": False,
-        }
+        kwargs["chat_template_kwargs"] = {"enable_thinking": False}
 
     if config.enforce_json_schema:
-        payload["response_format"] = {
+        kwargs["response_format"] = {
             "type": "json_object",
             "schema": ANNOTATION_JSON_SCHEMA,
         }
 
-    return payload
-
-
-def _post_json(
-    *,
-    url: str,
-    payload: dict[str, Any],
-    timeout_s: int,
-) -> dict[str, Any]:
-    """POST JSON and decode the JSON response."""
-
-    request = urllib.request.Request(
-        url,
-        data=json.dumps(payload).encode("utf-8"),
-        headers={
-            "Accept": "application/json",
-            "Content-Type": "application/json",
-        },
-        method="POST",
-    )
-
-    try:
-        with urllib.request.urlopen(request, timeout=timeout_s) as response:
-            response_body = response.read().decode("utf-8")
-    except urllib.error.HTTPError as exc:
-        error_body = exc.read().decode("utf-8", errors="replace")
-        raise VlmClientError(f"VLM HTTP {exc.code}: {error_body[:1_000]}") from exc
-    except (urllib.error.URLError, TimeoutError, socket.timeout) as exc:
-        raise VlmClientError(f"VLM request failed: {exc}") from exc
-
-    try:
-        decoded = json.loads(response_body)
-    except json.JSONDecodeError as exc:
-        raise VlmClientError(
-            f"llama.cpp returned a non-JSON API response: {response_body[:1_000]!r}"
-        ) from exc
-
-    if not isinstance(decoded, dict):
-        raise VlmClientError(f"Unexpected top-level API response type: {type(decoded).__name__}")
-
-    return decoded
-
-
-def _extract_assistant_response(
-    response: dict[str, Any],
-) -> tuple[str, str | None, str, dict[str, Any]]:
-    """Extract content and termination metadata from a chat response."""
-
-    try:
-        choice = response["choices"][0]
-        message = choice["message"]
-    except (KeyError, IndexError, TypeError) as exc:
-        raise VlmClientError(
-            "Unexpected VLM response structure: missing choices[0].message"
-        ) from exc
-
-    finish_reason_raw = choice.get("finish_reason")
-    finish_reason = str(finish_reason_raw) if finish_reason_raw is not None else None
-
-    content_raw = message.get("content")
-    content = content_raw if isinstance(content_raw, str) else ""
-
-    reasoning_raw = message.get("reasoning_content")
-    reasoning_content = reasoning_raw if isinstance(reasoning_raw, str) else ""
-
-    usage_raw = response.get("usage")
-    usage = usage_raw if isinstance(usage_raw, dict) else {}
-
-    logger.debug(
-        (
-            "VLM completion: finish_reason=%s content_chars=%d "
-            "reasoning_chars=%d prompt_tokens=%s completion_tokens=%s"
-        ),
-        finish_reason,
-        len(content),
-        len(reasoning_content),
-        usage.get("prompt_tokens"),
-        usage.get("completion_tokens"),
-    )
-
-    if finish_reason == "length":
-        raise VlmClientError("VLM response reached the output-token limit")
-
-    if not content.strip():
-        if reasoning_content:
-            raise VlmClientError(
-                "VLM returned no final content but produced "
-                f"{len(reasoning_content)} reasoning characters"
-            )
-
-        raise VlmClientError("VLM returned empty assistant content")
-
-    return content, finish_reason, reasoning_content, usage
-
-
-def _strip_code_fence(content: str) -> str:
-    """Remove one optional Markdown code fence."""
-
-    text = content.strip()
-    if not text.startswith("```"):
-        return text
-
-    lines = text.splitlines()
-
-    if lines and lines[0].strip().startswith("```"):
-        lines = lines[1:]
-
-    if lines and lines[-1].strip().startswith("```"):
-        lines = lines[:-1]
-
-    return "\n".join(lines).strip()
+    return VlmRequest(**kwargs)
 
 
 def _coerce_int(value: Any, field_name: str) -> int:
     """Convert a JSON value to an integer without accepting booleans."""
-
     if isinstance(value, bool):
         raise VlmClientError(f"{field_name} must be an integer")
-
     try:
         converted = int(value)
     except (TypeError, ValueError) as exc:
         raise VlmClientError(f"{field_name} must be an integer, got {value!r}") from exc
-
     return converted
 
 
@@ -378,7 +254,6 @@ def _normalize_event(
     frame_count: int | None,
 ) -> dict[str, Any]:
     """Validate and normalize one event object."""
-
     if not isinstance(event, dict):
         raise VlmClientError(f"Event must be an object, got {type(event).__name__}")
 
@@ -396,12 +271,15 @@ def _normalize_event(
     if end_frame < start_frame:
         raise VlmClientError(f"end_frame {end_frame} is before start_frame {start_frame}")
 
-    if frame_count is not None and frame_count > 0:
-        if start_frame >= frame_count or end_frame >= frame_count:
-            raise VlmClientError(
-                "Event frame range is outside the contact sheet: "
-                f"{start_frame}-{end_frame}, frame_count={frame_count}"
-            )
+    if (
+        frame_count is not None
+        and frame_count > 0
+        and (start_frame >= frame_count or end_frame >= frame_count)
+    ):
+        raise VlmClientError(
+            "Event frame range is outside the contact sheet: "
+            f"{start_frame}-{end_frame}, frame_count={frame_count}"
+        )
 
     if item_count < 1:
         raise VlmClientError("item_count must be at least 1")
@@ -428,18 +306,25 @@ def _normalize_event(
     }
 
 
+def _strip_code_fence(content: str) -> str:
+    """Remove one optional Markdown code fence."""
+    text = content.strip()
+    if not text.startswith("```"):
+        return text
+    lines = text.splitlines()
+    if lines and lines[0].strip().startswith("```"):
+        lines = lines[1:]
+    if lines and lines[-1].strip().startswith("```"):
+        lines = lines[:-1]
+    return "\n".join(lines).strip()
+
+
 def _parse_vlm_response(
     content: str,
     frame_count: int | None = None,
 ) -> dict[str, Any]:
-    """Parse and validate a VLM JSON response.
-
-    ``frame_count`` is optional to preserve compatibility with direct unit
-    tests of this function.
-    """
-
+    """Parse and validate a VLM JSON response."""
     text = _strip_code_fence(content)
-
     try:
         parsed = json.loads(text)
     except json.JSONDecodeError as exc:
@@ -465,6 +350,11 @@ def _parse_vlm_response(
         "events": events,
         "reasoning": reasoning_raw.strip(),
     }
+
+
+# ---------------------------------------------------------------------------
+# Public API (same signatures as the original vlm_client.py)
+# ---------------------------------------------------------------------------
 
 
 def call_vlm(
@@ -501,7 +391,6 @@ def call_vlm(
 
     A failed result is not a valid no-event annotation.
     """
-
     if not contact_sheet_path.is_file():
         return _failure_result(
             error=f"Contact sheet not found: {contact_sheet_path}",
@@ -515,7 +404,6 @@ def call_vlm(
         )
 
     image_b64 = _image_to_base64(contact_sheet_path)
-    url = f"{config.base_url.rstrip('/')}/v1/chat/completions"
 
     last_error = "Unknown VLM failure"
     last_raw_response = ""
@@ -527,7 +415,7 @@ def call_vlm(
             config.max_tokens if attempt == 1 else max(config.max_tokens, config.retry_max_tokens)
         )
 
-        payload = _build_payload(
+        request = _build_request(
             image_b64=image_b64,
             frame_count=frame_count,
             fps=fps,
@@ -538,20 +426,30 @@ def call_vlm(
         )
 
         try:
-            response = _post_json(
-                url=url,
-                payload=payload,
-                timeout_s=config.timeout_s,
-            )
+            # The annotation wrapper handles its own retry loop; pass
+            # max_attempts=1 to the shared client so it does not double-retry.
+            response: VlmResponse = _shared_call_vlm(request, config, max_attempts=1)
 
-            content, finish_reason, _, usage = _extract_assistant_response(response)
+            if not response.is_success:
+                last_error = response.error.message if response.error else "No content"
+                last_raw_response = response.raw_response
+                last_finish_reason = response.finish_reason
+                last_usage = response.usage.model_dump()
+                logger.warning(
+                    "VLM annotation attempt %d/%d failed for %s: %s",
+                    attempt,
+                    config.max_attempts,
+                    contact_sheet_path.name,
+                    last_error,
+                )
+                if attempt < config.max_attempts and config.retry_delay_s > 0:
+                    import time
 
-            last_raw_response = content
-            last_finish_reason = finish_reason
-            last_usage = usage
+                    time.sleep(config.retry_delay_s)
+                continue
 
             parsed = _parse_vlm_response(
-                content,
+                response.content,
                 frame_count=frame_count,
             )
 
@@ -561,36 +459,28 @@ def call_vlm(
                 "reasoning": parsed["reasoning"],
                 "error": None,
                 "attempts": attempt,
-                "finish_reason": finish_reason,
+                "finish_reason": response.finish_reason,
                 "raw_response": "",
-                "usage": usage,
+                "usage": response.usage.model_dump(),
             }
 
         except VlmClientError as exc:
             last_error = str(exc)
-
             logger.warning(
-                (
-                    "VLM annotation attempt %d/%d failed for %s "
-                    "(max_tokens=%d, finish_reason=%s): %s"
-                ),
+                "VLM annotation attempt %d/%d failed for %s: %s",
                 attempt,
                 config.max_attempts,
                 contact_sheet_path.name,
-                max_tokens,
-                last_finish_reason,
                 exc,
             )
 
         except Exception as exc:
             last_error = f"Unexpected VLM client error: {exc}"
-
-            logger.exception(
-                "Unexpected VLM annotation error for %s",
-                contact_sheet_path.name,
-            )
+            logger.exception("Unexpected VLM annotation error for %s", contact_sheet_path.name)
 
         if attempt < config.max_attempts and config.retry_delay_s > 0:
+            import time
+
             time.sleep(config.retry_delay_s)
 
     logger.error(
@@ -617,18 +507,13 @@ def vlm_result_to_annotations(
     """Convert frame-based VLM events to time-based annotations.
 
     Raises:
-        VlmClientError: If the VLM call failed. A failed call must never be
-            converted into a valid empty annotation list.
+        VlmClientError: If the VLM call failed.
     """
-
     if vlm_response.get("status") == "failed":
         raise VlmClientError(str(vlm_response.get("error") or "VLM annotation failed"))
 
     if fps <= 0:
-        logger.warning(
-            "Invalid review FPS %.3f; falling back to 5.0 FPS",
-            fps,
-        )
+        logger.warning("Invalid review FPS %.3f; falling back to 5.0 FPS", fps)
         fps = 5.0
 
     annotations: list[dict[str, Any]] = []
@@ -641,14 +526,8 @@ def vlm_result_to_annotations(
     }
 
     for event in vlm_response.get("events", []):
-        start_frame = _coerce_int(
-            event.get("start_frame", 0),
-            "start_frame",
-        )
-        end_frame = _coerce_int(
-            event.get("end_frame", 0),
-            "end_frame",
-        )
+        start_frame = _coerce_int(event.get("start_frame", 0), "start_frame")
+        end_frame = _coerce_int(event.get("end_frame", 0), "end_frame")
 
         start_s = start_frame / fps
         end_s = (end_frame + 1) / fps
@@ -670,10 +549,7 @@ def vlm_result_to_annotations(
                 "start_s": round(start_s, 3),
                 "end_s": round(end_s, 3),
                 "item_count": event.get("item_count", 1),
-                "confidence": confidence_map.get(
-                    confidence_str,
-                    ConfidenceLevel.MED,
-                ),
+                "confidence": confidence_map.get(confidence_str, ConfidenceLevel.MED),
                 "hard_case": event.get("hard_case", False),
                 "notes": event.get("notes", ""),
             }
