@@ -16,7 +16,7 @@ from typing import Any
 import typer
 
 from pickup_putdown.config import AppConfig, load_config
-from pickup_putdown.pipeline import atomic_write_json, run_pipeline
+from pickup_putdown.pipeline import Stage, atomic_write_json, build_default_registry, run_pipeline
 
 infer_app = typer.Typer(
     name="pipeline",
@@ -53,13 +53,20 @@ def _setup_logging(verbose: bool) -> None:
     )
 
 
-def _resolve_inputs(input_path: str) -> list[Path]:
-    """Resolve a file or directory argument to a sorted list of video paths."""
+def _resolve_inputs(input_path: str, *, recursive: bool = False) -> list[Path]:
+    """Resolve a file or directory argument to a sorted list of video paths.
+
+    Directory mode is non-recursive by default; ``recursive`` descends into
+    subdirectories.
+    """
     inp = Path(input_path)
     if inp.is_file():
         return [inp]
     if inp.is_dir():
-        videos = sorted(f for f in inp.iterdir() if f.suffix.lower() in _VIDEO_EXTENSIONS)
+        candidates = inp.rglob("*") if recursive else inp.iterdir()
+        videos = sorted(
+            f for f in candidates if f.is_file() and f.suffix.lower() in _VIDEO_EXTENSIONS
+        )
         if not videos:
             typer.echo(f"No video files found in {inp}", err=True)
             raise typer.Exit(code=2)
@@ -68,7 +75,37 @@ def _resolve_inputs(input_path: str) -> list[Path]:
     raise typer.Exit(code=2)
 
 
-def _run_one(video: Path, output_root: Path, config: AppConfig, *, resume: bool) -> dict[str, Any]:
+def _select_registry(config: AppConfig, components: str | None) -> list[Stage]:
+    """Build the default stage registry, optionally filtered to ``components``.
+
+    ``components`` is a comma-separated allowlist of stage names; when omitted the
+    full default pipeline runs. Unknown names raise a clear error (exit 2) rather
+    than silently running a different pipeline.
+    """
+    registry = build_default_registry(config)
+    if not components:
+        return registry
+    requested = [name.strip() for name in components.split(",") if name.strip()]
+    known = {stage.name for stage in registry}
+    unknown = [name for name in requested if name not in known]
+    if unknown:
+        typer.echo(
+            f"Unknown component(s): {', '.join(unknown)}. Available: {', '.join(sorted(known))}",
+            err=True,
+        )
+        raise typer.Exit(code=2)
+    selected = set(requested)
+    return [stage for stage in registry if stage.name in selected]
+
+
+def _run_one(
+    video: Path,
+    output_root: Path,
+    config: AppConfig,
+    *,
+    resume: bool,
+    registry: list[Stage] | None,
+) -> dict[str, Any]:
     """Run the pipeline for one video, turning any crash into a failed summary.
 
     Returns the full per-clip summary on success (enriched with input/output
@@ -77,7 +114,7 @@ def _run_one(video: Path, output_root: Path, config: AppConfig, *, resume: bool)
     """
     clip_dir = output_root / video.stem
     try:
-        summary = run_pipeline(video, output_root, config, resume=resume)
+        summary = run_pipeline(video, output_root, config, registry=registry, resume=resume)
     except Exception as exc:  # noqa: BLE001 - one bad clip must not stop the batch
         logger.exception("pipeline failed for %s", video)
         return {
@@ -110,6 +147,15 @@ def infer(
     config: str | None = typer.Option(
         None, "--config", "-c", help="Optional configuration YAML file."
     ),
+    components: str | None = typer.Option(
+        None,
+        "--components",
+        help="Comma-separated stage names to run (default: all). "
+        "E.g. 'triage,propose,track_a,evaluate'.",
+    ),
+    recursive: bool = typer.Option(
+        False, "--recursive/--no-recursive", help="Descend into subdirectories in directory mode."
+    ),
     resume: bool = typer.Option(
         True, "--resume/--no-resume", help="Skip stages whose inputs are unchanged."
     ),
@@ -122,19 +168,20 @@ def infer(
     \b
       0  success (every clip ok / no_person)
       1  directory mode: at least one clip failed
-      2  bad input (file/directory not found, or an empty directory)
+      2  bad input (path not found, empty directory, or unknown --components)
       4  single file: pipeline blocked (a stage's upstream dependency failed)
       5  single file: pipeline failed (a stage crashed)
     """
     _setup_logging(verbose)
-    videos = _resolve_inputs(input_path)
+    videos = _resolve_inputs(input_path, recursive=recursive)
     app_config = load_config(config)
+    registry = _select_registry(app_config, components)
     output_root = Path(output_dir)
 
     # Single-file mode: emit the full per-clip summary on stdout. A crash or a
     # blocked/failed top-level status maps to a non-zero exit code.
     if Path(input_path).is_file():
-        summary = _run_one(videos[0], output_root, app_config, resume=resume)
+        summary = _run_one(videos[0], output_root, app_config, resume=resume, registry=registry)
         typer.echo(json.dumps(summary, indent=2, default=str))
         code = _exit_code_for(str(summary.get("status", "ok")))
         if code:
@@ -142,7 +189,10 @@ def infer(
         return
 
     # Directory/batch mode: isolate per-file failures and aggregate a summary.
-    summaries = [_run_one(video, output_root, app_config, resume=resume) for video in videos]
+    summaries = [
+        _run_one(video, output_root, app_config, resume=resume, registry=registry)
+        for video in videos
+    ]
     n_failed = sum(1 for summary in summaries if summary.get("status") in _FAILURE_STATUSES)
     batch_summary: dict[str, Any] = {
         "n_total": len(summaries),
