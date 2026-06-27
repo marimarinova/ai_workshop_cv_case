@@ -162,6 +162,12 @@ def _stage_input_hash(stage: Stage, ctx: StageContext) -> str:
         upstream = ctx.upstream.get(dep)
         if upstream is not None:
             digest.update(f"{dep}:{upstream.input_hash}".encode())
+    # A stage may fold extra, environment-derived material into its resume key
+    # (e.g. trained-checkpoint checksums that the orchestrator does not see as a
+    # file input) by exposing an optional ``resume_fingerprint(ctx)`` method.
+    fingerprint = getattr(stage, "resume_fingerprint", None)
+    if callable(fingerprint):
+        digest.update(f"fingerprint:{fingerprint(ctx)}".encode())
     return digest.hexdigest()
 
 
@@ -524,6 +530,81 @@ class ProposeStage(_CliStage):
         )
 
 
+class TrackAStage(_CliStage):
+    """Track A interpretable detector (task_10), wired to ``infer-track-a``.
+
+    Gated on trained classifier checkpoints: until Task 7 produces
+    ``hand_state.joblib`` / ``shelf_state.joblib`` the stage is *unavailable*,
+    so the orchestrator skips it and still emits a valid, empty ``events.csv``.
+    The ``infer-track-a`` ``predictions.csv`` is a superset of the canonical
+    columns (it adds ``actor_id``/``hand_side``/``region_id``), so its rows feed
+    ``summary["predictions"]`` directly — no column map.
+    """
+
+    name = "track_a"
+    inputs: tuple[str, ...] = ("propose",)
+    outputs: tuple[str, ...] = ("predictions.csv",)
+
+    def _checkpoints(self) -> tuple[Path, Path]:
+        artifact_dir = Path(self._config.track_a_stage.artifact_dir)
+        return artifact_dir / "hand_state.joblib", artifact_dir / "shelf_state.joblib"
+
+    def is_available(self) -> bool:
+        hand, shelf = self._checkpoints()
+        return hand.is_file() and shelf.is_file()
+
+    def resume_fingerprint(self, ctx: StageContext) -> str:
+        """Fold trained-checkpoint content into the stage's resume key.
+
+        ``_stage_input_hash`` hashes video + config + upstream, but not the
+        classifier artifacts; without this, swapping in freshly trained
+        checkpoints (Task 7) would be served a stale cached result.
+        """
+        digest = hashlib.sha256()
+        for path in self._checkpoints():
+            if path.is_file():
+                digest.update(_file_checksum(path).encode("utf-8"))
+        return digest.hexdigest()
+
+    def run(self, ctx: StageContext) -> StageResult:
+        stage_cfg = self._config.track_a_stage
+        propose = ctx.upstream["propose"]
+        # ``infer-track-a`` takes its own Track A YAML as ``--config`` (distinct
+        # from the resolved AppConfig); ``_invoke`` appends it as the trailing
+        # ``--config``, so it is passed here as the config-path argument.
+        self._invoke(
+            [
+                "infer-track-a",
+                "--candidates",
+                propose.outputs["candidates.parquet"],
+                "--pose-observations",
+                propose.outputs["tracks_pose.parquet"],
+                "--source-video-dir",
+                str(ctx.video_path.parent),
+                "--shelves-config",
+                stage_cfg.shelves_config,
+                "--camera-id",
+                stage_cfg.camera_id,
+                "--artifact-dir",
+                stage_cfg.artifact_dir,
+                "--cache-dir",
+                str(ctx.cache_dir),
+                "--output-dir",
+                str(ctx.stage_dir),
+                "--clip-id",
+                ctx.clip_id,
+            ],
+            Path(stage_cfg.config_path),
+        )
+        predictions = _read_predictions_csv(ctx.stage_dir / "predictions.csv")
+        return StageResult(
+            name=self.name,
+            status="ok",
+            outputs={name: str(ctx.stage_dir / name) for name in self.outputs},
+            summary={"predictions": predictions},
+        )
+
+
 class EvaluateStage:
     """Aggregate detector predictions and score them with the task_8 evaluator.
 
@@ -579,13 +660,26 @@ def build_default_registry(config: AppConfig) -> list[Stage]:
     return [
         TriageStage(config),
         ProposeStage(config),
-        ComponentStub("track_a", inputs=("propose",), depends_on_task="task_9/task_10"),
+        TrackAStage(config),
         ComponentStub("track_b1", inputs=("propose",), depends_on_task="task_12"),
         ComponentStub("track_b2", inputs=("propose",), depends_on_task="task_13"),
         ComponentStub("layer2", inputs=("triage",), depends_on_task="task_14"),
         ComponentStub("layer3", inputs=("layer2",), depends_on_task="task_15"),
         EvaluateStage(config),
     ]
+
+
+def _read_predictions_csv(path: Path) -> list[dict[str, Any]]:
+    """Read an ``infer-track-a`` predictions CSV into canonical row dicts.
+
+    The file is a superset of :data:`CANONICAL_EVENT_COLUMNS` (it adds
+    ``actor_id``/``hand_side``/``region_id``); the extra columns are carried
+    through harmlessly and dropped when the canonical ``events.csv`` is written.
+    """
+    if not path.is_file():
+        return []
+    with path.open(newline="", encoding="utf-8") as handle:
+        return [dict(row) for row in csv.DictReader(handle)]
 
 
 def _clips_have_person(clips_path: Path) -> bool:
