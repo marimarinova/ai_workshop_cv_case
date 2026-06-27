@@ -1,0 +1,235 @@
+"""CLI-level tests for the task_16 ``infer`` command (directory/batch mode).
+
+These drive the Typer command through ``CliRunner`` with ``run_pipeline``
+monkeypatched, so they exercise the batch orchestration (per-file isolation,
+``batch_summary.json`` aggregation, exit-code semantics) without models.
+"""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+from typing import Any
+
+import pytest
+import typer
+from typer.testing import CliRunner
+
+from pickup_putdown.cli import app
+from pickup_putdown.cli_infer import _resolve_inputs, _select_registry
+from pickup_putdown.config import load_config
+
+runner = CliRunner()
+
+
+def _make_videos(directory: Path, names: list[str]) -> None:
+    directory.mkdir(parents=True, exist_ok=True)
+    for name in names:
+        (directory / f"{name}.mp4").write_bytes(b"SYNTHETIC")
+
+
+def _patch_pipeline(
+    monkeypatch: pytest.MonkeyPatch, *, fail_stems: set[str], status: str = "ok"
+) -> None:
+    def _fake_run_pipeline(
+        video: Path, output_root: Path, config: Any, *, resume: bool = True, **_: Any
+    ) -> dict[str, Any]:
+        if video.stem in fail_stems:
+            raise RuntimeError("boom")
+        return {"clip_id": f"clip_{video.stem}", "status": status}
+
+    monkeypatch.setattr("pickup_putdown.cli_infer.run_pipeline", _fake_run_pipeline)
+
+
+def test_directory_mode_isolates_failures(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    videos = tmp_path / "vids"
+    _make_videos(videos, ["good_a", "bad", "good_b"])
+    _patch_pipeline(monkeypatch, fail_stems={"bad"})
+    out = tmp_path / "out"
+
+    result = runner.invoke(app, ["infer", "-i", str(videos), "-o", str(out)])
+
+    # One failing clip must not stop the others, but must fail the batch overall.
+    assert result.exit_code == 1
+    batch = json.loads((out / "batch_summary.json").read_text(encoding="utf-8"))
+    assert batch["n_total"] == 3
+    assert batch["n_failed"] == 1
+    assert batch["n_ok"] == 2
+    statuses = {r["clip_id"]: r["status"] for r in batch["results"]}
+    assert statuses == {"clip_good_a": "ok", "clip_bad": "failed", "clip_good_b": "ok"}
+    assert any("boom" in (r.get("error") or "") for r in batch["results"])
+
+
+def test_directory_mode_all_ok_exits_zero(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    videos = tmp_path / "vids"
+    _make_videos(videos, ["a", "b"])
+    _patch_pipeline(monkeypatch, fail_stems=set())
+    out = tmp_path / "out"
+
+    result = runner.invoke(app, ["infer", "-i", str(videos), "-o", str(out)])
+
+    assert result.exit_code == 0
+    batch = json.loads((out / "batch_summary.json").read_text(encoding="utf-8"))
+    assert batch["n_failed"] == 0
+    assert batch["n_ok"] == 2
+
+
+def test_empty_directory_exits_nonzero(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    _patch_pipeline(monkeypatch, fail_stems=set())
+
+    result = runner.invoke(app, ["infer", "-i", str(empty), "-o", str(tmp_path / "o")])
+
+    assert result.exit_code == 2
+    assert not (tmp_path / "o" / "batch_summary.json").exists()
+
+
+def test_single_file_mode_prints_summary(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    video = tmp_path / "clip.mp4"
+    video.write_bytes(b"SYNTHETIC")
+    _patch_pipeline(monkeypatch, fail_stems=set())
+    out = tmp_path / "out"
+
+    result = runner.invoke(app, ["infer", "-i", str(video), "-o", str(out)])
+
+    assert result.exit_code == 0
+    # Single-file mode emits the per-clip summary, not a batch summary.
+    assert '"clip_id": "clip_clip"' in result.stdout
+    assert not (out / "batch_summary.json").exists()
+
+
+def test_single_file_crash_exits_nonzero(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    video = tmp_path / "clip.mp4"
+    video.write_bytes(b"SYNTHETIC")
+    _patch_pipeline(monkeypatch, fail_stems={"clip"})
+
+    result = runner.invoke(app, ["infer", "-i", str(video), "-o", str(tmp_path / "out")])
+
+    assert result.exit_code == 5
+    assert '"status": "failed"' in result.stdout
+
+
+def test_single_file_blocked_status_exits_nonzero(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    video = tmp_path / "clip.mp4"
+    video.write_bytes(b"SYNTHETIC")
+    _patch_pipeline(monkeypatch, fail_stems=set(), status="blocked")
+
+    result = runner.invoke(app, ["infer", "-i", str(video), "-o", str(tmp_path / "out")])
+
+    # A blocked top-level status must not report success.
+    assert result.exit_code == 4
+    assert '"status": "blocked"' in result.stdout
+
+
+# ---------------------------------------------------------------------------
+# Recursive directory mode
+# ---------------------------------------------------------------------------
+def test_resolve_inputs_non_recursive_skips_subdirs(tmp_path: Path) -> None:
+    (tmp_path / "top.mp4").write_bytes(b"S")
+    (tmp_path / "sub").mkdir()
+    (tmp_path / "sub" / "deep.mp4").write_bytes(b"S")
+
+    resolved = _resolve_inputs(str(tmp_path), recursive=False)
+
+    assert [p.name for p in resolved] == ["top.mp4"]
+
+
+def test_resolve_inputs_recursive_descends(tmp_path: Path) -> None:
+    (tmp_path / "top.mp4").write_bytes(b"S")
+    (tmp_path / "sub").mkdir()
+    (tmp_path / "sub" / "deep.mp4").write_bytes(b"S")
+
+    resolved = _resolve_inputs(str(tmp_path), recursive=True)
+
+    assert sorted(p.name for p in resolved) == ["deep.mp4", "top.mp4"]
+
+
+def test_directory_recursive_flag_descends(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = tmp_path / "vids"
+    (root / "sub").mkdir(parents=True)
+    (root / "sub" / "deep.mp4").write_bytes(b"S")
+    _patch_pipeline(monkeypatch, fail_stems=set())
+    out = tmp_path / "out"
+
+    # Non-recursive: the only video lives in a subdir -> nothing found -> exit 2.
+    assert runner.invoke(app, ["infer", "-i", str(root), "-o", str(out)]).exit_code == 2
+
+    # Recursive: the subdir video is processed.
+    result = runner.invoke(app, ["infer", "-i", str(root), "-o", str(out), "--recursive"])
+    assert result.exit_code == 0
+    batch = json.loads((out / "batch_summary.json").read_text(encoding="utf-8"))
+    assert batch["n_total"] == 1
+
+
+# ---------------------------------------------------------------------------
+# Component selection
+# ---------------------------------------------------------------------------
+def test_select_registry_none_returns_full() -> None:
+    names = [stage.name for stage in _select_registry(load_config(None), None)]
+    assert names == [
+        "triage",
+        "propose",
+        "track_a",
+        "track_b1",
+        "track_b2",
+        "layer2",
+        "layer3",
+        "evaluate",
+    ]
+
+
+def test_select_registry_subset_preserves_order() -> None:
+    names = [
+        stage.name for stage in _select_registry(load_config(None), "evaluate,triage,propose")
+    ]
+    # Registry order is preserved regardless of the order requested.
+    assert names == ["triage", "propose", "evaluate"]
+
+
+def test_select_registry_unknown_name_errors() -> None:
+    with pytest.raises(typer.Exit) as excinfo:
+        _select_registry(load_config(None), "triage,bogus")
+    assert excinfo.value.exit_code == 2
+
+
+def test_infer_unknown_component_exits_2(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    video = tmp_path / "clip.mp4"
+    video.write_bytes(b"S")
+    _patch_pipeline(monkeypatch, fail_stems=set())
+
+    result = runner.invoke(
+        app, ["infer", "-i", str(video), "-o", str(tmp_path / "out"), "--components", "bogus"]
+    )
+
+    assert result.exit_code == 2
+    assert "Unknown component" in result.output
+
+
+def test_select_registry_missing_dependency_errors() -> None:
+    # 'propose' declares inputs=('triage',); selecting it without triage must fail.
+    with pytest.raises(typer.Exit) as excinfo:
+        _select_registry(load_config(None), "propose")
+    assert excinfo.value.exit_code == 2
+
+
+def test_select_registry_with_dependency_passes() -> None:
+    names = [stage.name for stage in _select_registry(load_config(None), "triage,propose")]
+    assert names == ["triage", "propose"]
+
+
+def test_infer_missing_dependency_exits_2(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    video = tmp_path / "clip.mp4"
+    video.write_bytes(b"S")
+    _patch_pipeline(monkeypatch, fail_stems=set())
+
+    result = runner.invoke(
+        app, ["infer", "-i", str(video), "-o", str(tmp_path / "out"), "--components", "propose"]
+    )
+
+    assert result.exit_code == 2
+    assert "requires 'triage'" in result.output
