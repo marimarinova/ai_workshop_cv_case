@@ -166,6 +166,45 @@ def test_directory_recursive_flag_descends(
     assert batch["n_total"] == 1
 
 
+def test_resolve_inputs_recursive_rejects_duplicate_stems(tmp_path: Path) -> None:
+    (tmp_path / "a").mkdir()
+    (tmp_path / "b").mkdir()
+    (tmp_path / "a" / "clip.mp4").write_bytes(b"S")
+    (tmp_path / "b" / "clip.mp4").write_bytes(b"S")
+
+    with pytest.raises(typer.Exit) as excinfo:
+        _resolve_inputs(str(tmp_path), recursive=True)
+    assert excinfo.value.exit_code == 2
+
+
+def test_resolve_inputs_recursive_unique_stems_pass(tmp_path: Path) -> None:
+    (tmp_path / "a").mkdir()
+    (tmp_path / "b").mkdir()
+    (tmp_path / "a" / "one.mp4").write_bytes(b"S")
+    (tmp_path / "b" / "two.mp4").write_bytes(b"S")
+
+    resolved = _resolve_inputs(str(tmp_path), recursive=True)
+    assert sorted(p.name for p in resolved) == ["one.mp4", "two.mp4"]
+
+
+def test_infer_recursive_duplicate_stems_exits_2(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = tmp_path / "vids"
+    (root / "a").mkdir(parents=True)
+    (root / "b").mkdir(parents=True)
+    (root / "a" / "clip.mp4").write_bytes(b"S")
+    (root / "b" / "clip.mp4").write_bytes(b"S")
+    _patch_pipeline(monkeypatch, fail_stems=set())
+
+    result = runner.invoke(
+        app, ["infer", "-i", str(root), "-o", str(tmp_path / "out"), "--recursive"]
+    )
+
+    assert result.exit_code == 2
+    assert "Duplicate clip name 'clip'" in result.output
+
+
 # ---------------------------------------------------------------------------
 # Component selection
 # ---------------------------------------------------------------------------
