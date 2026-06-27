@@ -145,6 +145,19 @@ class TrackAStageConfig(BaseModel):
     artifact_dir: str = ".local/track_a_artifacts"
 
 
+class EvaluationStageConfig(BaseModel):
+    """Wiring for the evaluation stage in the batch pipeline (Task 16).
+
+    ``ground_truth_dir`` enables scoring against frozen Task 7 ground truth: when
+    set, the stage looks for ``<ground_truth_dir>/<clip_id>.csv`` (and an optional
+    ``<clip_id>.ignores.csv``) and scores predictions with the Task 8 evaluator.
+    Empty (the default) keeps the stage at a zero-prediction stub, so activation
+    after Task 7 is a config change with no code change.
+    """
+
+    ground_truth_dir: str = ""
+
+
 class PreviewConfig(BaseModel):
     """Configuration for candidate preview rendering."""
 
@@ -171,6 +184,7 @@ class AppConfig(BaseModel):
     preview: PreviewConfig = Field(default_factory=PreviewConfig)
     track_a_features: TrackAFeaturesConfig = Field(default_factory=TrackAFeaturesConfig)
     track_a_stage: TrackAStageConfig = Field(default_factory=TrackAStageConfig)
+    evaluation: EvaluationStageConfig = Field(default_factory=EvaluationStageConfig)
     data_dir: str = "data"
     output_dir: str = "outputs"
     cache_dir: str = "cache"

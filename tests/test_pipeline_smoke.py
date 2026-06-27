@@ -7,6 +7,7 @@ injected stages and tiny synthetic fixtures, so they run in CI without models.
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -15,6 +16,7 @@ from pickup_putdown.common.run_metadata import RunMetadata
 from pickup_putdown.config import AppConfig, load_config
 from pickup_putdown.pipeline import (
     CANONICAL_EVENT_COLUMNS,
+    EvaluateStage,
     Stage,
     StageContext,
     StageResult,
@@ -552,3 +554,105 @@ def test_track_a_propagates_invoke_failure(
     # degrade-to-failure semantics, to be revisited at activation.
     with pytest.raises(RuntimeError, match="track_a"):
         stage.run(ctx)
+
+
+# ---------------------------------------------------------------------------
+# EvaluateStage -> Task 8 evaluator (gated on ground truth)
+# ---------------------------------------------------------------------------
+def _config_with_ground_truth(app_config: AppConfig, ground_truth_dir: Path) -> AppConfig:
+    return app_config.model_copy(
+        update={
+            "evaluation": app_config.evaluation.model_copy(
+                update={"ground_truth_dir": str(ground_truth_dir)}
+            )
+        }
+    )
+
+
+def _evaluate_ctx(clip_id: str, stage_dir: Path, upstream: dict[str, StageResult]) -> StageContext:
+    # EvaluateStage reads only clip_id + upstream; video_path/cache_dir are unused.
+    return StageContext(
+        clip_id=clip_id,
+        video_path=stage_dir,
+        output_dir=stage_dir.parent,
+        stage_dir=stage_dir,
+        cache_dir=stage_dir.parent,
+        config={},
+        config_path=stage_dir.parent / "resolved_config.yaml",
+        run_metadata=RunMetadata(),
+        upstream=upstream,
+    )
+
+
+def _detector_result(clip_id: str) -> StageResult:
+    return StageResult(
+        name="track_a",
+        status="ok",
+        summary={
+            "predictions": [
+                {
+                    "clip_id": clip_id,
+                    "pred_id": "p1",
+                    "type": "pickup",
+                    "t_start": "1.0",
+                    "t_end": "2.0",
+                    "score": "0.9",
+                    "model": "m",
+                }
+            ]
+        },
+    )
+
+
+def test_evaluate_scores_against_ground_truth(tmp_path: Path, app_config: AppConfig) -> None:
+    gt_dir = tmp_path / "gt"
+    gt_dir.mkdir()
+    (gt_dir / "clipX.csv").write_text(
+        "clip_id,type,t_start,t_end\nclipX,pickup,1.0,2.0\n", encoding="utf-8"
+    )
+    stage = EvaluateStage(_config_with_ground_truth(app_config, gt_dir))
+    stage_dir = tmp_path / "out" / "clipX" / "evaluate"
+    stage_dir.mkdir(parents=True)
+    ctx = _evaluate_ctx("clipX", stage_dir, {"track_a": _detector_result("clipX")})
+
+    result = stage.run(ctx)
+
+    assert result.summary["evaluated"] is True
+    assert result.summary["n_predictions"] == 1
+    # A perfectly overlapping pickup is a true positive at tIoU 0.5.
+    assert result.summary["tiou@0.5"]["tp"] == 1
+    assert result.summary["tiou@0.5"]["fp"] == 0
+    assert result.summary["tiou@0.5"]["fn"] == 0
+    written = json.loads((stage_dir / "metrics.json").read_text(encoding="utf-8"))
+    assert written["evaluated"] is True
+    assert written["tiou@0.5"]["tp"] == 1
+
+
+def test_evaluate_without_ground_truth_stays_stub(tmp_path: Path, app_config: AppConfig) -> None:
+    stage = EvaluateStage(app_config)  # default ground_truth_dir == ""
+    stage_dir = tmp_path / "out" / "clipX" / "evaluate"
+    stage_dir.mkdir(parents=True)
+    ctx = _evaluate_ctx("clipX", stage_dir, {"track_a": _detector_result("clipX")})
+
+    result = stage.run(ctx)
+
+    # The pre-Task-7 contract is unchanged: a stable stub, no scoring keys.
+    assert result.summary == {"n_predictions": 1, "evaluated": False}
+    assert "tiou@0.5" not in result.summary
+    written = json.loads((stage_dir / "metrics.json").read_text(encoding="utf-8"))
+    assert written == {"n_predictions": 1, "evaluated": False}
+
+
+def test_evaluate_ground_truth_dir_without_clip_file_stays_stub(
+    tmp_path: Path, app_config: AppConfig
+) -> None:
+    gt_dir = tmp_path / "gt"
+    gt_dir.mkdir()  # configured but holds no <clip_id>.csv
+    stage = EvaluateStage(_config_with_ground_truth(app_config, gt_dir))
+    stage_dir = tmp_path / "out" / "clipX" / "evaluate"
+    stage_dir.mkdir(parents=True)
+    ctx = _evaluate_ctx("clipX", stage_dir, {})
+
+    result = stage.run(ctx)
+
+    assert result.summary == {"n_predictions": 0, "evaluated": False}
