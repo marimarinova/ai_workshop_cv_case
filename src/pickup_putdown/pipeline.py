@@ -41,7 +41,7 @@ from typing import Any, Literal, Protocol, runtime_checkable
 import yaml
 
 from pickup_putdown.common.run_metadata import RunMetadata
-from pickup_putdown.config import AppConfig
+from pickup_putdown.config import AppConfig, EvaluationStageConfig
 
 logger = logging.getLogger(__name__)
 
@@ -617,9 +617,12 @@ class TrackAStage(_CliStage):
 class EvaluateStage:
     """Aggregate detector predictions and score them with the task_8 evaluator.
 
-    With no detector stage active yet (Track A/B land in later tasks) there are
-    no predictions to score; the stage still writes a valid, zero-prediction
-    metrics file so downstream tooling has a stable artifact.
+    Predictions contributed by detector stages are always gathered. When
+    ``evaluation.ground_truth_dir`` is configured and a per-clip ground-truth
+    ``events.csv`` exists, the stage scores them with the Task 8 evaluator and
+    writes the full metric bundle; otherwise it writes a stable, zero-prediction
+    stub so downstream tooling has a consistent artifact. Activation is a config
+    change (point at frozen Task 7 ground truth), not a code change.
     """
 
     name = "evaluate"
@@ -633,13 +636,24 @@ class EvaluateStage:
         return True
 
     def run(self, ctx: StageContext) -> StageResult:
-        predictions: list[dict[str, Any]] = []
-        for result in ctx.upstream.values():
-            for row in result.summary.get("predictions", []):
-                if isinstance(row, dict):
-                    predictions.append(row)
-        metrics = {"n_predictions": len(predictions), "evaluated": False}
-        atomic_write_json(ctx.stage_dir / "metrics.json", metrics)
+        predictions = [
+            row
+            for result in ctx.upstream.values()
+            for row in result.summary.get("predictions", [])
+            if isinstance(row, dict)
+        ]
+        metrics = _evaluate_predictions(predictions, ctx, self._config.evaluation)
+        if metrics["evaluated"]:
+            # Serialise via the Task 8 serialiser; kept off the disabled path so a
+            # common pre-Task-7 run never imports the (numpy-heavy) evaluator.
+            from pickup_putdown.evaluation import report
+
+            _atomic_write_text(
+                ctx.stage_dir / "metrics.json",
+                report.metrics_to_json(metrics, indent=2, sort_keys=True, default=str),
+            )
+        else:
+            atomic_write_json(ctx.stage_dir / "metrics.json", metrics)
         return StageResult(
             name=self.name,
             status="ok",
@@ -676,6 +690,72 @@ def build_default_registry(config: AppConfig) -> list[Stage]:
         ComponentStub("layer3", inputs=("layer2",), depends_on_task="task_15"),
         EvaluateStage(config),
     ]
+
+
+def _evaluate_predictions(
+    prediction_rows: list[dict[str, Any]],
+    ctx: StageContext,
+    config: EvaluationStageConfig,
+) -> dict[str, Any]:
+    """Score predictions against frozen ground truth when configured.
+
+    Returns the full Task 8 metric bundle (``evaluated`` True) when
+    ``ground_truth_dir`` is set and a per-clip ``<clip_id>.csv`` exists; otherwise
+    an ``n_predictions`` / ``evaluated: False`` stub — the pre-Task-7 contract.
+    """
+    stub: dict[str, Any] = {"n_predictions": len(prediction_rows), "evaluated": False}
+    if not config.ground_truth_dir:
+        return stub
+    gt_path = Path(config.ground_truth_dir) / f"{ctx.clip_id}.csv"
+    if not gt_path.is_file():
+        return stub
+
+    # Lazy: the evaluator package pulls numpy; keep it off the disabled path.
+    from pickup_putdown.evaluation import io, metrics
+
+    ignores_path = Path(config.ground_truth_dir) / f"{ctx.clip_id}.ignores.csv"
+    ignores = (
+        io.ignores_from_rows(io.read_csv(str(ignores_path))) if ignores_path.is_file() else []
+    )
+    bundle = metrics.aggregate_metrics(
+        io.load_events_csv(str(gt_path)),
+        io.predictions_from_rows(prediction_rows),
+        _clip_durations_from_triage(ctx),
+        ignores,
+    )
+    bundle["n_predictions"] = len(prediction_rows)
+    bundle["evaluated"] = True
+    bundle["ground_truth"] = str(gt_path)
+    return bundle
+
+
+def _clip_durations_from_triage(ctx: StageContext) -> dict[str, float]:
+    """Best-effort ``{clip_id: duration_s}`` from the triage ``clips.parquet``.
+
+    Feeds Task 8 mAP normalisation; on any failure (no triage upstream, missing or
+    legacy parquet) returns ``{}`` so scoring still proceeds without mAP
+    normalisation rather than failing the stage.
+    """
+    triage = ctx.upstream.get("triage")
+    if triage is None:
+        return {}
+    clips_path = triage.outputs.get("clips.parquet")
+    if not clips_path or not Path(clips_path).is_file():
+        return {}
+    try:
+        import pyarrow.parquet as pq
+
+        table = pq.read_table(clips_path, columns=["clip_id", "duration_s"])  # type: ignore[no-untyped-call]
+        return {
+            str(clip_id): float(duration)
+            for clip_id, duration in zip(
+                table.column("clip_id").to_pylist(),
+                table.column("duration_s").to_pylist(),
+                strict=False,
+            )
+        }
+    except (OSError, KeyError, ValueError):
+        return {}
 
 
 def _read_predictions_csv(path: Path) -> list[dict[str, Any]]:
