@@ -12,9 +12,12 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+import typer
 from typer.testing import CliRunner
 
 from pickup_putdown.cli import app
+from pickup_putdown.cli_infer import _resolve_inputs, _select_registry
+from pickup_putdown.config import load_config
 
 runner = CliRunner()
 
@@ -119,3 +122,89 @@ def test_single_file_blocked_status_exits_nonzero(
     # A blocked top-level status must not report success.
     assert result.exit_code == 4
     assert '"status": "blocked"' in result.stdout
+
+
+# ---------------------------------------------------------------------------
+# Recursive directory mode
+# ---------------------------------------------------------------------------
+def test_resolve_inputs_non_recursive_skips_subdirs(tmp_path: Path) -> None:
+    (tmp_path / "top.mp4").write_bytes(b"S")
+    (tmp_path / "sub").mkdir()
+    (tmp_path / "sub" / "deep.mp4").write_bytes(b"S")
+
+    resolved = _resolve_inputs(str(tmp_path), recursive=False)
+
+    assert [p.name for p in resolved] == ["top.mp4"]
+
+
+def test_resolve_inputs_recursive_descends(tmp_path: Path) -> None:
+    (tmp_path / "top.mp4").write_bytes(b"S")
+    (tmp_path / "sub").mkdir()
+    (tmp_path / "sub" / "deep.mp4").write_bytes(b"S")
+
+    resolved = _resolve_inputs(str(tmp_path), recursive=True)
+
+    assert sorted(p.name for p in resolved) == ["deep.mp4", "top.mp4"]
+
+
+def test_directory_recursive_flag_descends(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = tmp_path / "vids"
+    (root / "sub").mkdir(parents=True)
+    (root / "sub" / "deep.mp4").write_bytes(b"S")
+    _patch_pipeline(monkeypatch, fail_stems=set())
+    out = tmp_path / "out"
+
+    # Non-recursive: the only video lives in a subdir -> nothing found -> exit 2.
+    assert runner.invoke(app, ["infer", "-i", str(root), "-o", str(out)]).exit_code == 2
+
+    # Recursive: the subdir video is processed.
+    result = runner.invoke(app, ["infer", "-i", str(root), "-o", str(out), "--recursive"])
+    assert result.exit_code == 0
+    batch = json.loads((out / "batch_summary.json").read_text(encoding="utf-8"))
+    assert batch["n_total"] == 1
+
+
+# ---------------------------------------------------------------------------
+# Component selection
+# ---------------------------------------------------------------------------
+def test_select_registry_none_returns_full() -> None:
+    names = [stage.name for stage in _select_registry(load_config(None), None)]
+    assert names == [
+        "triage",
+        "propose",
+        "track_a",
+        "track_b1",
+        "track_b2",
+        "layer2",
+        "layer3",
+        "evaluate",
+    ]
+
+
+def test_select_registry_subset_preserves_order() -> None:
+    names = [
+        stage.name for stage in _select_registry(load_config(None), "evaluate,triage,propose")
+    ]
+    # Registry order is preserved regardless of the order requested.
+    assert names == ["triage", "propose", "evaluate"]
+
+
+def test_select_registry_unknown_name_errors() -> None:
+    with pytest.raises(typer.Exit) as excinfo:
+        _select_registry(load_config(None), "triage,bogus")
+    assert excinfo.value.exit_code == 2
+
+
+def test_infer_unknown_component_exits_2(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    video = tmp_path / "clip.mp4"
+    video.write_bytes(b"S")
+    _patch_pipeline(monkeypatch, fail_stems=set())
+
+    result = runner.invoke(
+        app, ["infer", "-i", str(video), "-o", str(tmp_path / "out"), "--components", "bogus"]
+    )
+
+    assert result.exit_code == 2
+    assert "Unknown component" in result.output
