@@ -656,3 +656,30 @@ def test_evaluate_ground_truth_dir_without_clip_file_stays_stub(
     result = stage.run(ctx)
 
     assert result.summary == {"n_predictions": 0, "evaluated": False}
+
+
+def test_evaluate_applies_ground_truth_ignores(tmp_path: Path, app_config: AppConfig) -> None:
+    gt_dir = tmp_path / "gt"
+    gt_dir.mkdir()
+    # Two GT pickups; only the first has a matching prediction. The second would
+    # be a false negative unless the ignore interval covering it is applied.
+    (gt_dir / "clipX.csv").write_text(
+        "clip_id,type,t_start,t_end\nclipX,pickup,1.0,2.0\nclipX,pickup,10.0,11.0\n",
+        encoding="utf-8",
+    )
+    (gt_dir / "clipX.ignores.csv").write_text(
+        "clip_id,t_start,t_end\nclipX,9.0,12.0\n", encoding="utf-8"
+    )
+    stage = EvaluateStage(_config_with_ground_truth(app_config, gt_dir))
+    stage_dir = tmp_path / "out" / "clipX" / "evaluate"
+    stage_dir.mkdir(parents=True)
+    ctx = _evaluate_ctx("clipX", stage_dir, {"track_a": _detector_result("clipX")})
+
+    result = stage.run(ctx)
+
+    assert result.summary["evaluated"] is True
+    # The ignored second GT event is dropped, so it is not counted as a miss:
+    # tp stays 1 and fn is 0 (it would be 1 without the ignore branch running).
+    assert result.summary["tiou@0.5"]["tp"] == 1
+    assert result.summary["tiou@0.5"]["fn"] == 0
+    assert result.summary["tiou@0.5"]["fp"] == 0
