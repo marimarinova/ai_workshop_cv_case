@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Rewrite local candidate video paths to S3 paths in VLM annotation metadata."""
+"""Rewrite S3 candidate video paths back to local paths in VLM annotation metadata.
+
+Reverse of rewrite_local_paths_to_s3.py. Reuses the PathRewriter class with
+direction control so the same code path handles both conversions.
+"""
 
 from __future__ import annotations
 
@@ -16,24 +20,6 @@ logger = logging.getLogger(__name__)
 LOCAL_PATH_PREFIX: Final = ".local/candidate_staging/candidates/"
 S3_PATH_PREFIX: Final = "s3://chillnbite-cameras/anon/candidates/videos/"
 LOCAL_ROOT: Final = Path(".local")
-
-
-@dataclass
-class FileTarget:
-    """Describes a file to process and how to rewrite its paths."""
-
-    path: Path
-    file_type: str  # "json" or "csv"
-    field_name: str | None = None  # JSON field to rewrite (None = all string values)
-    csv_column: str | None = None  # CSV column name to rewrite
-
-    def contains_old_path(self) -> bool:
-        """Check if file contains the old path prefix."""
-        try:
-            content = self.path.read_text(encoding="utf-8")
-            return LOCAL_PATH_PREFIX in content
-        except (OSError, UnicodeDecodeError):
-            return False
 
 
 @dataclass
@@ -58,10 +44,12 @@ class RewriteStats:
 
 
 class PathRewriter:
-    """Handles the actual path replacement logic."""
+    """Handles bidirectional path replacement logic."""
 
     def __init__(
-        self, old_prefix: str = LOCAL_PATH_PREFIX, new_prefix: str = S3_PATH_PREFIX
+        self,
+        old_prefix: str = S3_PATH_PREFIX,
+        new_prefix: str = LOCAL_PATH_PREFIX,
     ) -> None:
         self.old_prefix = old_prefix
         self.new_prefix = new_prefix
@@ -77,7 +65,6 @@ class PathRewriter:
         """Rewrite paths in a JSON file. Returns replacement count."""
         data = json.loads(path.read_text(encoding="utf-8"))
         count = self._rewrite_json_value(data, field_name)
-
         if count > 0:
             path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
         return count
@@ -112,11 +99,10 @@ class PathRewriter:
             total += self._rewrite_json_value(item, target_field)
         return total
 
-    def rewrite_csv_file(self, path: Path, column_name: str | None = None) -> int:
+    def rewrite_csv_file(self, path: Path) -> int:
         """Rewrite paths in a CSV file. Returns replacement count."""
         text = path.read_text(encoding="utf-8")
         new_text, count = self.rewrite_string(text)
-
         if count > 0:
             path.write_text(new_text, encoding="utf-8")
         return count
@@ -134,43 +120,22 @@ class FileDiscovery:
     ]
 
     @classmethod
-    def discover(cls) -> list[FileTarget]:
+    def discover(cls) -> list[tuple[Path, str, str | None]]:
         """Discover all files that may need rewriting."""
-        targets: list[FileTarget] = []
-
+        targets: list[tuple[Path, str, str | None]] = []
         for rel_dir, file_type, field_name in cls.TARGET_DIRS:
             base_dir = LOCAL_ROOT / rel_dir
             if not base_dir.exists():
                 logger.warning("Directory not found: %s", base_dir)
                 continue
-
             if file_type == "json":
-                targets.extend(cls._discover_json_files(base_dir, field_name))
+                for p in sorted(base_dir.rglob("*.json")):
+                    if not p.is_symlink():
+                        targets.append((p, "json", field_name))
             elif file_type == "csv":
-                targets.extend(cls._discover_csv_files(base_dir))
-
-        return targets
-
-    @classmethod
-    def _discover_json_files(cls, base_dir: Path, field_name: str | None) -> list[FileTarget]:
-        """Find all JSON files under base_dir."""
-        targets: list[FileTarget] = []
-        for json_path in sorted(base_dir.rglob("*.json")):
-            if json_path.is_symlink():
-                logger.debug("Skipping symlink: %s", json_path)
-                continue
-            targets.append(FileTarget(path=json_path, file_type="json", field_name=field_name))
-        return targets
-
-    @classmethod
-    def _discover_csv_files(cls, base_dir: Path) -> list[FileTarget]:
-        """Find all CSV files under base_dir."""
-        targets: list[FileTarget] = []
-        for csv_path in sorted(base_dir.rglob("*.csv")):
-            if csv_path.is_symlink():
-                logger.debug("Skipping symlink: %s", csv_path)
-                continue
-            targets.append(FileTarget(path=csv_path, file_type="csv"))
+                for p in sorted(base_dir.rglob("*.csv")):
+                    if not p.is_symlink():
+                        targets.append((p, "csv", None))
         return targets
 
 
@@ -186,60 +151,62 @@ class RewriteSession:
     def run(self) -> None:
         """Execute the rewrite process."""
         targets = FileDiscovery.discover()
-
         if not targets:
             print("No target files found.")
             return
 
         print(f"Discovered {len(targets)} file(s) to scan.\n")
-
-        for target in targets:
-            self._process_target(target)
+        for path, file_type, field_name in targets:
+            self._process_target(path, file_type, field_name)
 
         print("\n=== Rewrite Summary ===")
         print(self.stats.summary())
-
         if self.stats.errors > 0:
             raise SystemExit(1)
 
-    def _process_target(self, target: FileTarget) -> None:
+    def _process_target(self, path: Path, file_type: str, field_name: str | None) -> None:
         """Process a single file target."""
         self.stats.files_processed += 1
+        try:
+            content = path.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            self.stats.files_skipped += 1
+            return
 
-        if not target.contains_old_path():
+        if self.rewriter.old_prefix not in content:
             self.stats.files_skipped += 1
             return
 
         if self.dry_run:
-            print(f"  [DRY-RUN] Would rewrite: {target.path}")
+            print(f"  [DRY-RUN] Would rewrite: {path}")
             self.stats.files_modified += 1
             return
 
         try:
             if self.backup:
-                backup_path = target.path.with_suffix(target.path.suffix + ".bak")
-                shutil.copy2(target.path, backup_path)
+                backup_path = path.with_suffix(path.suffix + ".bak")
+                shutil.copy2(path, backup_path)
 
-            if target.file_type == "json":
-                count = self.rewriter.rewrite_json_file(target.path, target.field_name)
+            if file_type == "json":
+                count = self.rewriter.rewrite_json_file(path, field_name)
             else:
-                count = self.rewriter.rewrite_csv_file(target.path, target.csv_column)
+                count = self.rewriter.rewrite_csv_file(path)
 
             if count > 0:
                 self.stats.files_modified += 1
                 self.stats.replacements += count
-                logger.info("Rewrote %d path(s) in %s", count, target.path)
+                logger.info("Rewrote %d path(s) in %s", count, path)
             else:
                 self.stats.files_skipped += 1
         except Exception as exc:
             self.stats.errors += 1
-            logger.error("Failed to process %s: %s", target.path, exc)
-            print(f"  ERROR: {target.path}: {exc}")
+            logger.error("Failed to process %s: %s", path, exc)
+            print(f"  ERROR: {path}: {exc}")
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Rewrite local candidate video paths to S3 paths in VLM annotation metadata."
+        description="Rewrite S3 candidate video paths back to local paths in VLM annotation metadata."
     )
     parser.add_argument(
         "--dry-run",
@@ -259,8 +226,8 @@ def main() -> None:
         format="%(asctime)s %(levelname)-8s %(message)s",
     )
 
-    print(f"Old prefix: {LOCAL_PATH_PREFIX}")
-    print(f"New prefix: {S3_PATH_PREFIX}")
+    print(f"Old prefix: {S3_PATH_PREFIX}")
+    print(f"New prefix: {LOCAL_PATH_PREFIX}")
     if args.dry_run:
         print("[DRY-RUN MODE - no files will be modified]\n")
     else:

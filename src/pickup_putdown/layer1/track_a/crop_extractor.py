@@ -225,10 +225,10 @@ def extract_hand_crop(
         y2 -= y1
         y1 = 0
     if x2 > frame_w:
-        x1 -= (x2 - frame_w)
+        x1 -= x2 - frame_w
         x2 = frame_w
     if y2 > frame_h:
-        y1 -= (y2 - frame_h)
+        y1 -= y2 - frame_h
         y2 = frame_h
 
     # Final clamp (in case frame is smaller than crop_size)

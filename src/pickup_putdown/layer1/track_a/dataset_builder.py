@@ -14,8 +14,6 @@ import logging
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-import numpy as np
-
 if TYPE_CHECKING:
     from pickup_putdown.common.schemas import Candidate, Event, PoseObservation
     from pickup_putdown.config import TrackAFeaturesConfig
@@ -32,7 +30,6 @@ from pickup_putdown.layer1.track_a.cache import (
 )
 from pickup_putdown.layer1.track_a.contracts import (
     CropGeometry,
-    CropRecord,
     FeatureDataset,
     FeatureRecord,
 )
@@ -98,10 +95,7 @@ def assign_label(
         overlap = max(0.0, overlap_end - overlap_start)
 
         # Compute overlap ratio (relative to candidate)
-        if candidate_duration > 0:
-            overlap_ratio = overlap / candidate_duration
-        else:
-            overlap_ratio = 0.0
+        overlap_ratio = overlap / candidate_duration if candidate_duration > 0 else 0.0
 
         if overlap_ratio >= min_overlap_ratio and overlap > best_overlap:
             best_overlap = overlap
@@ -110,7 +104,7 @@ def assign_label(
     if best_match is not None:
         label = str(best_match.type)  # "pickup" or "putdown"
         event_id = best_match.event_id
-        confidence = str(best_match.confidence) if hasattr(best_match, 'confidence') else None
+        confidence = str(best_match.confidence) if hasattr(best_match, "confidence") else None
         return label, event_id, confidence
 
     return "negative", None, None
@@ -158,6 +152,7 @@ def process_candidate(
     embedder: AbstractImageEmbedder,
     config: TrackAFeaturesConfig,
     video_checksum: str | None = None,
+    label_override: str | None = None,
 ) -> list[FeatureRecord]:
     """Process a single candidate to extract feature records.
 
@@ -171,6 +166,8 @@ def process_candidate(
         embedder: Image embedder instance.
         config: Track A configuration.
         video_checksum: Pre-computed video checksum (computed if None).
+        label_override: When set, bypasses assign_label() and uses this label
+            directly. Used for reviewed datasets with known labels.
 
     Returns:
         List of FeatureRecords for this candidate.
@@ -186,9 +183,7 @@ def process_candidate(
     wrist_trajectory = get_wrist_trajectory_for_candidate(candidate, pose_observations)
 
     if not wrist_trajectory:
-        logger.warning(
-            f"No pose observations for candidate {candidate.candidate_id}, skipping"
-        )
+        logger.warning(f"No pose observations for candidate {candidate.candidate_id}, skipping")
         return []
 
     # Get contact time and compute sample timestamps
@@ -200,8 +195,13 @@ def process_candidate(
         config,
     )
 
-    # Assign label based on ground truth
-    label, event_id, confidence = assign_label(candidate, events)
+    # Assign label based on ground truth (or use override for reviewed data)
+    if label_override is not None:
+        label = label_override
+        event_id: str | None = None
+        confidence: str | None = None
+    else:
+        label, event_id, confidence = assign_label(candidate, events)
 
     # Process each sample point
     feature_records: list[FeatureRecord] = []
@@ -289,8 +289,8 @@ def _process_crop(
     # Create a placeholder geometry for cache key
     # (actual geometry determined after extraction)
     placeholder_geom = CropGeometry(
-        x=int(wrist_x) - crop_size // 2,
-        y=int(wrist_y) - crop_size // 2,
+        x=max(0, int(wrist_x) - crop_size // 2),
+        y=max(0, int(wrist_y) - crop_size // 2),
         width=crop_size,
         height=crop_size,
     )
@@ -322,6 +322,7 @@ def _process_crop(
             )
 
             from pickup_putdown.layer1.track_a.cache import get_embedding_cache_path
+
             embedding_path = get_embedding_cache_path(cache_dir, embedding_cache_key)
 
             return FeatureRecord(
@@ -348,8 +349,7 @@ def _process_crop(
     frame = load_frame_at_timestamp(video_path, sample.timestamp_s)
     if frame is None:
         logger.warning(
-            f"Failed to load frame at {sample.timestamp_s}s for "
-            f"candidate {candidate.candidate_id}"
+            f"Failed to load frame at {sample.timestamp_s}s for candidate {candidate.candidate_id}"
         )
         return None
 
@@ -428,6 +428,7 @@ def build_feature_dataset(
     config: TrackAFeaturesConfig,
     ignore_intervals: list | None = None,
     embedder: AbstractImageEmbedder | None = None,
+    label_overrides: dict[str, str] | None = None,
 ) -> FeatureDataset:
     """Build the complete feature dataset from candidates.
 
@@ -441,12 +442,16 @@ def build_feature_dataset(
         config: Track A configuration.
         ignore_intervals: Optional list of ignore intervals.
         embedder: Optional pre-created embedder (created from config if None).
+        label_overrides: Optional map of candidate_id -> label. When set, bypasses
+            assign_label() for matching candidates. Used for reviewed datasets.
 
     Returns:
         FeatureDataset containing all extracted feature records.
     """
     if ignore_intervals is None:
         ignore_intervals = []
+    if label_overrides is None:
+        label_overrides = {}
 
     # Create embedder if not provided
     if embedder is None:
@@ -461,6 +466,7 @@ def build_feature_dataset(
     skipped_no_video = 0
     skipped_no_split = 0
     skipped_no_region = 0
+    skipped_no_pose = 0
 
     for i, candidate in enumerate(candidates):
         # Skip if overlaps ignore interval
@@ -514,7 +520,11 @@ def build_feature_dataset(
             embedder=embedder,
             config=config,
             video_checksum=video_checksum,
+            label_override=label_overrides.get(candidate.candidate_id),
         )
+
+        if not records:
+            skipped_no_pose += 1
 
         all_records.extend(records)
 
@@ -532,19 +542,17 @@ def build_feature_dataset(
 
     # Log summary
     logger.info(
-        f"Built feature dataset: {len(all_records)} records from "
-        f"{len(candidates)} candidates"
+        f"Built feature dataset: {len(all_records)} records from {len(candidates)} candidates"
     )
     logger.info(
         f"  Labels: {dataset.n_pickup} pickup, {dataset.n_putdown} putdown, "
         f"{dataset.n_negative} negative"
     )
-    logger.info(
-        f"  Splits: {dataset.n_train} train, {dataset.n_val} val, {dataset.n_test} test"
-    )
+    logger.info(f"  Splits: {dataset.n_train} train, {dataset.n_val} val, {dataset.n_test} test")
     logger.info(
         f"  Skipped: {skipped_ignore} ignore, {skipped_no_video} no_video, "
-        f"{skipped_no_split} no_split, {skipped_no_region} no_region"
+        f"{skipped_no_split} no_split, {skipped_no_region} no_region, "
+        f"{skipped_no_pose} no_pose"
     )
 
     return dataset

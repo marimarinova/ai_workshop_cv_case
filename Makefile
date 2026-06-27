@@ -61,7 +61,8 @@ VIDEO ?= $(TRIAGE_INPUT)
 	task_3 task_4 task_5 \
 	annotation-pull annotation-up annotation-down annotation-restart annotation-status annotation-logs \
 	annotation-config-validate annotation-test annotation-acceptance annotation-reset \
-candidates-remote candidates-download candidates-upload candidates-generate candidates-process-local
+ candidates-remote candidates-download candidates-upload candidates-generate candidates-process-local \
+ track-a-dataset train-track-a infer-track-a evaluate-track-a
 
 # ---------------------------------------------------------------------------
 # General development targets
@@ -524,4 +525,108 @@ candidates-process-local: ## Process downloaded sources locally (GPU parallel, C
 		$(if $(CANDIDATE_KEEP_LOCAL_FILES),--keep-local-files,) \
 		$(if $(CANDIDATE_OVERWRITE),--overwrite,) \
 		-v
+
+# ---------------------------------------------------------------------------
+# Track A: reviewed feature dataset
+# ---------------------------------------------------------------------------
+
+TRACK_A_EVENTS_CSV ?= .local/task_7_vlm/events.csv
+TRACK_A_CLIPS_CSV ?= .local/task_7_vlm/clips.csv
+TRACK_A_REVIEW_MANIFEST ?= .local/task_7_review/review_manifest.csv
+TRACK_A_CANDIDATE_DIR ?= .local/candidate_staging
+TRACK_A_SOURCE_VIDEO_DIR ?= .local/source_videos
+TRACK_A_OUTPUT_DIR ?= .local/track_a_features
+TRACK_A_SPLIT_SEED ?= 42
+TRACK_A_CONFIG ?= configs/proposals.yaml
+TRACK_A_SHELVES_CONFIG ?= configs/shelves.yaml
+TRACK_A_CAMERA_ID ?= store_camera_01
+
+track-a-dataset: ## Build the reviewed Track A feature dataset
+	@echo "=== Building Reviewed Track A Dataset ==="
+	@$(PICKUP_PUTDOWN) build-track-a-dataset \
+		--events-csv "$(TRACK_A_EVENTS_CSV)" \
+		--clips-csv "$(TRACK_A_CLIPS_CSV)" \
+		--review-manifest "$(TRACK_A_REVIEW_MANIFEST)" \
+		--candidate-metadata-dir "$(TRACK_A_CANDIDATE_DIR)" \
+		--source-video-dir "$(TRACK_A_SOURCE_VIDEO_DIR)" \
+		--output-dir "$(TRACK_A_OUTPUT_DIR)" \
+		--split-seed $(TRACK_A_SPLIT_SEED) \
+		--config "$(TRACK_A_CONFIG)" \
+		--shelves-config "$(TRACK_A_SHELVES_CONFIG)" \
+		--camera-id "$(TRACK_A_CAMERA_ID)" \
+		-v
+
+# ---------------------------------------------------------------------------
+# Track A: classifier training
+# ---------------------------------------------------------------------------
+
+TRACK_A_ARTIFACT_DIR ?= .local/track_a_artifacts
+TRACK_A_CONFIG ?= configs/track_a.yaml
+TRACK_A_FEATURE_MANIFEST ?= .local/track_a_features/feature_dataset.parquet
+TRACK_A_CANDIDATE_METADATA ?= .local/candidate_staging/metadata
+TRACK_A_CACHE_DIR ?= .local/track_a_features
+TRACK_A_INFER_OUTPUT_DIR ?= .local/track_a_output
+TRACK_A_CLIP_ID ?=
+TRACK_A_CANDIDATE_ID ?=
+TRACK_A_DEBUG_TRACES ?=
+TRACK_A_FORCE ?=
+
+# Track A evaluation (Phase 6)
+TRACK_A_EVAL_SPLIT ?= val
+TRACK_A_EVAL_LIMIT ?=
+TRACK_A_EVAL_OUTPUT ?= .local/track_a_evaluation
+
+evaluate-track-a: ## Run Track A evaluation: inference + Task-8 metrics + reports
+	@echo "=== Track A Evaluation ==="
+	@echo "Split:        $(TRACK_A_EVAL_SPLIT)"
+	@echo "Output:       $(TRACK_A_EVAL_OUTPUT)"
+	@TRACK_A_EVAL_EXTRA_ARGS=""; \
+	if [ -n "$(TRACK_A_EVAL_LIMIT)" ]; then TRACK_A_EVAL_EXTRA_ARGS="$$TRACK_A_EVAL_EXTRA_ARGS --limit-clips $(TRACK_A_EVAL_LIMIT)"; fi; \
+	if [ -n "$(TRACK_A_CLIP_ID)" ]; then TRACK_A_EVAL_EXTRA_ARGS="$$TRACK_A_EVAL_EXTRA_ARGS --clip-id $(TRACK_A_CLIP_ID)"; fi; \
+	set -o pipefail; \
+	$(PICKUP_PUTDOWN) evaluate-track-a \
+		--config "$(TRACK_A_CONFIG)" \
+		--splits "$(TRACK_A_OUTPUT_DIR)/splits.json" \
+		--feature-manifest "$(TRACK_A_FEATURE_MANIFEST)" \
+		--events "$(TRACK_A_EVENTS_CSV)" \
+		--clips "$(TRACK_A_CLIPS_CSV)" \
+		--artifact-dir "$(TRACK_A_ARTIFACT_DIR)" \
+		--candidate-metadata "$(TRACK_A_CANDIDATE_METADATA)" \
+		--source-video-dir "$(TRACK_A_SOURCE_VIDEO_DIR)" \
+		--shelves-config "$(TRACK_A_SHELVES_CONFIG)" \
+		--camera-id "$(TRACK_A_CAMERA_ID)" \
+		--output-dir "$(TRACK_A_EVAL_OUTPUT)" \
+		--split "$(TRACK_A_EVAL_SPLIT)" \
+		$$TRACK_A_EVAL_EXTRA_ARGS \
+		-v
+	@echo "=== Training Track A Classifiers ==="
+	@$(PICKUP_PUTDOWN) train-track-a \
+		--config "$(TRACK_A_CONFIG)" \
+		--feature-manifest "$(TRACK_A_FEATURE_MANIFEST)" \
+		--output-dir "$(TRACK_A_ARTIFACT_DIR)" \
+		-v
+
+# ---------------------------------------------------------------------------
+# Track A: inference (Phase 5)
+# ---------------------------------------------------------------------------
+
+infer-track-a: ## Run Track A inference pipeline on candidates
+	@echo "=== Track A Inference ==="
+	@TRACK_A_EXTRA_ARGS=""; \
+	if [ -n "$(TRACK_A_CLIP_ID)" ]; then TRACK_A_EXTRA_ARGS="$$TRACK_A_EXTRA_ARGS --clip-id $(TRACK_A_CLIP_ID)"; fi; \
+	if [ -n "$(TRACK_A_CANDIDATE_ID)" ]; then TRACK_A_EXTRA_ARGS="$$TRACK_A_EXTRA_ARGS --candidate-id $(TRACK_A_CANDIDATE_ID)"; fi; \
+	if [ -n "$(TRACK_A_DEBUG_TRACES)" ]; then TRACK_A_EXTRA_ARGS="$$TRACK_A_EXTRA_ARGS --debug-traces"; fi; \
+	if [ -n "$(TRACK_A_FORCE)" ]; then TRACK_A_EXTRA_ARGS="$$TRACK_A_EXTRA_ARGS --force"; fi; \
+	set -o pipefail; \
+	$(PICKUP_PUTDOWN) infer-track-a \
+		--config "$(TRACK_A_CONFIG)" \
+		--candidate-metadata "$(TRACK_A_CANDIDATE_METADATA)" \
+		--source-video-dir "$(TRACK_A_SOURCE_VIDEO_DIR)" \
+		--shelves-config "$(TRACK_A_SHELVES_CONFIG)" \
+		--camera-id "$(TRACK_A_CAMERA_ID)" \
+		--artifact-dir "$(TRACK_A_ARTIFACT_DIR)" \
+--cache-dir "$(TRACK_A_CACHE_DIR)" \
+	--output-dir "$(TRACK_A_INFER_OUTPUT_DIR)" \
+	$$TRACK_A_EXTRA_ARGS \
+	-v
 

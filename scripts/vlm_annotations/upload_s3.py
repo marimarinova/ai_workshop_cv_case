@@ -71,7 +71,9 @@ class UploadStats:
 class S3Uploader:
     """Wraps boto3 S3 client for artifact upload."""
 
-    def __init__(self, bucket: str, region: str | None = None, endpoint_url: str | None = None) -> None:
+    def __init__(
+        self, bucket: str, region: str | None = None, endpoint_url: str | None = None
+    ) -> None:
         import boto3
 
         kwargs: dict[str, str] = {}
@@ -99,7 +101,7 @@ def _parse_bucket_uri(bucket_uri: str) -> tuple[str, str]:
         raise ValueError(f"Invalid bucket URI: {bucket_uri}")
     rest = bucket_uri[5:]
     slash = rest.index("/")
-    return rest[:slash], rest[slash + 1:].rstrip("/")
+    return rest[:slash], rest[slash + 1 :].rstrip("/")
 
 
 def _load_storage_config(config_path: str) -> tuple[str, str, str | None, str | None]:

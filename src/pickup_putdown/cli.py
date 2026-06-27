@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import json
 import logging
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import typer
@@ -2765,6 +2767,1187 @@ def finalize_task_7(
     typer.echo("")
     typer.echo("NOTE: These are VLM pseudo-labels, not human-adjudicated ground truth.")
     typer.echo("Review required before use as final evaluation ground truth.")
+
+
+@app.command()
+def build_track_a_dataset(
+    events_csv: str = typer.Option(
+        ".local/task_7_vlm/events.csv",
+        "--events-csv",
+        "-e",
+        help="Path to canonical events CSV.",
+    ),
+    clips_csv: str = typer.Option(
+        ".local/task_7_vlm/clips.csv",
+        "--clips-csv",
+        help="Path to clips CSV.",
+    ),
+    review_manifest: str = typer.Option(
+        ".local/task_7_review/review_manifest.csv",
+        "--review-manifest",
+        "-r",
+        help="Path to review manifest CSV.",
+    ),
+    candidate_metadata_dir: str = typer.Option(
+        ".local/candidate_staging",
+        "--candidate-metadata-dir",
+        help="Path to candidate staging directory.",
+    ),
+    source_video_dir: str = typer.Option(
+        ".local/source_videos",
+        "--source-video-dir",
+        help="Path to source video directory.",
+    ),
+    output_dir: str = typer.Option(
+        ".local/track_a_features",
+        "--output-dir",
+        "-o",
+        help="Output directory for features and manifest.",
+    ),
+    split_seed: int = typer.Option(
+        42,
+        "--split-seed",
+        help="Random seed for deterministic split assignment.",
+    ),
+    config: str = typer.Option(
+        "configs/proposals.yaml",
+        "--config",
+        "-c",
+        help="Path to configuration YAML file.",
+    ),
+    shelves_config: str = typer.Option(
+        "configs/shelves.yaml",
+        "--shelves-config",
+        help="Path to shelf/surface region configuration YAML file.",
+    ),
+    camera_id: str = typer.Option(
+        "store_camera_01",
+        "--camera-id",
+        help="Camera ID from the shelf configuration.",
+    ),
+    verbose: bool = typer.Option(
+        False,
+        "--verbose",
+        "-v",
+        help="Enable debug logging.",
+    ),
+) -> None:
+    """Build the reviewed Track A feature dataset.
+
+    Loads the reviewed Task 7 data, resolves reviewed examples, assigns
+    train/val/test splits by recording day, runs pose inference, extracts
+    features, and saves the feature dataset manifest with cached embeddings.
+    """
+    _setup_logging(verbose)
+
+    from pathlib import Path
+
+    from pickup_putdown.config import load_config
+    from pickup_putdown.layer1.track_a.reviewed_dataset import (
+        build_reviewed_feature_dataset,
+    )
+    from pickup_putdown.perception.shelf_regions import (
+        get_expanded_regions,
+        get_regions_for_camera,
+        load_shelf_config,
+    )
+
+    cfg = load_config(Path(config))
+
+    # Load shelf regions
+    shelf_cfg = load_shelf_config(Path(shelves_config))
+    camera_cfg = get_regions_for_camera(shelf_cfg, camera_id)
+    _expanded_regions = get_expanded_regions(camera_cfg)  # noqa: F841
+    shelf_regions = {region.region_id: region.points for region in camera_cfg.regions}
+
+    typer.echo("=== Building Reviewed Track A Dataset ===")
+    typer.echo(f"  Review manifest:   {review_manifest}")
+    typer.echo(f"  Events CSV:        {events_csv}")
+    typer.echo(f"  Clips CSV:         {clips_csv}")
+    typer.echo(f"  Candidate staging: {candidate_metadata_dir}")
+    typer.echo(f"  Source videos:     {source_video_dir}")
+    typer.echo(f"  Output dir:        {output_dir}")
+    typer.echo(f"  Split seed:        {split_seed}")
+    typer.echo(f"  Camera:            {camera_id}")
+    typer.echo(f"  Shelf regions:     {len(shelf_regions)}")
+    typer.echo("")
+
+    try:
+        dataset, summary = build_reviewed_feature_dataset(
+            review_manifest_path=review_manifest,
+            events_path=events_csv,
+            clips_path=clips_csv,
+            candidate_staging_dir=candidate_metadata_dir,
+            source_video_dir=source_video_dir,
+            output_dir=output_dir,
+            pose_cfg=cfg.pose,
+            track_a_cfg=cfg.track_a_features,
+            shelf_regions=shelf_regions,
+            split_seed=split_seed,
+        )
+    except Exception as exc:
+        typer.echo(f"Error building dataset: {exc}", err=True)
+        raise SystemExit(1) from exc
+
+    typer.echo("")
+    typer.echo("=== Build Summary ===")
+    typer.echo(f"  Total reviewed:    {summary.total_reviewed}")
+    typer.echo(f"  Positives:         {summary.positives}")
+    typer.echo(f"  Negatives:         {summary.negatives}")
+    typer.echo(f"  Excluded unreviewed: {summary.excluded_unreviewed}")
+    typer.echo(f"  Total records:     {len(dataset.records)}")
+    typer.echo("")
+    typer.echo("  Records by split:")
+    for split, count in sorted(summary.records_by_split.items()):
+        typer.echo(f"    {split}: {count}")
+    typer.echo("  Records by label:")
+    for label, count in sorted(summary.records_by_label.items()):
+        typer.echo(f"    {label}: {count}")
+    typer.echo("  Records by position:")
+    for pos, count in sorted(summary.records_by_position.items()):
+        typer.echo(f"    {pos}: {count}")
+    typer.echo("  Records by crop type:")
+    for ct, count in sorted(summary.records_by_crop_type.items()):
+        typer.echo(f"    {ct}: {count}")
+    typer.echo("")
+    typer.echo(f"  Manifest:          {output_dir}/feature_dataset.parquet")
+    typer.echo(f"  Splits:            {output_dir}/splits.json")
+    typer.echo(f"  Build summary:     {output_dir}/build_summary.json")
+
+
+@app.command()
+def train_track_a(
+    config: str = typer.Option(
+        "configs/track_a.yaml",
+        "--config",
+        "-c",
+        help="Path to Track A classifier configuration YAML.",
+    ),
+    feature_manifest: str = typer.Option(
+        ".local/track_a_features/feature_dataset.parquet",
+        "--feature-manifest",
+        "-m",
+        help="Path to the Phase 1 feature dataset parquet.",
+    ),
+    output_dir: str = typer.Option(
+        ".local/track_a_artifacts",
+        "--output-dir",
+        "-o",
+        help="Output directory for classifier artifacts.",
+    ),
+    seed: int | None = typer.Option(
+        None,
+        "--seed",
+        help="Override random seed from config.",
+    ),
+    force: bool = typer.Option(
+        False,
+        "--force",
+        "-f",
+        help="Overwrite existing artifacts.",
+    ),
+    verbose: bool = typer.Option(
+        False,
+        "--verbose",
+        "-v",
+        help="Enable debug logging.",
+    ),
+) -> None:
+    """Train Track A hand-state and shelf-transition classifiers.
+
+    Loads the reviewed Phase 1 feature dataset, derives supervised labels,
+    trains logistic regression classifiers, evaluates on the validation split,
+    and persists artifacts with metadata and metrics.
+    """
+    _setup_logging(verbose)
+
+    import json
+
+    import yaml
+
+    from pickup_putdown.layer1.track_a.hand_state import (
+        train_hand_classifier,
+    )
+    from pickup_putdown.layer1.track_a.manifest import load_manifest
+    from pickup_putdown.layer1.track_a.shelf_state import (
+        train_shelf_classifier,
+    )
+
+    # Load config
+    cfg_path = Path(config)
+    if not cfg_path.exists():
+        typer.echo(f"Config not found: {cfg_path}", err=True)
+        raise SystemExit(1)
+
+    with open(cfg_path) as f:
+        cfg = yaml.safe_load(f) or {}
+
+    classifiers_cfg = cfg.get("classifiers", {})
+    seed = seed if seed is not None else classifiers_cfg.get("random_seed", 42)
+
+    hand_cfg = classifiers_cfg.get("hand_state", {})
+    shelf_cfg = classifiers_cfg.get("shelf_state", {})
+
+    # Check output directory
+    output_path = Path(output_dir)
+    if output_path.exists():
+        existing = list(output_path.glob("*.joblib"))
+        if existing and not force:
+            typer.echo(
+                f"Output directory exists with artifacts: {output_path}",
+                err=True,
+            )
+            typer.echo("Use --force to overwrite.", err=True)
+            raise SystemExit(1)
+    output_path.mkdir(parents=True, exist_ok=True)
+
+    # Load feature dataset
+    manifest_path = Path(feature_manifest)
+    if not manifest_path.exists():
+        typer.echo(f"Feature manifest not found: {manifest_path}", err=True)
+        raise SystemExit(1)
+
+    typer.echo("=== Training Track A Classifiers ===")
+    typer.echo(f"  Config:           {config}")
+    typer.echo(f"  Feature manifest: {feature_manifest}")
+    typer.echo(f"  Output dir:       {output_dir}")
+    typer.echo(f"  Seed:             {seed}")
+    typer.echo("")
+
+    dataset = load_manifest(manifest_path)
+    typer.echo(f"  Total records:    {len(dataset.records)}")
+    typer.echo(f"  Encoder:          {dataset.encoder_name}")
+    typer.echo("")
+
+    # --- Hand-state classifier ---
+    typer.echo("--- Hand-State Classifier ---")
+    try:
+        hand_classifier, hand_report = train_hand_classifier(
+            records=dataset.records,
+            confidence_threshold=hand_cfg.get("confidence_threshold", 0.60),
+            margin_threshold=hand_cfg.get("margin_threshold", 0.15),
+            random_seed=seed,
+            class_weight=hand_cfg.get("class_weight", "balanced"),
+            max_iter=hand_cfg.get("max_iter", 1000),
+        )
+
+        # Save artifacts
+        hand_joblib = output_path / "hand_state.joblib"
+        hand_metadata = hand_classifier.build_metadata(
+            encoder_name=dataset.encoder_name,
+            encoder_version=dataset.encoder_version,
+            training_record_counts=hand_report["train_class_counts"],
+            train_split_count=hand_report["train_records"],
+            val_split_count=hand_report["val_records"],
+        )
+        hand_classifier.save_pipeline(hand_joblib)
+        (output_path / "hand_state_metadata.json").write_text(
+            json.dumps(hand_metadata.to_dict(), indent=2) + "\n"
+        )
+        (output_path / "hand_state_metrics.json").write_text(
+            json.dumps(hand_report, indent=2, default=str) + "\n"
+        )
+
+        typer.echo(f"  Train records:  {hand_report['train_records']}")
+        typer.echo(f"  Train classes:  {hand_report['train_class_counts']}")
+        typer.echo(f"  Val records:    {hand_report['val_records']}")
+        if "val_class_counts" in hand_report:
+            typer.echo(f"  Val classes:    {hand_report['val_class_counts']}")
+        val = hand_report.get("validation", {})
+        if "accuracy" in val:
+            typer.echo(f"  Val accuracy:   {val['accuracy']:.4f}")
+            typer.echo(f"  Val bal. acc:   {val['balanced_accuracy']:.4f}")
+            typer.echo(f"  Val macro F1:   {val['macro_f1']:.4f}")
+            typer.echo(
+                f"  Uncertain:      {val.get('n_uncertain', '?')}/{val.get('n_samples', '?')}"
+            )
+        typer.echo(f"  Artifacts:      {hand_joblib}")
+        typer.echo("")
+
+    except Exception as exc:
+        typer.echo(f"Hand-state training failed: {exc}", err=True)
+        raise SystemExit(1) from exc
+
+    # --- Shelf-transition classifier ---
+    typer.echo("--- Shelf-Transition Classifier ---")
+    try:
+        shelf_classifier, shelf_report = train_shelf_classifier(
+            records=dataset.records,
+            confidence_threshold=shelf_cfg.get("confidence_threshold", 0.60),
+            margin_threshold=shelf_cfg.get("margin_threshold", 0.15),
+            random_seed=seed,
+            class_weight=shelf_cfg.get("class_weight", "balanced"),
+            max_iter=shelf_cfg.get("max_iter", 1000),
+        )
+
+        # Save artifacts
+        shelf_joblib = output_path / "shelf_state.joblib"
+        shelf_metadata = shelf_classifier.build_metadata(
+            encoder_name=dataset.encoder_name,
+            encoder_version=dataset.encoder_version,
+            training_record_counts=shelf_report["train_class_counts"],
+            train_split_count=shelf_report["train_records"],
+            val_split_count=shelf_report["val_records"],
+        )
+        shelf_classifier.save_pipeline(shelf_joblib)
+        (output_path / "shelf_state_metadata.json").write_text(
+            json.dumps(shelf_metadata.to_dict(), indent=2) + "\n"
+        )
+        (output_path / "shelf_state_metrics.json").write_text(
+            json.dumps(shelf_report, indent=2, default=str) + "\n"
+        )
+
+        typer.echo(f"  Train records:  {shelf_report['train_records']}")
+        typer.echo(f"  Train classes:  {shelf_report['train_class_counts']}")
+        typer.echo(f"  Val records:    {shelf_report['val_records']}")
+        if "val_class_counts" in shelf_report:
+            typer.echo(f"  Val classes:    {shelf_report['val_class_counts']}")
+        val = shelf_report.get("validation", {})
+        if "accuracy" in val:
+            typer.echo(f"  Val accuracy:   {val['accuracy']:.4f}")
+            typer.echo(f"  Val bal. acc:   {val['balanced_accuracy']:.4f}")
+            typer.echo(f"  Val macro F1:   {val['macro_f1']:.4f}")
+            typer.echo(
+                f"  Uncertain:      {val.get('n_uncertain', '?')}/{val.get('n_samples', '?')}"
+            )
+        typer.echo(f"  Artifacts:      {shelf_joblib}")
+        typer.echo("")
+
+    except Exception as exc:
+        typer.echo(f"Shelf-state training failed: {exc}", err=True)
+        raise SystemExit(1) from exc
+
+    typer.echo("=== Training Complete ===")
+    typer.echo(f"  Artifacts saved to: {output_dir}")
+
+
+# ---------------------------------------------------------------------------
+# Track A inference command (Phase 5)
+# ---------------------------------------------------------------------------
+
+
+@app.command(name="infer-track-a")
+def infer_track_a(
+    config: str = typer.Option(
+        "configs/track_a.yaml",
+        "--config",
+        "-c",
+        help="Path to Track A configuration YAML.",
+    ),
+    candidate_metadata: str = typer.Option(
+        ".local/candidate_staging/metadata",
+        "--candidate-metadata",
+        help="Directory containing candidate metadata JSON files.",
+    ),
+    candidates: str | None = typer.Option(
+        None,
+        "--candidates",
+        help=(
+            "Path to candidates parquet file. When provided, used instead of "
+            "candidate metadata directory."
+        ),
+    ),
+    pose_observations: str | None = typer.Option(
+        None,
+        "--pose-observations",
+        help=(
+            "Path to tracks_pose.parquet or directory containing per-clip "
+            "pose parquet files. Auto-detected from .local/remote_candidates/ "
+            "when omitted."
+        ),
+    ),
+    source_video_dir: str = typer.Option(
+        ".local/source_videos",
+        "--source-video-dir",
+        help="Directory containing source video files.",
+    ),
+    shelves_config: str = typer.Option(
+        "configs/shelves.yaml",
+        "--shelves-config",
+        help="Path to shelf/surface region configuration YAML.",
+    ),
+    camera_id: str = typer.Option(
+        "store_camera_01",
+        "--camera-id",
+        help="Camera ID from the shelf configuration.",
+    ),
+    artifact_dir: str = typer.Option(
+        ".local/track_a_artifacts",
+        "--artifact-dir",
+        help="Directory containing trained classifier artifacts.",
+    ),
+    cache_dir: str = typer.Option(
+        ".local/track_a_features",
+        "--cache-dir",
+        help="Directory for cached feature embeddings.",
+    ),
+    output_dir: str = typer.Option(
+        ".local/track_a_output",
+        "--output-dir",
+        "-o",
+        help="Output directory for predictions and diagnostics.",
+    ),
+    clip_id: str | None = typer.Option(
+        None,
+        "--clip-id",
+        help="Process only candidates from this clip.",
+    ),
+    candidate_id: str | None = typer.Option(
+        None,
+        "--candidate-id",
+        help="Process only this specific candidate.",
+    ),
+    debug_traces: bool = typer.Option(
+        False,
+        "--debug-traces",
+        help="Enable per-observation debug traces in diagnostics.",
+    ),
+    force: bool = typer.Option(
+        False,
+        "--force",
+        "-f",
+        help="Overwrite existing output files.",
+    ),
+    verbose: bool = typer.Option(
+        False,
+        "--verbose",
+        "-v",
+        help="Enable debug logging.",
+    ),
+) -> None:
+    """Run Track A inference pipeline on candidates.
+
+    Loads candidates, pose data, shelf regions, source videos, and classifier
+    artifacts, then runs the full inference pipeline with feature extraction,
+    classifier prediction, state-machine processing, boundary refinement, and
+    deduplication.
+    """
+    _setup_logging(verbose)
+
+    from pathlib import Path
+
+    import yaml
+
+    # ------------------------------------------------------------------
+    # Load config
+    # ------------------------------------------------------------------
+    cfg_path = Path(config)
+    if not cfg_path.exists():
+        typer.echo(f"Config not found: {cfg_path}", err=True)
+        raise SystemExit(1)
+
+    with open(cfg_path) as f:
+        cfg_data = yaml.safe_load(f) or {}
+
+    # ------------------------------------------------------------------
+    # Resolve inference config
+    # ------------------------------------------------------------------
+    from pickup_putdown.layer1.track_a.inference import (
+        InferenceConfig,
+        load_inference_config,
+    )
+    from pickup_putdown.layer1.track_a.state_machine import StateMachineConfig
+
+    inf_cfg = load_inference_config(cfg_path)
+    if debug_traces:
+        inf_cfg = InferenceConfig(
+            sampling=inf_cfg.sampling,
+            boundary_refinement=inf_cfg.boundary_refinement,
+            deduplication=inf_cfg.deduplication,
+            transition_grace_s=inf_cfg.transition_grace_s,
+            debug_traces=True,
+        )
+
+    sm_cfg_dict = cfg_data.get("state_machine", {})
+    # Map nested confidence_weights to flat fields expected by StateMachineConfig
+    if sm_cfg_dict:
+        cw = sm_cfg_dict.pop("confidence_weights", {})
+        if isinstance(cw, dict):
+            sm_cfg_dict.setdefault("confidence_weight_hand", cw.get("hand", 0.40))
+            sm_cfg_dict.setdefault("confidence_weight_shelf", cw.get("shelf", 0.40))
+            sm_cfg_dict.setdefault("confidence_weight_trajectory", cw.get("trajectory", 0.20))
+    sm_cfg = StateMachineConfig(**sm_cfg_dict) if sm_cfg_dict else StateMachineConfig()
+
+    # ------------------------------------------------------------------
+    # Resolve shelf regions
+    # ------------------------------------------------------------------
+    from pickup_putdown.perception.shelf_regions import (
+        get_regions_for_camera,
+        load_shelf_config,
+    )
+
+    shelf_cfg_path = Path(shelves_config)
+    if not shelf_cfg_path.exists():
+        typer.echo(f"Shelf config not found: {shelf_cfg_path}", err=True)
+        raise SystemExit(1)
+
+    shelf_cfg = load_shelf_config(shelf_cfg_path)
+    if camera_id not in shelf_cfg.cameras:
+        typer.echo(
+            f"Unknown camera ID {camera_id!r}. Available: {list(shelf_cfg.cameras)}",
+            err=True,
+        )
+        raise SystemExit(1)
+
+    camera_cfg = get_regions_for_camera(shelf_cfg, camera_id)
+    shelf_regions = {r.region_id: r.points for r in camera_cfg.regions}
+
+    # ------------------------------------------------------------------
+    # Resolve classifier artifacts
+    # ------------------------------------------------------------------
+    artifact_path = Path(artifact_dir)
+    hand_artifact = artifact_path / "hand_state.joblib"
+    shelf_artifact = artifact_path / "shelf_state.joblib"
+
+    if not hand_artifact.exists():
+        typer.echo(f"Hand classifier artifact not found: {hand_artifact}", err=True)
+        raise SystemExit(1)
+    if not shelf_artifact.exists():
+        typer.echo(f"Shelf classifier artifact not found: {shelf_artifact}", err=True)
+        raise SystemExit(1)
+
+    # ------------------------------------------------------------------
+    # Resolve output directory
+    # ------------------------------------------------------------------
+    output_path = Path(output_dir)
+    if output_path.exists():
+        existing_outputs = [
+            output_path / "predictions.csv",
+            output_path / "raw_state_machine_events.json",
+            output_path / "inference_summary.json",
+        ]
+        if any(p.exists() for p in existing_outputs) and not force:
+            typer.echo(f"Output directory exists with previous results: {output_path}", err=True)
+            typer.echo("Use --force to overwrite.", err=True)
+            raise SystemExit(1)
+    output_path.mkdir(parents=True, exist_ok=True)
+
+    # ------------------------------------------------------------------
+    # Load candidates
+    # ------------------------------------------------------------------
+    all_candidates = _load_candidates_for_inference(
+        candidate_metadata_dir=Path(candidate_metadata),
+        candidates_path=Path(candidates) if candidates else None,
+    )
+
+    if not all_candidates:
+        typer.echo("No candidates found. Check --candidate-metadata and --candidates.", err=True)
+        raise SystemExit(1)
+
+    # ------------------------------------------------------------------
+    # Enrich candidates with actor_id/hand_side/region_id from feature dataset
+    # ------------------------------------------------------------------
+    feature_manifest = Path(cache_dir) / "feature_dataset.parquet"
+    if feature_manifest.exists():
+        all_candidates = _enrich_candidates_from_feature_dataset(all_candidates, feature_manifest)
+
+    # ------------------------------------------------------------------
+    # Filter candidates
+    # ------------------------------------------------------------------
+    filtered_candidates = _filter_candidates(
+        all_candidates,
+        clip_id=clip_id,
+        candidate_id=candidate_id,
+    )
+
+    if not filtered_candidates:
+        if clip_id:
+            typer.echo(
+                f"No candidates found for clip {clip_id!r}.",
+                err=True,
+            )
+        elif candidate_id:
+            typer.echo(
+                f"Candidate {candidate_id!r} not found.",
+                err=True,
+            )
+        else:
+            typer.echo("No candidates matched the filter criteria.", err=True)
+        raise SystemExit(1)
+
+    # ------------------------------------------------------------------
+    # Resolve source videos
+    # ------------------------------------------------------------------
+    source_video_path = Path(source_video_dir)
+    source_videos = _resolve_source_videos(filtered_candidates, source_video_path)
+
+    # ------------------------------------------------------------------
+    # Resolve pose observations
+    # ------------------------------------------------------------------
+    all_pose_obs = _resolve_pose_observations(
+        filtered_candidates,
+        pose_path=Path(pose_observations) if pose_observations else None,
+        source_video_dir=source_video_path,
+    )
+
+    # ------------------------------------------------------------------
+    # Resolve clip durations
+    # ------------------------------------------------------------------
+    clip_durations = _probe_clip_durations(source_videos)
+
+    # ------------------------------------------------------------------
+    # Resolve embedder
+    # ------------------------------------------------------------------
+    from pickup_putdown.layer1.track_a.image_features import (
+        TorchVisionEmbedder,
+    )
+
+    embedder_cfg_dict = cfg_data.get("track_a_features", {})
+    encoder_name = embedder_cfg_dict.get("encoder_name", "mobilenet_v3_small")
+    hand_crop_size = embedder_cfg_dict.get("hand_crop_size", 224)
+    shelf_patch_size = embedder_cfg_dict.get("shelf_patch_size", 224)
+
+    embedder = TorchVisionEmbedder(encoder_name)
+
+    # ------------------------------------------------------------------
+    # Run pipeline
+    # ------------------------------------------------------------------
+    typer.echo("=== Track A Inference ===")
+    typer.echo(f"  Config:           {config}")
+    typer.echo(f"  Candidates:       {len(filtered_candidates)}")
+    typer.echo(f"  Pose obs:         {len(all_pose_obs)}")
+    typer.echo(f"  Source videos:    {len(source_videos)}")
+    typer.echo(f"  Shelf regions:    {len(shelf_regions)}")
+    typer.echo(f"  Artifacts:        {artifact_dir}")
+    typer.echo(f"  Cache dir:        {cache_dir}")
+    typer.echo(f"  Output dir:       {output_dir}")
+    typer.echo("")
+
+    from pickup_putdown.layer1.track_a.inference import TrackAInferencePipeline
+
+    pipeline = TrackAInferencePipeline(
+        config=inf_cfg,
+        state_machine_config=sm_cfg,
+    )
+
+    # Convert dicts to objects for pipeline getattr() compatibility
+    obj_candidates = [
+        SimpleNamespace(**c) if isinstance(c, dict) else c for c in filtered_candidates
+    ]
+    obj_poses = [SimpleNamespace(**p) if isinstance(p, dict) else p for p in all_pose_obs]
+
+    try:
+        result = pipeline.run(
+            candidates=obj_candidates,
+            pose_observations=obj_poses,
+            source_videos=source_videos,
+            hand_classifier_path=hand_artifact,
+            shelf_classifier_path=shelf_artifact,
+            output_dir=output_path,
+            shelf_regions=shelf_regions,
+            embedder=embedder,
+            cache_dir=cache_dir,
+            clip_durations=clip_durations,
+            hand_crop_size=hand_crop_size,
+            shelf_patch_size=shelf_patch_size,
+        )
+    except Exception as exc:
+        typer.echo(f"Inference failed: {exc}", err=True)
+        raise SystemExit(1) from exc
+
+    # ------------------------------------------------------------------
+    # Summary
+    # ------------------------------------------------------------------
+    typer.echo("")
+    typer.echo("=== Inference Summary ===")
+    typer.echo(f"  Candidates processed: {result.summary.candidates_processed}")
+    typer.echo(f"  Candidates skipped:   {result.summary.candidates_skipped}")
+    typer.echo(f"  Total samples:        {result.summary.total_samples}")
+    typer.echo(f"  Cache hits:           {result.summary.feature_cache_hits}")
+    typer.echo(f"  Cache misses:         {result.summary.feature_cache_misses}")
+    typer.echo(f"  Raw events:           {result.summary.raw_events_emitted}")
+    typer.echo(f"  Final predictions:    {result.summary.final_events_after_dedup}")
+    typer.echo(f"  Pickups:              {result.summary.pickup_count}")
+    typer.echo(f"  Putdowns:             {result.summary.putdown_count}")
+    if result.summary.final_events_after_dedup > 0:
+        typer.echo(f"  Mean confidence:    {result.summary.mean_confidence:.4f}")
+    typer.echo(f"  Output directory:     {output_path}")
+
+    if result.output_paths:
+        typer.echo("")
+        typer.echo("  Output files:")
+        for key, path in result.output_paths.items():
+            typer.echo(f"    {key}: {path}")
+
+    if result.summary.candidates_processed == 0 and result.summary.candidates_skipped > 0:
+        typer.echo("")
+        typer.echo("  Skip reasons:")
+        for reason, count in result.summary.skip_reasons.items():
+            typer.echo(f"    {reason}: {count}")
+
+
+def _load_candidates_for_inference(
+    candidate_metadata_dir: Path,
+    candidates_path: Path | None = None,
+) -> list[dict[str, object]]:
+    """Load candidates from metadata directory or parquet file.
+
+    Returns list of dicts with at least: candidate_id, clip_id,
+    source_start_s, source_end_s, actor_id, hand_side, region_id.
+    """
+    if candidates_path and candidates_path.exists():
+        import pyarrow.parquet as pq
+
+        table = pq.read_table(str(candidates_path))
+        df = table.to_pandas()
+        records = []
+        for _, row in df.iterrows():
+            records.append(
+                {
+                    "candidate_id": row.get("candidate_id", ""),
+                    "clip_id": row.get("clip_id", ""),
+                    "raw_start_s": float(row.get("raw_start_s", 0.0)),
+                    "raw_end_s": float(row.get("raw_end_s", 0.0)),
+                    "window_start_s": float(
+                        row.get("window_start_s", row.get("raw_start_s", 0.0))
+                    ),
+                    "window_end_s": float(row.get("window_end_s", row.get("raw_end_s", 0.0))),
+                    "actor_id": str(row.get("actor_id", ""))
+                    if pd_notna(row.get("actor_id"))
+                    else "",
+                    "hand_side": str(row.get("hand_side", ""))
+                    if pd_notna(row.get("hand_side"))
+                    else "",
+                    "region_id": str(row.get("region_id", ""))
+                    if pd_notna(row.get("region_id"))
+                    else "",
+                }
+            )
+        return records
+
+    # Load from candidate staging metadata
+    # Two layouts supported:
+    #   1) <dir>/candidates/<clip_id>/<clip_id>.json  (remote_candidates layout)
+    #   2) <dir>/<clip_id>/<clip_id>.json             (candidate_staging/metadata layout)
+    index: dict[str, dict] = {}
+
+    candidates_subdir = candidate_metadata_dir / "candidates"
+    if candidates_subdir.exists():
+        from pickup_putdown.layer1.track_a.reviewed_dataset import (
+            load_candidate_metadata_index,
+        )
+
+        index = load_candidate_metadata_index(candidate_metadata_dir)
+    elif candidate_metadata_dir.exists():
+        # ponytail: direct scan of <dir>/<clip_id>/<clip_id>.json
+        for clip_dir in sorted(candidate_metadata_dir.iterdir()):
+            if not clip_dir.is_dir():
+                continue
+            meta_file = clip_dir / f"{clip_dir.name}.json"
+            if not meta_file.exists():
+                continue
+            try:
+                data = json.loads(meta_file.read_text(encoding="utf-8"))
+            except (json.JSONDecodeError, OSError):
+                continue
+
+            clip_id = data.get("source_video_id", clip_dir.name)
+            for cand in data.get("candidates", []):
+                cid = cand.get("candidate_id")
+                if not cid:
+                    continue
+                index[cid] = {
+                    "candidate_id": cid,
+                    "clip_id": clip_id,
+                    "source_start_s": float(cand.get("source_start_s", 0)),
+                    "source_end_s": float(cand.get("source_end_s", 0)),
+                    "actor_id": cand.get("actor_id"),
+                    "hand_side": cand.get("hand_side"),
+                    "region_id": cand.get("region_id"),
+                }
+
+    records = []
+    for meta in index.values():
+        if isinstance(meta, dict):
+            records.append(
+                {
+                    "candidate_id": meta["candidate_id"],
+                    "clip_id": meta["clip_id"],
+                    "raw_start_s": meta["source_start_s"],
+                    "raw_end_s": meta["source_end_s"],
+                    "window_start_s": meta["source_start_s"],
+                    "window_end_s": meta["source_end_s"],
+                    "actor_id": meta.get("actor_id") or "",
+                    "hand_side": meta.get("hand_side") or "",
+                    "region_id": meta.get("region_id") or "",
+                }
+            )
+        else:
+            records.append(
+                {
+                    "candidate_id": meta.candidate_id,
+                    "clip_id": meta.clip_id,
+                    "raw_start_s": meta.source_start_s,
+                    "raw_end_s": meta.source_end_s,
+                    "window_start_s": meta.source_start_s,
+                    "window_end_s": meta.source_end_s,
+                    "actor_id": meta.actor_id or "",
+                    "hand_side": meta.hand_side or "",
+                    "region_id": meta.region_id or "",
+                }
+            )
+    return records
+
+
+def _enrich_candidates_from_feature_dataset(
+    candidates: list[dict[str, object]],
+    feature_manifest: Path,
+) -> list[dict[str, object]]:
+    """Enrich candidates with actor_id/hand_side/region_id from feature dataset."""
+    import pyarrow.parquet as pq
+
+    table = pq.read_table(str(feature_manifest))
+    df = table.to_pandas()
+
+    # Build lookup: candidate_id -> {actor_id, hand_side, region_id}
+    lookup: dict[str, dict[str, str]] = {}
+    for _, row in df.iterrows():
+        cid = row.get("candidate_id", "")
+        if not cid:
+            continue
+        if cid not in lookup:
+            lookup[cid] = {
+                "actor_id": str(row.get("actor_id", "")) if pd_notna(row.get("actor_id")) else "",
+                "hand_side": str(row.get("hand_side", ""))
+                if pd_notna(row.get("hand_side"))
+                else "",
+                "region_id": str(row.get("region_id", ""))
+                if pd_notna(row.get("region_id"))
+                else "",
+            }
+
+    enriched = []
+    for cand in candidates:
+        cid = cand["candidate_id"]
+        info = lookup.get(cid, {})
+        c = dict(cand)
+        if not c.get("actor_id") and info.get("actor_id"):
+            c["actor_id"] = info["actor_id"]
+        if not c.get("hand_side") and info.get("hand_side"):
+            c["hand_side"] = info["hand_side"]
+        if not c.get("region_id") and info.get("region_id"):
+            c["region_id"] = info["region_id"]
+        enriched.append(c)
+    return enriched
+
+
+def _filter_candidates(
+    candidates: list[dict[str, object]],
+    clip_id: str | None = None,
+    candidate_id: str | None = None,
+) -> list[dict[str, object]]:
+    """Filter candidates by clip_id and/or candidate_id."""
+    filtered = candidates
+    if candidate_id:
+        filtered = [c for c in filtered if c["candidate_id"] == candidate_id]
+    if clip_id:
+        filtered = [c for c in filtered if c["clip_id"] == clip_id]
+    return filtered
+
+
+def _resolve_source_videos(
+    candidates: list[dict[str, object]],
+    source_video_dir: Path,
+) -> dict[str, Path]:
+    """Resolve source video paths for unique clip IDs."""
+    clip_ids = sorted({c["clip_id"] for c in candidates})
+    videos: dict[str, Path] = {}
+    for clip_id in clip_ids:
+        video_path = source_video_dir / f"{clip_id}.mp4"
+        if video_path.exists():
+            videos[clip_id] = video_path
+    return videos
+
+
+def _resolve_pose_observations(
+    candidates: list[dict[str, object]],
+    pose_path: Path | None = None,
+    source_video_dir: Path | None = None,
+) -> list[dict[str, object]]:
+    """Resolve pose observations from parquet files.
+
+    Search order:
+    1. Explicit --pose-observations path (file or directory)
+    2. Auto-detect from .local/remote_candidates/
+    3. Empty list (pipeline will skip feature extraction)
+    """
+    import pyarrow.parquet as pq
+
+    clip_ids = sorted({c["clip_id"] for c in candidates})
+    all_obs: list[dict[str, object]] = []
+
+    pose_files: list[Path] = []
+
+    if pose_path:
+        if pose_path.is_file():
+            pose_files = [pose_path]
+        elif pose_path.is_dir():
+            pose_files = sorted(pose_path.glob("*.parquet"))
+    else:
+        # Auto-detect from .local/remote_candidates/
+        remote_dir = Path(".local/remote_candidates")
+        if remote_dir.exists():
+            for clip_id in clip_ids:
+                found = _find_pose_file_for_clip(remote_dir, clip_id)
+                if found:
+                    pose_files.append(found)
+
+    for pf in pose_files:
+        try:
+            table = pq.read_table(str(pf))
+            df = table.to_pandas()
+            for _, row in df.iterrows():
+                cid = str(row.get("clip_id", ""))
+                # ponytail: strip clip_ prefix to match candidate clip_id format
+                if cid.startswith("clip_"):
+                    cid = cid[5:]
+                all_obs.append(
+                    {
+                        "clip_id": cid,
+                        "timestamp_s": float(row.get("timestamp_s", 0.0)),
+                        "actor_id": str(row.get("actor_id", "")),
+                        "hand_side": str(row.get("hand_side", "")),
+                        "wrist_x": float(row.get("wrist_x", 0.0)),
+                        "wrist_y": float(row.get("wrist_y", 0.0)),
+                        "wrist_confidence": float(row.get("wrist_confidence", 0.5)),
+                    }
+                )
+        except Exception as exc:
+            logger.warning("Failed to load pose file %s: %s", pf, exc)
+
+    return all_obs
+
+
+def _find_pose_file_for_clip(
+    remote_dir: Path,
+    clip_id: str,
+) -> Path | None:
+    """Find tracks_pose.parquet for a clip in remote_candidates directory."""
+    import fnmatch
+
+    for parquet in remote_dir.rglob("tracks_pose.parquet"):
+        # The parquet is in <run>/<clip_id>/intermediate/task_5/tracks_pose.parquet
+        # or similar structure. Check if clip_id matches any ancestor.
+        parts = parquet.parts
+        for part in parts:
+            if fnmatch.fnmatch(part, clip_id) or part == clip_id:
+                return parquet
+    return None
+
+
+def _probe_clip_durations(
+    source_videos: dict[str, Path],
+) -> dict[str, float]:
+    """Probe video durations using ffprobe."""
+    from pickup_putdown.ingestion.video_probe import probe_video
+
+    durations: dict[str, float] = {}
+    for clip_id, video_path in source_videos.items():
+        try:
+            probe = probe_video(video_path)
+            if probe.decode_ok and probe.duration_s:
+                durations[clip_id] = float(probe.duration_s)
+        except Exception as exc:
+            logger.warning("Failed to probe %s: %s", video_path, exc)
+    return durations
+
+
+def pd_notna(val: object) -> bool:
+    """Check if a value is not NaN/None (handles pandas NaN)."""
+    if val is None:
+        return False
+    import math
+
+    return not (isinstance(val, float) and math.isnan(val))
+
+
+# ---------------------------------------------------------------------------
+# Track A evaluation command (Phase 6)
+# ---------------------------------------------------------------------------
+
+
+@app.command(name="evaluate-track-a")
+def evaluate_track_a(
+    config: str = typer.Option(
+        "configs/track_a.yaml",
+        "--config",
+        "-c",
+        help="Path to Track A configuration YAML.",
+    ),
+    splits: str = typer.Option(
+        ".local/track_a_features/splits.json",
+        "--splits",
+        help="Path to splits.json from the feature dataset.",
+    ),
+    feature_manifest: str = typer.Option(
+        ".local/track_a_features/feature_dataset.parquet",
+        "--feature-manifest",
+        help="Path to the feature dataset manifest.",
+    ),
+    events: str = typer.Option(
+        ".local/task_7_vlm/events.csv",
+        "--events",
+        "-e",
+        help="Path to canonical ground-truth events CSV.",
+    ),
+    clips: str = typer.Option(
+        ".local/task_7_vlm/clips.csv",
+        "--clips",
+        help="Path to clips CSV.",
+    ),
+    artifact_dir: str = typer.Option(
+        ".local/track_a_artifacts",
+        "--artifact-dir",
+        help="Directory containing trained classifier artifacts.",
+    ),
+    candidate_metadata: str = typer.Option(
+        ".local/candidate_staging/metadata",
+        "--candidate-metadata",
+        help="Directory containing candidate metadata JSON files.",
+    ),
+    source_video_dir: str = typer.Option(
+        ".local/source_videos",
+        "--source-video-dir",
+        help="Directory containing source video files.",
+    ),
+    shelves_config: str = typer.Option(
+        "configs/shelves.yaml",
+        "--shelves-config",
+        help="Path to shelf/surface region configuration YAML.",
+    ),
+    camera_id: str = typer.Option(
+        "store_camera_01",
+        "--camera-id",
+        help="Camera ID from the shelf configuration.",
+    ),
+    output_dir: str = typer.Option(
+        ".local/track_a_evaluation",
+        "--output-dir",
+        "-o",
+        help="Output directory for evaluation results.",
+    ),
+    split: str = typer.Option(
+        "val",
+        "--split",
+        help="Dataset split to evaluate (train, val, test).",
+    ),
+    limit_clips: int | None = typer.Option(
+        None,
+        "--limit-clips",
+        help="Evaluate only the first N clips from the split (deterministic).",
+    ),
+    clip_id: str | None = typer.Option(
+        None,
+        "--clip-id",
+        help="Evaluate only this single clip.",
+    ),
+    force: bool = typer.Option(
+        False,
+        "--force",
+        "-f",
+        help="Overwrite existing output files.",
+    ),
+    verbose: bool = typer.Option(
+        False,
+        "--verbose",
+        "-v",
+        help="Enable debug logging.",
+    ),
+) -> None:
+    """Run Track A evaluation: inference + Task-8 metrics + reports.
+
+    Resolves clips from a split, validates split isolation, runs inference,
+    combines predictions, filters ground truth, invokes the Task 8 evaluator,
+    and exports metrics, failure tables, and a Markdown report.
+
+    Default split is ``val`` (development data). Metrics are labeled as
+    validation metrics, not independent test performance.
+    """
+    _setup_logging(verbose)
+
+    from pathlib import Path
+
+    from pickup_putdown.layer1.track_a.evaluation import (
+        EvaluationSummary,
+    )
+    from pickup_putdown.layer1.track_a.evaluation import (
+        evaluate_track_a as _evaluate,
+    )
+
+    try:
+        summary: EvaluationSummary = _evaluate(
+            config=config,
+            splits=Path(splits),
+            feature_manifest=Path(feature_manifest),
+            events=Path(events),
+            clips=Path(clips),
+            artifact_dir=Path(artifact_dir),
+            candidate_metadata=Path(candidate_metadata),
+            source_video_dir=Path(source_video_dir),
+            shelves_config=Path(shelves_config),
+            camera_id=camera_id,
+            output_dir=Path(output_dir),
+            split=split,
+            limit_clips=limit_clips,
+            clip_id=clip_id,
+            force=force,
+            verbose=verbose,
+        )
+    except FileNotFoundError as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise SystemExit(1) from exc
+    except ValueError as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise SystemExit(1) from exc
+
+    typer.echo("")
+    typer.echo("=== Track A Evaluation Summary ===")
+    typer.echo(f"  Split:             {summary.split}")
+    typer.echo(f"  Limited run:       {'yes' if summary.limited else 'no'}")
+    if summary.limited:
+        typer.echo(f"  Limit:             {summary.limit_count} clip(s)")
+    typer.echo(f"  Total clips:       {summary.total_clips}")
+    typer.echo(f"  Evaluated:         {summary.evaluated_clips}")
+    typer.echo(f"  Skipped:           {summary.skipped_clips}")
+    typer.echo(f"  GT events:         {summary.gt_event_count}")
+    typer.echo(f"  Predictions:       {summary.pred_event_count}")
+    typer.echo(f"  Pickups:           {summary.pickup_count}")
+    typer.echo(f"  Putdowns:          {summary.putdown_count}")
+    if summary.mean_confidence > 0:
+        typer.echo(f"  Mean confidence:   {summary.mean_confidence:.4f}")
+
+    metrics = summary.metrics
+    for thr in [0.3, 0.5]:
+        key = f"tiou@{thr}"
+        if key in metrics:
+            m = metrics[key]
+            typer.echo(
+                f"  tIoU@{thr}  P={m.get('precision', 0):.4f} "
+                f"R={m.get('recall', 0):.4f} F1={m.get('f1', 0):.4f}"
+            )
+
+    typer.echo(f"  Leakage check:     {summary.leakage_check}")
+
+    if summary.skipped:
+        typer.echo("")
+        typer.echo("  Skipped clips:")
+        for cs in summary.skipped:
+            typer.echo(f"    {cs.clip_id}: {cs.status} ({cs.reason})")
+
+    typer.echo("")
+    typer.echo(f"  Outputs: {output_dir}")
+    typer.echo(f"    predictions.csv        {output_dir}/predictions.csv")
+    typer.echo(f"    ground_truth.csv       {output_dir}/ground_truth.csv")
+    typer.echo(f"    matches.csv            {output_dir}/matches.csv")
+    typer.echo(f"    false_positives.csv    {output_dir}/false_positives.csv")
+    typer.echo(f"    false_negatives.csv    {output_dir}/false_negatives.csv")
+    typer.echo(f"    metrics.json           {output_dir}/metrics.json")
+    typer.echo(f"    evaluation_summary.json {output_dir}/evaluation_summary.json")
+    typer.echo(f"    validation_report.md   {output_dir}/validation_report.md")
+
+    if summary.skipped_clips > 0:
+        typer.echo("")
+        typer.echo("  WARNING: Some clips were skipped. See evaluation_summary.json.")
 
 
 if __name__ == "__main__":

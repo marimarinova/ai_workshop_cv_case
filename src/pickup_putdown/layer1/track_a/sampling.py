@@ -8,6 +8,7 @@ and post-contact.
 
 from __future__ import annotations
 
+import logging
 import math
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
@@ -16,6 +17,8 @@ if TYPE_CHECKING:
     from pickup_putdown.common.schemas import Candidate, PoseObservation
     from pickup_putdown.config import TrackAFeaturesConfig
     from pickup_putdown.perception.shelf_regions import Polygon
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -55,9 +58,7 @@ def compute_sample_times(
         raise ValueError(f"t_end ({t_end}) must be greater than t_start ({t_start})")
 
     if not (t_start <= contact_t <= t_end):
-        raise ValueError(
-            f"contact_t ({contact_t}) must be within [{t_start}, {t_end}]"
-        )
+        raise ValueError(f"contact_t ({contact_t}) must be within [{t_start}, {t_end}]")
 
     samples: list[SamplePoint] = []
     index = 0
@@ -67,9 +68,7 @@ def compute_sample_times(
     index += 1
 
     # Add intermediate samples between PRE and CONTACT if needed
-    pre_to_contact_mids = adaptive_split_interval(
-        t_start, contact_t, config.max_interval_s
-    )
+    pre_to_contact_mids = adaptive_split_interval(t_start, contact_t, config.max_interval_s)
     for mid_t in pre_to_contact_mids:
         samples.append(SamplePoint(timestamp_s=mid_t, position="mid", index=index))
         index += 1
@@ -77,15 +76,11 @@ def compute_sample_times(
     # Always add CONTACT
     # Avoid duplicate if contact_t equals t_start
     if not math.isclose(contact_t, t_start, abs_tol=1e-6):
-        samples.append(
-            SamplePoint(timestamp_s=contact_t, position="contact", index=index)
-        )
+        samples.append(SamplePoint(timestamp_s=contact_t, position="contact", index=index))
         index += 1
 
     # Add intermediate samples between CONTACT and POST if needed
-    contact_to_post_mids = adaptive_split_interval(
-        contact_t, t_end, config.max_interval_s
-    )
+    contact_to_post_mids = adaptive_split_interval(contact_t, t_end, config.max_interval_s)
     for mid_t in contact_to_post_mids:
         samples.append(SamplePoint(timestamp_s=mid_t, position="mid", index=index))
         index += 1
@@ -205,10 +200,7 @@ def find_shelf_entry_point(
         return None
 
     # Filter to observations within the candidate window
-    window_obs = [
-        obs for obs in trajectory
-        if t_start <= obs.timestamp_s <= t_end
-    ]
+    window_obs = [obs for obs in trajectory if t_start <= obs.timestamp_s <= t_end]
 
     if not window_obs:
         return None
@@ -248,10 +240,9 @@ def find_shelf_entry_point(
 
 def _point_in_polygon(px: float, py: float, polygon: Polygon) -> bool:
 
-    #If we imagine Polygon as set of edges, a point would be outside if for edge_i we have edge_j
+    # If we imagine Polygon as set of edges, a point would be outside if for edge_i we have edge_j
     # Where edge_i and edge_j are intersected by the same y axis of the ray but x_i < x_j
-    #Note realistically for "un-logical" polygons we would again have even number of pairs |{e_i1,  e_j1}, ..... {e_ik, e_jk})| MOD2 == 0
-
+    # Note realistically for "un-logical" polygons we would again have even number of pairs |{e_i1,  e_j1}, ..... {e_ik, e_jk})| MOD2 == 0
 
     if len(polygon) < 3:
         return False
@@ -263,14 +254,11 @@ def _point_in_polygon(px: float, py: float, polygon: Polygon) -> bool:
         current_x, current_y = polygon[current_index]
         previous_x, previous_y = polygon[previous_index]
 
-        crosses_horizontal_line = (
-            (current_y > py) != (previous_y > py)
-        )
+        crosses_horizontal_line = (current_y > py) != (previous_y > py)
 
         if crosses_horizontal_line:
-            intersection_x = (
-                current_x+ (py - current_y)* (previous_x - current_x)
-                / (previous_y - current_y)
+            intersection_x = current_x + (py - current_y) * (previous_x - current_x) / (
+                previous_y - current_y
             )
 
             if px < intersection_x:
@@ -284,9 +272,9 @@ def _point_in_polygon(px: float, py: float, polygon: Polygon) -> bool:
 def _point_to_polygon_distance(px: float, py: float, polygon: Polygon) -> float:
     """Calculate minimum distance from a point to a polygon's edges."""
 
-    #Let Euclidian distance between point x and edge u inside the polygon be dist[x, u];
+    # Let Euclidian distance between point x and edge u inside the polygon be dist[x, u];
     # Return min(ALL: dist[x, u_i])
-     
+
     if not polygon:
         return float("inf")
 
@@ -345,7 +333,8 @@ def get_wrist_trajectory_for_candidate(
         Sorted list of pose observations matching the candidate.
     """
     relevant = [
-        obs for obs in pose_observations
+        obs
+        for obs in pose_observations
         if (
             obs.clip_id == candidate.clip_id
             and obs.actor_id == candidate.actor_id
@@ -353,6 +342,50 @@ def get_wrist_trajectory_for_candidate(
             and candidate.window_start_s <= obs.timestamp_s <= candidate.window_end_s
         )
     ]
+
+    # Fallback: proposals use two actor_id formats (actor_N and
+    # clip_D2_S...:person:N) while the pose tracker only emits actor_N.
+    # When exact match fails AND the candidate uses person-tracker format,
+    # fall back to clip_id + hand_side + window.
+    if not relevant and ":" in candidate.actor_id:
+        relevant = [
+            obs
+            for obs in pose_observations
+            if (
+                obs.clip_id == candidate.clip_id
+                and obs.hand_side == candidate.hand_side
+                and candidate.window_start_s <= obs.timestamp_s <= candidate.window_end_s
+            )
+        ]
+        if relevant:
+            logger.debug(
+                "Pose fallback match for %s: actor=%s not found, "
+                "matched %d poses by clip+hand+window",
+                candidate.candidate_id,
+                candidate.actor_id,
+                len(relevant),
+            )
+
+    if not relevant and pose_observations:
+        clip_poses = [o for o in pose_observations if o.clip_id == candidate.clip_id]
+        logger.debug(
+            "Pose filter miss for %s: clip=%s actor=%s hand=%s window=[%.1f,%.1f]s clip_poses=%d",
+            candidate.candidate_id,
+            candidate.clip_id,
+            candidate.actor_id,
+            candidate.hand_side,
+            candidate.window_start_s,
+            candidate.window_end_s,
+            len(clip_poses),
+        )
+        if clip_poses:
+            first = clip_poses[0]
+            logger.debug(
+                "  First clip pose: actor=%s hand=%s ts=%.1fs",
+                first.actor_id,
+                first.hand_side,
+                first.timestamp_s,
+            )
 
     relevant.sort(key=lambda obs: obs.timestamp_s)
     return relevant

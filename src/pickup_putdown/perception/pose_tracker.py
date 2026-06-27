@@ -424,4 +424,4 @@ class PoseTracker:
         return extracted
 
     def _extract_clip_id(self) -> str:
-        return f"clip_{self.video_path.stem}"
+        return self.video_path.stem

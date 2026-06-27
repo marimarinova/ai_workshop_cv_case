@@ -1,0 +1,69 @@
+# Track A classifier configuration
+# Used by: pickup-putdown train-track-a
+
+classifiers:
+  random_seed: 42
+
+  hand_state:
+    confidence_threshold: 0.60
+    margin_threshold: 0.15
+    class_weight: balanced
+    max_iter: 1000
+
+  shelf_state:
+    confidence_threshold: 0.60
+    margin_threshold: 0.15
+    class_weight: balanced
+    max_iter: 1000
+
+# State machine configuration for Phase 3 temporal detection
+state_machine:
+  # Spatial thresholds
+  region_entry_distance_px: 40.0
+
+  # Temporal durations (seconds)
+  minimum_approach_s: 0.10
+  minimum_contact_s: 0.15
+  minimum_transfer_s: 0.20
+  minimum_withdrawal_s: 0.10
+  maximum_observation_gap_s: 0.50
+  state_timeout_s: 3.00
+  cycle_reset_timeout_s: 2.00
+  debounce_s: 0.10
+  minimum_event_separation_s: 0.30
+
+  # Probability thresholds
+  hand_probability_threshold: 0.55
+  shelf_probability_threshold: 0.50
+  maximum_uncertainty_ratio: 0.50
+  event_confidence_threshold: 0.50
+
+  # Confidence weights (must sum to 1.0)
+  confidence_weights:
+    hand: 0.40
+    shelf: 0.40
+    trajectory: 0.20
+
+# Inference pipeline configuration for Phase 4
+inference:
+  sampling:
+    sample_fps: 4.0
+    minimum_valid_samples: 3
+    maximum_feature_gap_s: 0.50
+    shelf_reference_from_start_s: 0.50
+
+  boundary_refinement:
+    use_contact_start: true
+    stabilization_window_s: 0.25
+    maximum_candidate_extension_s: 0.50
+    minimum_event_duration_s: 0.10
+
+  deduplication:
+    temporal_iou_threshold: 0.50
+    transfer_time_tolerance_s: 0.50
+    require_same_actor: true
+    require_same_hand: true
+    require_same_region: false
+
+  transition_grace_s: 0.25
+  debug_traces: false

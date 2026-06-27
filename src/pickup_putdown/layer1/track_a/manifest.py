@@ -33,36 +33,38 @@ logger = logging.getLogger(__name__)
 # Schema definition
 # ---------------------------------------------------------------------------
 
-MANIFEST_SCHEMA = pa.schema([
-    ("crop_id", pa.string()),
-    ("clip_id", pa.string()),
-    ("candidate_id", pa.string()),
-    ("timestamp_s", pa.float64()),
-    ("sample_position", pa.string()),
-    ("crop_type", pa.string()),
-    # Geometry fields (flattened)
-    ("geometry_x", pa.int32()),
-    ("geometry_y", pa.int32()),
-    ("geometry_width", pa.int32()),
-    ("geometry_height", pa.int32()),
-    # Embedding info
-    ("embedding_path", pa.string()),
-    ("encoder_name", pa.string()),
-    ("encoder_version", pa.string()),
-    # Label and split
-    ("label", pa.string()),
-    ("split", pa.string()),
-    # Optional metadata
-    ("actor_id", pa.string()),
-    ("hand_side", pa.string()),
-    ("region_id", pa.string()),
-    ("confidence", pa.string()),
-    ("hard_case", pa.bool_()),
-    ("event_id", pa.string()),
-    # Tracking metadata
-    ("created_at", pa.timestamp("us")),
-    ("batch_id", pa.string()),
-])
+MANIFEST_SCHEMA = pa.schema(
+    [
+        ("crop_id", pa.string()),
+        ("clip_id", pa.string()),
+        ("candidate_id", pa.string()),
+        ("timestamp_s", pa.float64()),
+        ("sample_position", pa.string()),
+        ("crop_type", pa.string()),
+        # Geometry fields (flattened)
+        ("geometry_x", pa.int32()),
+        ("geometry_y", pa.int32()),
+        ("geometry_width", pa.int32()),
+        ("geometry_height", pa.int32()),
+        # Embedding info
+        ("embedding_path", pa.string()),
+        ("encoder_name", pa.string()),
+        ("encoder_version", pa.string()),
+        # Label and split
+        ("label", pa.string()),
+        ("split", pa.string()),
+        # Optional metadata
+        ("actor_id", pa.string()),
+        ("hand_side", pa.string()),
+        ("region_id", pa.string()),
+        ("confidence", pa.string()),
+        ("hard_case", pa.bool_()),
+        ("event_id", pa.string()),
+        # Tracking metadata
+        ("created_at", pa.timestamp("us")),
+        ("batch_id", pa.string()),
+    ]
+)
 
 
 # ---------------------------------------------------------------------------
@@ -331,10 +333,7 @@ def filter_manifest(
     # Apply clip_ids filter (not supported by parquet filters)
     if clip_ids is not None:
         clip_set = set(clip_ids)
-        mask = [
-            table.column("clip_id")[i].as_py() in clip_set
-            for i in range(table.num_rows)
-        ]
+        mask = [table.column("clip_id")[i].as_py() in clip_set for i in range(table.num_rows)]
         table = table.filter(mask)
 
     records = _table_to_records(table)

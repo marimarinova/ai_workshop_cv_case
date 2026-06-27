@@ -107,7 +107,9 @@ class TrackAFeaturesConfig(BaseModel):
 
     # Sampling configuration
     min_samples: int = 3
-    max_interval_s: float = 99999.0  # Large default = no intermediate splits (just pre/contact/post)
+    max_interval_s: float = (
+        99999.0  # Large default = no intermediate splits (just pre/contact/post)
+    )
 
     # Crop configuration
     hand_crop_size: int = 224

@@ -134,9 +134,7 @@ class TorchVisionEmbedder(AbstractImageEmbedder):
         """
         if model_name not in TORCHVISION_MODELS:
             supported = list(TORCHVISION_MODELS.keys())
-            raise ValueError(
-                f"Unsupported model '{model_name}'. Supported: {supported}"
-            )
+            raise ValueError(f"Unsupported model '{model_name}'. Supported: {supported}")
 
         super().__init__(model_name, device)
 
@@ -149,19 +147,20 @@ class TorchVisionEmbedder(AbstractImageEmbedder):
         self._model.eval()
 
         # Preprocessing transform (ImageNet normalization)
-        self._transform = transforms.Compose([
-            transforms.ToPILImage(),
-            transforms.Resize((224, 224)),
-            transforms.ToTensor(),
-            transforms.Normalize(
-                mean=[0.485, 0.456, 0.406],
-                std=[0.229, 0.224, 0.225],
-            ),
-        ])
+        self._transform = transforms.Compose(
+            [
+                transforms.ToPILImage(),
+                transforms.Resize((224, 224)),
+                transforms.ToTensor(),
+                transforms.Normalize(
+                    mean=[0.485, 0.456, 0.406],
+                    std=[0.229, 0.224, 0.225],
+                ),
+            ]
+        )
 
         logger.info(
-            f"Loaded {model_name} embedder on {self.device}, "
-            f"embedding_dim={self._embedding_dim}"
+            f"Loaded {model_name} embedder on {self.device}, embedding_dim={self._embedding_dim}"
         )
 
     def _build_model(self) -> nn.Module:

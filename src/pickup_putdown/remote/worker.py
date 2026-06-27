@@ -301,6 +301,9 @@ def encode_candidates(
             "duration_s": round(duration_s, 4),
             "codec": "h264",
             "pixel_format": "yuv420p",
+            "actor_id": cand.get("actor_id"),
+            "hand_side": cand.get("hand_side"),
+            "region_id": cand.get("region_id"),
         }
 
         encoded.append(

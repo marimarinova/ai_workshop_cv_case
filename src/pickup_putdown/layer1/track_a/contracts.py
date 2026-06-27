@@ -62,7 +62,9 @@ class CropRecord:
         if self.timestamp_s < 0:
             raise ValueError(f"timestamp_s must be non-negative: {self.timestamp_s}")
         if self.sample_position not in VALID_SAMPLE_POSITIONS:
-            raise ValueError(f"sample_position must be one of {VALID_SAMPLE_POSITIONS}: {self.sample_position}")
+            raise ValueError(
+                f"sample_position must be one of {VALID_SAMPLE_POSITIONS}: {self.sample_position}"
+            )
         if self.crop_type not in ("hand", "shelf"):
             raise ValueError(f"crop_type must be 'hand' or 'shelf': {self.crop_type}")
 
