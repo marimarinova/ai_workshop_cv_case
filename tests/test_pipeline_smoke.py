@@ -480,7 +480,7 @@ def test_track_a_runs_and_adapts_predictions(
     assert args[args.index("--source-video-dir") + 1] == str(video_person.parent)
     assert args[args.index("--artifact-dir") + 1] == str(artifacts)
     assert args[args.index("--output-dir") + 1] == str(stage_dir)
-    assert args[args.index("--clip-id") + 1] == "clip_x"
+    assert "--clip-id" not in args  # omitted: per-clip parquet needs no filter
     # The Track A YAML (not the resolved AppConfig) is forwarded as --config.
     assert captured["config_path"] == Path(config.track_a_stage.config_path)
 
@@ -515,3 +515,40 @@ def test_track_a_resume_key_changes_with_checkpoint(
     after = _stage_input_hash(stage, ctx)
 
     assert before != after
+
+
+def test_track_a_propagates_invoke_failure(
+    tmp_path: Path,
+    app_config: AppConfig,
+    video_person: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    artifacts = tmp_path / "artifacts"
+    artifacts.mkdir()
+    (artifacts / "hand_state.joblib").write_bytes(b"hand")
+    (artifacts / "shelf_state.joblib").write_bytes(b"shelf")
+    config = _config_with_artifacts(app_config, artifacts)
+    stage = TrackAStage(config)
+
+    class _NonZero:
+        returncode = 1
+
+    monkeypatch.setattr(
+        "pickup_putdown.pipeline.subprocess.run",
+        lambda argv, **kwargs: _NonZero(),
+    )
+
+    stage_dir = tmp_path / "out" / "clip_x" / "track_a"
+    stage_dir.mkdir(parents=True)
+    propose = StageResult(
+        name="propose",
+        status="ok",
+        outputs={"candidates.parquet": "C.parquet", "tracks_pose.parquet": "P.parquet"},
+    )
+    ctx = _track_a_ctx("clip_x", video_person, stage_dir, tmp_path / "cache", propose)
+
+    # A non-zero infer-track-a exit (e.g. no candidates) surfaces as a
+    # RuntimeError, which the orchestrator turns into a failed clip — the current
+    # degrade-to-failure semantics, to be revisited at activation.
+    with pytest.raises(RuntimeError, match="track_a"):
+        stage.run(ctx)
