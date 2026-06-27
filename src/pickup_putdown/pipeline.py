@@ -572,6 +572,17 @@ class TrackAStage(_CliStage):
         # ``infer-track-a`` takes its own Track A YAML as ``--config`` (distinct
         # from the resolved AppConfig); ``_invoke`` appends it as the trailing
         # ``--config``, so it is passed here as the config-path argument.
+        #
+        # ``--clip-id`` is intentionally omitted: in per-clip batch the candidates
+        # parquet holds only this clip, so filtering is redundant and a clip-id
+        # convention mismatch would instead yield zero matches (a hard error).
+        #
+        # Activation caveats (to revisit when the gate is switched on after Task 7):
+        #  * a non-zero ``infer-track-a`` exit — including the "no candidates"
+        #    case — raises from ``_invoke`` and marks the whole clip ``failed``;
+        #  * actor_id/hand_side/region_id enrichment needs the Task 9
+        #    ``feature_dataset.parquet`` under ``--cache-dir``; absent it, the
+        #    detector emits empty predictions rather than failing.
         self._invoke(
             [
                 "infer-track-a",
@@ -591,8 +602,6 @@ class TrackAStage(_CliStage):
                 str(ctx.cache_dir),
                 "--output-dir",
                 str(ctx.stage_dir),
-                "--clip-id",
-                ctx.clip_id,
             ],
             Path(stage_cfg.config_path),
         )
