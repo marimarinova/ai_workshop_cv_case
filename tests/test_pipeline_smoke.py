@@ -11,12 +11,16 @@ from pathlib import Path
 
 import pytest
 
+from pickup_putdown.common.run_metadata import RunMetadata
 from pickup_putdown.config import AppConfig, load_config
 from pickup_putdown.pipeline import (
+    CANONICAL_EVENT_COLUMNS,
     Stage,
     StageContext,
     StageResult,
+    TrackAStage,
     TriageStage,
+    _stage_input_hash,
     run_pipeline,
     validate_events_csv,
 )
@@ -380,3 +384,134 @@ def test_events_csv_schema_rejects_bad_rows(tmp_path: Path) -> None:
 def test_events_csv_missing_file_is_invalid_not_raising(tmp_path: Path) -> None:
     # A missing/unreadable file must read as invalid rather than raise OSError.
     assert validate_events_csv(tmp_path / "nope.csv") is False
+
+
+# ---------------------------------------------------------------------------
+# Track A stage (task_10 wiring, gated on trained checkpoints)
+# ---------------------------------------------------------------------------
+def _config_with_artifacts(app_config: AppConfig, artifact_dir: Path) -> AppConfig:
+    return app_config.model_copy(
+        update={
+            "track_a_stage": app_config.track_a_stage.model_copy(
+                update={"artifact_dir": str(artifact_dir)}
+            )
+        }
+    )
+
+
+def _track_a_ctx(
+    clip_id: str, video: Path, stage_dir: Path, cache_dir: Path, propose: StageResult
+) -> StageContext:
+    return StageContext(
+        clip_id=clip_id,
+        video_path=video,
+        output_dir=stage_dir.parent,
+        stage_dir=stage_dir,
+        cache_dir=cache_dir,
+        config={},
+        config_path=stage_dir.parent / "resolved_config.yaml",
+        run_metadata=RunMetadata(),
+        upstream={"propose": propose},
+    )
+
+
+def test_track_a_unavailable_without_checkpoints(
+    tmp_path: Path, app_config: AppConfig, video_person: Path
+) -> None:
+    config = _config_with_artifacts(app_config, tmp_path / "no_artifacts")
+    stage = TrackAStage(config)
+    assert stage.is_available() is False
+
+    out = tmp_path / "out"
+    registry: list[Stage] = [FakeTriage({}), FakePropose({}), stage, FakeEvaluate()]
+    summary = run_pipeline(video_person, out, config, registry=registry)
+
+    # Gated off cleanly: the missing checkpoints make the stage *unavailable*
+    # (not failed/blocked), so the run still reports success with an empty file.
+    assert summary["stages"]["track_a"]["status"] == "unavailable"
+    assert summary["status"] == "ok"
+    events = out / video_person.stem / "events.csv"
+    assert validate_events_csv(events)
+    assert events.read_text(encoding="utf-8").strip().count("\n") == 0  # header only
+
+
+def test_track_a_runs_and_adapts_predictions(
+    tmp_path: Path, app_config: AppConfig, video_person: Path
+) -> None:
+    artifacts = tmp_path / "artifacts"
+    artifacts.mkdir()
+    (artifacts / "hand_state.joblib").write_bytes(b"hand")
+    (artifacts / "shelf_state.joblib").write_bytes(b"shelf")
+    config = _config_with_artifacts(app_config, artifacts)
+    stage = TrackAStage(config)
+    assert stage.is_available() is True
+
+    captured: dict[str, object] = {}
+
+    def fake_invoke(args: list[str], config_path: Path) -> None:
+        captured["args"] = args
+        captured["config_path"] = config_path
+        out_dir = Path(args[args.index("--output-dir") + 1])
+        out_dir.mkdir(parents=True, exist_ok=True)
+        # infer-track-a writes a superset predictions.csv: 7 canonical + 3 extra.
+        (out_dir / "predictions.csv").write_text(
+            "clip_id,pred_id,type,t_start,t_end,score,model,actor_id,hand_side,region_id\n"
+            "clip_x,c0-trackA-0,pickup,1.0,2.0,0.8,track_a,a1,left,shelf_1\n",
+            encoding="utf-8",
+        )
+
+    stage._invoke = fake_invoke  # type: ignore[method-assign]
+
+    stage_dir = tmp_path / "out" / "clip_x" / "track_a"
+    propose = StageResult(
+        name="propose",
+        status="ok",
+        outputs={"candidates.parquet": "C.parquet", "tracks_pose.parquet": "P.parquet"},
+    )
+    ctx = _track_a_ctx("clip_x", video_person, stage_dir, tmp_path / "cache", propose)
+
+    result = stage.run(ctx)
+
+    args = captured["args"]
+    assert isinstance(args, list)
+    assert args[0] == "infer-track-a"
+    assert args[args.index("--candidates") + 1] == "C.parquet"
+    assert args[args.index("--pose-observations") + 1] == "P.parquet"
+    assert args[args.index("--source-video-dir") + 1] == str(video_person.parent)
+    assert args[args.index("--artifact-dir") + 1] == str(artifacts)
+    assert args[args.index("--output-dir") + 1] == str(stage_dir)
+    assert args[args.index("--clip-id") + 1] == "clip_x"
+    # The Track A YAML (not the resolved AppConfig) is forwarded as --config.
+    assert captured["config_path"] == Path(config.track_a_stage.config_path)
+
+    preds = result.summary["predictions"]
+    assert len(preds) == 1
+    row = preds[0]
+    assert row["type"] in ("pickup", "putdown")
+    assert 0.0 <= float(row["score"]) <= 1.0
+    assert row["actor_id"] == "a1"  # extra column carried through
+    # The canonical projection keeps exactly the 7 columns; extras are dropped.
+    canonical = {key: row.get(key, "") for key in CANONICAL_EVENT_COLUMNS}
+    assert tuple(canonical) == CANONICAL_EVENT_COLUMNS
+
+
+def test_track_a_resume_key_changes_with_checkpoint(
+    tmp_path: Path, app_config: AppConfig, video_person: Path
+) -> None:
+    artifacts = tmp_path / "artifacts"
+    artifacts.mkdir()
+    (artifacts / "hand_state.joblib").write_bytes(b"v1")
+    (artifacts / "shelf_state.joblib").write_bytes(b"v1")
+    config = _config_with_artifacts(app_config, artifacts)
+    stage = TrackAStage(config)
+
+    propose = StageResult(name="propose", status="ok", input_hash="abc")
+    ctx = _track_a_ctx("clip_x", video_person, tmp_path / "s", tmp_path / "c", propose)
+
+    before = _stage_input_hash(stage, ctx)
+    # Retraining (Task 7) replaces the checkpoint content: the resume key must
+    # change so the cached, stale prediction is not served.
+    (artifacts / "hand_state.joblib").write_bytes(b"v2-retrained")
+    after = _stage_input_hash(stage, ctx)
+
+    assert before != after
