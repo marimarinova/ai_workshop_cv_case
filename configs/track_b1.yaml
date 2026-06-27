@@ -1,0 +1,122 @@
+# Track B1: VideoMAE Window Classifier Configuration
+# Used by: pickup-putdown track-b1-train, pickup-putdown track-b1-infer
+#
+# This file configures the VideoMAE-based sliding window classifier
+# for pickup/putdown event detection (Task 12).
+
+# =============================================================================
+# MODEL CONFIGURATION
+# =============================================================================
+model:
+  # HuggingFace model name or path
+  model_name: "MCG-NJU/videomae-small"
+  num_classes: 3  # background, pickup, putdown
+
+  # Backbone freezing strategy
+  freeze_backbone: true
+  unfreeze_last_n_blocks: 2  # Fine-tune last N transformer blocks
+
+# =============================================================================
+# WINDOW CONFIGURATION (Shared by training and inference)
+# =============================================================================
+window:
+  # Window extraction parameters
+  window_duration_s: 2.5    # Duration of each sliding window
+  window_stride_s: 0.5      # Stride between windows (for inference)
+  num_frames: 16            # Frames per window (VideoMAE requirement)
+
+  # Image preprocessing
+  image_size: [224, 224]    # Target size after crop/resize
+  crop_margin: 0.15         # Margin around actor bounding box
+
+# =============================================================================
+# TRAINING CONFIGURATION
+# =============================================================================
+training:
+  # Optimizer
+  learning_rate: 0.0001
+  weight_decay: 0.01
+
+  # Scheduler
+  scheduler_type: "cosine"  # "cosine" or "step"
+  warmup_epochs: 2
+
+  # Training loop
+  num_epochs: 50
+  batch_size: 8
+  gradient_accumulation_steps: 1
+  max_grad_norm: 1.0
+
+  # Early stopping
+  early_stopping_patience: 7
+  early_stopping_min_delta: 0.001
+
+  # Class weighting (handles imbalanced data)
+  use_class_weights: true
+
+  # Gate B: Tiny overfit test (must pass before full training)
+  gate_b_samples: 4
+  gate_b_epochs: 20
+  gate_b_target_accuracy: 0.95
+
+  # Checkpointing
+  save_best_only: true
+  checkpoint_metric: "f1_macro"  # Metric to track for best model
+
+  # Reproducibility
+  seed: 42
+
+# =============================================================================
+# INFERENCE CONFIGURATION
+# =============================================================================
+inference:
+  # Thresholds (tune on validation set)
+  pickup_threshold: 0.5
+  putdown_threshold: 0.5
+
+  # Temporal smoothing
+  smoothing_window: 3  # Number of adjacent predictions to average (must be odd)
+
+  # Same-type merging (NEVER merges pickup with putdown)
+  same_type_merge_gap_s: 0.75  # Merge same-type regions if gap < this
+  min_event_duration_s: 0.3    # Discard events shorter than this
+
+  # Output
+  model_name: "layer1_track_b1_videomae_window_v1"
+
+  # Processing
+  batch_size: 8
+
+# =============================================================================
+# DATA PATHS (Override via CLI or environment)
+# =============================================================================
+data:
+  # Training data
+  annotations_path: "data/annotations/events.parquet"
+  candidates_path: "data/processed/candidates.parquet"
+  clips_path: "data/clips.csv"
+  video_dir: "data/videos"
+  pose_tracks_dir: "data/processed/pose_tracks"
+  shelves_config: "configs/shelves.yaml"
+
+  # Train/val split
+  val_split: 0.2
+  split_by: "clip_id"  # Split by clip to avoid data leakage
+
+  # Output
+  checkpoint_dir: "models/track_b1"
+  predictions_path: "data/processed/predictions_b1.csv"
+
+# =============================================================================
+# DEVICE CONFIGURATION
+# =============================================================================
+device:
+  # "auto", "cuda", "mps", or "cpu"
+  type: "auto"
+
+  # Mixed precision (for faster training on compatible GPUs)
+  use_amp: false
+
+  # Number of data loader workers
+  num_workers: 4
+  pin_memory: true

@@ -36,6 +36,11 @@ dev = [
 viz = [
     "Pillow>=9.0",
 ]
+track_b1 = [
+    "torch>=2.0",
+    "transformers>=4.35",
+    "accelerate>=0.25",
+]
 
 [project.scripts]
 pickup-putdown = "pickup_putdown.cli:main"

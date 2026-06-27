@@ -130,6 +130,49 @@ class TrackAFeaturesConfig(BaseModel):
     qa_samples_per_category: int = 20
 
 
+class TrackB1Config(BaseModel):
+    """Configuration for Track B1 VideoMAE window classifier (Task 12)."""
+
+    # Window parameters
+    window_duration_s: float = 2.5
+    window_stride_s: float = 0.5
+    min_window_duration_s: float = 1.0
+
+    # Frame sampling
+    num_frames: int = 16
+    image_size: tuple[int, int] = (224, 224)
+
+    # Actor-conditioned crop
+    crop_margin: float = 0.15
+
+    # Label weights by confidence
+    weight_high: float = 1.0
+    weight_med: float = 1.0
+    weight_low: float = 0.5
+
+    # Training parameters
+    batch_size: int = 8
+    num_workers: int = 4
+    learning_rate: float = 1e-4
+    num_epochs: int = 20
+    warmup_epochs: int = 2
+
+    # Model configuration
+    model_name: str = "MCG-NJU/videomae-small"
+    freeze_backbone: bool = True
+    unfreeze_last_n_blocks: int = 0
+
+    # Inference parameters
+    score_threshold: float = 0.5
+    smoothing_window: int = 3
+    same_type_merge_gap_s: float = 0.75
+    min_event_duration_s: float = 0.3
+
+    # Output paths
+    checkpoint_dir: str = ".local/track_b1_checkpoints"
+    results_dir: str = "results/layer1_track_b1"
+
+
 class PreviewConfig(BaseModel):
     """Configuration for candidate preview rendering."""
 
@@ -155,6 +198,7 @@ class AppConfig(BaseModel):
     proposals: ProposalsConfig = Field(default_factory=ProposalsConfig)
     preview: PreviewConfig = Field(default_factory=PreviewConfig)
     track_a_features: TrackAFeaturesConfig = Field(default_factory=TrackAFeaturesConfig)
+    track_b1: TrackB1Config = Field(default_factory=TrackB1Config)
     data_dir: str = "data"
     output_dir: str = "outputs"
     cache_dir: str = "cache"
@@ -198,6 +242,7 @@ def _build_env_overrides() -> dict[str, Any]:
             "proposals",
             "preview",
             "track_a_features",
+            "track_b1",
             "data",
             "output",
             "cache",
