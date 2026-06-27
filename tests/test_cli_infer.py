@@ -208,3 +208,28 @@ def test_infer_unknown_component_exits_2(tmp_path: Path, monkeypatch: pytest.Mon
 
     assert result.exit_code == 2
     assert "Unknown component" in result.output
+
+
+def test_select_registry_missing_dependency_errors() -> None:
+    # 'propose' declares inputs=('triage',); selecting it without triage must fail.
+    with pytest.raises(typer.Exit) as excinfo:
+        _select_registry(load_config(None), "propose")
+    assert excinfo.value.exit_code == 2
+
+
+def test_select_registry_with_dependency_passes() -> None:
+    names = [stage.name for stage in _select_registry(load_config(None), "triage,propose")]
+    assert names == ["triage", "propose"]
+
+
+def test_infer_missing_dependency_exits_2(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    video = tmp_path / "clip.mp4"
+    video.write_bytes(b"S")
+    _patch_pipeline(monkeypatch, fail_stems=set())
+
+    result = runner.invoke(
+        app, ["infer", "-i", str(video), "-o", str(tmp_path / "out"), "--components", "propose"]
+    )
+
+    assert result.exit_code == 2
+    assert "requires 'triage'" in result.output
