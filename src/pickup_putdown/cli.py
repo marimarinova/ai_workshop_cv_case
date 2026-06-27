@@ -3761,5 +3761,194 @@ def pd_notna(val: object) -> bool:
     return not (isinstance(val, float) and math.isnan(val))
 
 
+# ---------------------------------------------------------------------------
+# Track A evaluation command (Phase 6)
+# ---------------------------------------------------------------------------
+
+
+@app.command(name="evaluate-track-a")
+def evaluate_track_a(
+    config: str = typer.Option(
+        "configs/track_a.yaml",
+        "--config",
+        "-c",
+        help="Path to Track A configuration YAML.",
+    ),
+    splits: str = typer.Option(
+        ".local/track_a_features/splits.json",
+        "--splits",
+        help="Path to splits.json from the feature dataset.",
+    ),
+    feature_manifest: str = typer.Option(
+        ".local/track_a_features/feature_dataset.parquet",
+        "--feature-manifest",
+        help="Path to the feature dataset manifest.",
+    ),
+    events: str = typer.Option(
+        ".local/task_7_vlm/events.csv",
+        "--events",
+        "-e",
+        help="Path to canonical ground-truth events CSV.",
+    ),
+    clips: str = typer.Option(
+        ".local/task_7_vlm/clips.csv",
+        "--clips",
+        help="Path to clips CSV.",
+    ),
+    artifact_dir: str = typer.Option(
+        ".local/track_a_artifacts",
+        "--artifact-dir",
+        help="Directory containing trained classifier artifacts.",
+    ),
+    candidate_metadata: str = typer.Option(
+        ".local/candidate_staging/metadata",
+        "--candidate-metadata",
+        help="Directory containing candidate metadata JSON files.",
+    ),
+    source_video_dir: str = typer.Option(
+        ".local/source_videos",
+        "--source-video-dir",
+        help="Directory containing source video files.",
+    ),
+    shelves_config: str = typer.Option(
+        "configs/shelves.yaml",
+        "--shelves-config",
+        help="Path to shelf/surface region configuration YAML.",
+    ),
+    camera_id: str = typer.Option(
+        "store_camera_01",
+        "--camera-id",
+        help="Camera ID from the shelf configuration.",
+    ),
+    output_dir: str = typer.Option(
+        ".local/track_a_evaluation",
+        "--output-dir",
+        "-o",
+        help="Output directory for evaluation results.",
+    ),
+    split: str = typer.Option(
+        "val",
+        "--split",
+        help="Dataset split to evaluate (train, val, test).",
+    ),
+    limit_clips: int | None = typer.Option(
+        None,
+        "--limit-clips",
+        help="Evaluate only the first N clips from the split (deterministic).",
+    ),
+    clip_id: str | None = typer.Option(
+        None,
+        "--clip-id",
+        help="Evaluate only this single clip.",
+    ),
+    force: bool = typer.Option(
+        False,
+        "--force",
+        "-f",
+        help="Overwrite existing output files.",
+    ),
+    verbose: bool = typer.Option(
+        False,
+        "--verbose",
+        "-v",
+        help="Enable debug logging.",
+    ),
+) -> None:
+    """Run Track A evaluation: inference + Task-8 metrics + reports.
+
+    Resolves clips from a split, validates split isolation, runs inference,
+    combines predictions, filters ground truth, invokes the Task 8 evaluator,
+    and exports metrics, failure tables, and a Markdown report.
+
+    Default split is ``val`` (development data). Metrics are labeled as
+    validation metrics, not independent test performance.
+    """
+    _setup_logging(verbose)
+
+    from pathlib import Path
+
+    from pickup_putdown.layer1.track_a.evaluation import (
+        EvaluationSummary,
+    )
+    from pickup_putdown.layer1.track_a.evaluation import (
+        evaluate_track_a as _evaluate,
+    )
+
+    try:
+        summary: EvaluationSummary = _evaluate(
+            config=config,
+            splits=Path(splits),
+            feature_manifest=Path(feature_manifest),
+            events=Path(events),
+            clips=Path(clips),
+            artifact_dir=Path(artifact_dir),
+            candidate_metadata=Path(candidate_metadata),
+            source_video_dir=Path(source_video_dir),
+            shelves_config=Path(shelves_config),
+            camera_id=camera_id,
+            output_dir=Path(output_dir),
+            split=split,
+            limit_clips=limit_clips,
+            clip_id=clip_id,
+            force=force,
+            verbose=verbose,
+        )
+    except FileNotFoundError as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise SystemExit(1) from exc
+    except ValueError as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise SystemExit(1) from exc
+
+    typer.echo("")
+    typer.echo("=== Track A Evaluation Summary ===")
+    typer.echo(f"  Split:             {summary.split}")
+    typer.echo(f"  Limited run:       {'yes' if summary.limited else 'no'}")
+    if summary.limited:
+        typer.echo(f"  Limit:             {summary.limit_count} clip(s)")
+    typer.echo(f"  Total clips:       {summary.total_clips}")
+    typer.echo(f"  Evaluated:         {summary.evaluated_clips}")
+    typer.echo(f"  Skipped:           {summary.skipped_clips}")
+    typer.echo(f"  GT events:         {summary.gt_event_count}")
+    typer.echo(f"  Predictions:       {summary.pred_event_count}")
+    typer.echo(f"  Pickups:           {summary.pickup_count}")
+    typer.echo(f"  Putdowns:          {summary.putdown_count}")
+    if summary.mean_confidence > 0:
+        typer.echo(f"  Mean confidence:   {summary.mean_confidence:.4f}")
+
+    metrics = summary.metrics
+    for thr in [0.3, 0.5]:
+        key = f"tiou@{thr}"
+        if key in metrics:
+            m = metrics[key]
+            typer.echo(
+                f"  tIoU@{thr}  P={m.get('precision', 0):.4f} "
+                f"R={m.get('recall', 0):.4f} F1={m.get('f1', 0):.4f}"
+            )
+
+    typer.echo(f"  Leakage check:     {summary.leakage_check}")
+
+    if summary.skipped:
+        typer.echo("")
+        typer.echo("  Skipped clips:")
+        for cs in summary.skipped:
+            typer.echo(f"    {cs.clip_id}: {cs.status} ({cs.reason})")
+
+    typer.echo("")
+    typer.echo(f"  Outputs: {output_dir}")
+    typer.echo(f"    predictions.csv        {output_dir}/predictions.csv")
+    typer.echo(f"    ground_truth.csv       {output_dir}/ground_truth.csv")
+    typer.echo(f"    matches.csv            {output_dir}/matches.csv")
+    typer.echo(f"    false_positives.csv    {output_dir}/false_positives.csv")
+    typer.echo(f"    false_negatives.csv    {output_dir}/false_negatives.csv")
+    typer.echo(f"    metrics.json           {output_dir}/metrics.json")
+    typer.echo(f"    evaluation_summary.json {output_dir}/evaluation_summary.json")
+    typer.echo(f"    validation_report.md   {output_dir}/validation_report.md")
+
+    if summary.skipped_clips > 0:
+        typer.echo("")
+        typer.echo("  WARNING: Some clips were skipped. See evaluation_summary.json.")
+
+
 if __name__ == "__main__":
     app()

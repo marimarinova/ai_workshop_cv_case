@@ -19,6 +19,7 @@ Pickup and putdown event detection in store video.
 | 11 | Track A Phase 3 — repeating temporal state machine | ✅ Done |
 | 12 | Track A Phase 4 — inference pipeline, boundary refinement, dedup | ✅ Done |
 | 13 | Track A Phase 5 — CLI integration, Makefile, real-data smoke test | ✅ Done |
+| 14 | Track A Phase 6 — evaluation workflow (inference + Task 8 metrics + reports) | ✅ Done |
 
 ## Track A — Phase 1 (Feature Dataset)
 
@@ -264,6 +265,136 @@ Final predictions:     5
 
 26/26 CLI tests pass. Total Track A suite: 221/221 pass.
 
+## Track A — Phase 6 (Evaluation Workflow)
+
+End-to-end evaluation: resolve clips from splits, run inference, evaluate with
+Task 8 metrics, generate reports.
+
+### Workflow
+
+```
+splits.json → resolve clips → leakage check → filter (limit/clip-id)
+  → per-clip data availability check → inference (via infer-track-a)
+  → combine predictions → filter GT to evaluated clips
+  → Task 8 evaluator (aggregate_metrics + failure_gallery)
+  → reports (Markdown, JSON, CSV exports)
+```
+
+### Data Availability Checks
+
+- **Base files** (hard fail): `splits.json`, `feature_dataset.parquet`,
+  `events.csv`, `clips.csv`, `hand_state.joblib`, `shelf_state.joblib`,
+  source video directory, shelves config.
+- **Per-clip** (skip, don't fail): source video file, candidate metadata JSON.
+
+### Leakage Check
+
+Validates that selected clips don't appear in the `train` split when evaluating
+`val` or `test`. Raises `ValueError` on overlap.
+
+### Task 8 Evaluator Integration
+
+Delegates to existing `pickup_putdown.evaluation` module:
+- `aggregate_metrics` — precision/recall/F1 at configurable tIoU thresholds
+- `failure_gallery` — false positive/negative/type confusion tables
+- `evaluate_class_aware` — class-aware matching with type confusion detection
+
+Canonical prediction and event schemas are directly compatible — no adapter layer.
+
+### Reports
+
+Output directory contains:
+- `predictions.csv` — combined canonical predictions
+- `ground_truth.csv` — GT events filtered to evaluated clips
+- `matches.csv` — TP matches with tIoU scores
+- `false_positives.csv` — unmatched predictions
+- `false_negatives.csv` — unmatched ground truth events
+- `metrics.json` — per-class and aggregate metrics
+- `evaluation_summary.json` — full summary with clip statuses
+- `validation_report.md` — human-readable Markdown report
+
+Report labels metrics as **validation metrics** (development data), not
+independent test performance.
+
+### CLI Command
+
+```bash
+pickup-putdown evaluate-track-a \
+  --config configs/track_a.yaml \
+  --splits .local/track_a_features/splits.json \
+  --events .local/task_7_vlm/events.csv \
+  --clips .local/task_7_vlm/clips.csv \
+  --artifact-dir .local/track_a_artifacts \
+  --candidate-metadata .local/candidate_staging/metadata \
+  --source-video-dir .local/source_videos \
+  --shelves-config configs/shelves.yaml \
+  --camera-id store_camera_01 \
+  --output-dir .local/track_a_evaluation \
+  --split val \
+  --limit-clips 1 \
+  --clip-id clip_val_01 \
+  --force -v
+```
+
+Arguments: `--config`, `--splits`, `--feature-manifest`, `--events`, `--clips`,
+`--artifact-dir`, `--candidate-metadata`, `--source-video-dir`,
+`--shelves-config`, `--camera-id`, `--output-dir`, `--split`,
+`--limit-clips`, `--clip-id`, `--force`, `-v`.
+
+Default split is `val` (development data).
+
+### Makefile
+
+```bash
+make evaluate-track-a
+make evaluate-track-a TRACK_A_EVAL_SPLIT=val TRACK_A_EVAL_LIMIT=1
+make evaluate-track-a TRACK_A_EVAL_CLIP_ID=clip_val_01
+```
+
+Overridable variables: `TRACK_A_EVAL_SPLIT`, `TRACK_A_EVAL_LIMIT`,
+`TRACK_A_EVAL_OUTPUT`, `TRACK_A_EVAL_CLIP_ID`, `TRACK_A_EVAL_FORCE`,
+`TRACK_A_EVAL_VERBOSE`.
+
+### Clip Status Tracking
+
+Each clip gets a status in the summary:
+- `evaluated` — inference succeeded, metrics computed
+- `missing_source_video` — video file not found
+- `missing_candidate_metadata` — no metadata JSON for clip
+- `inference_failed` — pipeline raised an error
+- `no_ground_truth` — no GT events for clip (still produces predictions)
+
+### Files
+
+- `src/pickup_putdown/layer1/track_a/evaluation.py` — core workflow (~820 lines)
+- `src/pickup_putdown/cli.py` — `evaluate-track-a` command (~85 lines)
+- `Makefile` — `evaluate-track-a` target
+- `tests/test_track_a_evaluation.py` — 20 unit tests
+- `tests/test_track_a_evaluation_cli.py` — 12 CLI integration tests
+
+### Test Results
+
+35/35 new tests pass. Total evaluation test suite: 75/75 pass (includes
+40 existing `test_evaluation.py` tests).
+
+### Example: Single Clip
+
+```bash
+make evaluate-track-a TRACK_A_EVAL_SPLIT=val TRACK_A_EVAL_LIMIT=1
+```
+
+### Example: Two Clips
+
+```bash
+make evaluate-track-a TRACK_A_EVAL_SPLIT=val TRACK_A_EVAL_LIMIT=2
+```
+
+### Example: Full Split
+
+```bash
+make evaluate-track-a TRACK_A_EVAL_SPLIT=val
+```
+
 ## Known Limitations
 
 - Small dataset: 50 reviewed candidates, imbalanced classes, limited val coverage
@@ -286,7 +417,7 @@ Final predictions:     5
 
 ## Next
 
-- Track A Phase 6: shelf cache key stabilization, full-dataset inference, threshold tuning
-- Task 8: evaluation (precision/recall/F1 against reviewed ground truth)
+- Full-dataset inference on val split (currently only single-clip smoke tested)
+- Threshold tuning on held-out validation data
 - Track B1/B2: VideoMAE window classifiers
 - Layer 2/3: Qwen VLM verification and fusion

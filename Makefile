@@ -62,7 +62,7 @@ VIDEO ?= $(TRIAGE_INPUT)
 	annotation-pull annotation-up annotation-down annotation-restart annotation-status annotation-logs \
 	annotation-config-validate annotation-test annotation-acceptance annotation-reset \
  candidates-remote candidates-download candidates-upload candidates-generate candidates-process-local \
- track-a-dataset train-track-a infer-track-a
+ track-a-dataset train-track-a infer-track-a evaluate-track-a
 
 # ---------------------------------------------------------------------------
 # General development targets
@@ -571,7 +571,34 @@ TRACK_A_CANDIDATE_ID ?=
 TRACK_A_DEBUG_TRACES ?=
 TRACK_A_FORCE ?=
 
-train-track-a: ## Train Track A hand-state and shelf-transition classifiers
+# Track A evaluation (Phase 6)
+TRACK_A_EVAL_SPLIT ?= val
+TRACK_A_EVAL_LIMIT ?=
+TRACK_A_EVAL_OUTPUT ?= .local/track_a_evaluation
+
+evaluate-track-a: ## Run Track A evaluation: inference + Task-8 metrics + reports
+	@echo "=== Track A Evaluation ==="
+	@echo "Split:        $(TRACK_A_EVAL_SPLIT)"
+	@echo "Output:       $(TRACK_A_EVAL_OUTPUT)"
+	@TRACK_A_EVAL_EXTRA_ARGS=""; \
+	if [ -n "$(TRACK_A_EVAL_LIMIT)" ]; then TRACK_A_EVAL_EXTRA_ARGS="$$TRACK_A_EVAL_EXTRA_ARGS --limit-clips $(TRACK_A_EVAL_LIMIT)"; fi; \
+	if [ -n "$(TRACK_A_CLIP_ID)" ]; then TRACK_A_EVAL_EXTRA_ARGS="$$TRACK_A_EVAL_EXTRA_ARGS --clip-id $(TRACK_A_CLIP_ID)"; fi; \
+	set -o pipefail; \
+	$(PICKUP_PUTDOWN) evaluate-track-a \
+		--config "$(TRACK_A_CONFIG)" \
+		--splits "$(TRACK_A_OUTPUT_DIR)/splits.json" \
+		--feature-manifest "$(TRACK_A_FEATURE_MANIFEST)" \
+		--events "$(TRACK_A_EVENTS_CSV)" \
+		--clips "$(TRACK_A_CLIPS_CSV)" \
+		--artifact-dir "$(TRACK_A_ARTIFACT_DIR)" \
+		--candidate-metadata "$(TRACK_A_CANDIDATE_METADATA)" \
+		--source-video-dir "$(TRACK_A_SOURCE_VIDEO_DIR)" \
+		--shelves-config "$(TRACK_A_SHELVES_CONFIG)" \
+		--camera-id "$(TRACK_A_CAMERA_ID)" \
+		--output-dir "$(TRACK_A_EVAL_OUTPUT)" \
+		--split "$(TRACK_A_EVAL_SPLIT)" \
+		$$TRACK_A_EVAL_EXTRA_ARGS \
+		-v
 	@echo "=== Training Track A Classifiers ==="
 	@$(PICKUP_PUTDOWN) train-track-a \
 		--config "$(TRACK_A_CONFIG)" \
