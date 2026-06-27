@@ -683,3 +683,50 @@ def test_evaluate_applies_ground_truth_ignores(tmp_path: Path, app_config: AppCo
     assert result.summary["tiou@0.5"]["tp"] == 1
     assert result.summary["tiou@0.5"]["fn"] == 0
     assert result.summary["tiou@0.5"]["fp"] == 0
+
+
+# ---------------------------------------------------------------------------
+# Component-selected pipelines (run_pipeline with a filtered registry)
+# ---------------------------------------------------------------------------
+def test_components_without_evaluate_still_writes_valid_events(
+    tmp_path: Path, app_config: AppConfig, video_person: Path
+) -> None:
+    out = tmp_path / "out"
+    # Registry omits the evaluate stage; the detector still contributes a row.
+    registry: list[Stage] = [FakeTriage({}), FakePropose({}), FakeDetector()]
+
+    summary = run_pipeline(video_person, out, app_config, registry=registry)
+
+    # events.csv is written unconditionally, so dropping evaluate cannot break it.
+    assert "evaluate" not in summary["stages"]
+    assert summary["n_events"] == 1
+    events = out / video_person.stem / "events.csv"
+    assert validate_events_csv(events)
+
+
+def test_resume_across_changed_components(
+    tmp_path: Path, app_config: AppConfig, video_person: Path
+) -> None:
+    out = tmp_path / "out"
+    calls: dict[str, int] = {}
+
+    # Run 1 includes the detector.
+    run_pipeline(
+        video_person,
+        out,
+        app_config,
+        registry=[FakeTriage(calls), FakePropose(calls), FakeDetector()],
+    )
+    assert calls["triage"] == 1
+    assert calls["propose"] == 1
+
+    # Run 2 drops the detector: shared stages resume (not re-run), and the
+    # dropped stage simply never executes.
+    summary = run_pipeline(
+        video_person, out, app_config, registry=[FakeTriage(calls), FakePropose(calls)]
+    )
+    assert calls["triage"] == 1  # resumed, not re-run
+    assert calls["propose"] == 1  # resumed, not re-run
+    assert summary["stages"]["triage"]["status"] == "resumed"
+    assert summary["stages"]["propose"]["status"] == "resumed"
+    assert "track_a" not in summary["stages"]

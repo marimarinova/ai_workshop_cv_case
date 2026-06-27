@@ -70,8 +70,37 @@ def _resolve_inputs(input_path: str, *, recursive: bool = False) -> list[Path]:
         if not videos:
             typer.echo(f"No video files found in {inp}", err=True)
             raise typer.Exit(code=2)
+        if recursive:
+            # Recursive discovery can surface same-named clips from different
+            # subdirectories; outputs and clip_id are keyed by stem, so this
+            # would silently overwrite. Flat (non-recursive) listings cannot
+            # collide, so only guard the recursive path.
+            _reject_duplicate_stems(videos)
         return videos
     typer.echo(f"Input not found: {input_path}", err=True)
+    raise typer.Exit(code=2)
+
+
+def _reject_duplicate_stems(videos: list[Path]) -> None:
+    """Fail (exit 2) when two videos share a stem.
+
+    The pipeline keys per-clip outputs and ``clip_id`` by ``video.stem``
+    (``output_root/<stem>``, ``clip_<stem>``), so two same-stem inputs would
+    overwrite one another's results. Report the colliding paths clearly.
+    """
+    by_stem: dict[str, list[Path]] = {}
+    for video in videos:
+        by_stem.setdefault(video.stem, []).append(video)
+    collisions = {stem: paths for stem, paths in by_stem.items() if len(paths) > 1}
+    if not collisions:
+        return
+    for stem, paths in sorted(collisions.items()):
+        joined = ", ".join(str(path) for path in paths)
+        typer.echo(
+            f"Duplicate clip name {stem!r}: {joined} — clip names must be unique; "
+            "outputs are keyed by stem.",
+            err=True,
+        )
     raise typer.Exit(code=2)
 
 
