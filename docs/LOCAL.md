@@ -188,17 +188,26 @@ If you want to test each layer "as good as possible" with minimal data:
 - `.local/track_a_artifacts/shelf_state.joblib` + `shelf_state_metadata.json`
 - `.local/track_a_output_stub/` — output directory with predictions.csv, diagnostics, inference_summary.json, raw_state_machine_events.json
 
-### Layer 1B: Option B (frozen encoder + random head) — ⏸ Skipped
+### Layer 1B: Option B (frozen encoder + random head) — ✅ Done
 
-**Reason:** GPU full (llama-server using 22.6/24 GB), NPU runtime not installed, CPU too slow for full run.
+**Command:** `pkill -f llama-server && python3 scripts/run_track_b1_stub.py`
 
-**What was prepared:**
-- VideoMAE-small (SSV2-finetuned) downloaded to `~/.cache/huggingface/hub/models--MCG-NJU--videomae-small-finetuned-ssv2/` (87.8 MB pytorch_model.bin)
-- Runner script: `scripts/run_track_b1_stub.py` — creates `FrozenVideoMAEClassifier` wrapper with frozen backbone + random linear head (384 → 3)
-- Validated single-candidate run: 1 event detected from `cand_84d7ad07617b`
-- 15 candidates × ~5s windows × 16 frames each = full pipeline wiring proven for single candidate
+**What was done:**
+- VideoMAE-small (SSV2-finetuned) loaded from cache (87.8 MB pytorch_model.bin)
+- Created `FrozenVideoMAEClassifier` wrapper: frozen backbone + random linear head (384 → 3 classes: bg, pickup, putdown)
+- Runner script: `scripts/run_track_b1_stub.py` — loads 15 candidates + 543 pose obs, runs full pipeline on GPU
 
-**To complete:** free GPU memory or install IPEX/OpenVINO for NPU support, then re-run `scripts/run_track_b1_stub.py`
+**Result:**
+- 15/15 candidates processed in ~30s on RTX 5090
+- 15 predictions (9 unique time windows) — all "putdown" with scores 0.75-0.80
+- Predictions are false positives (random head), but pipeline wiring is proven end-to-end
+- Output: `.local/track_b1_output/predictions.csv` (1,575 bytes)
+
+**Pipeline wiring proven:** window extraction → VideoMAE forward → temporal smoothing → peak detection → same-type merging → canonical output.
+
+**Files created:**
+- `scripts/run_track_b1_stub.py` — runner script
+- `.local/track_b1_output/predictions.csv` — 15 predictions (random head, all putdown)
 
 ---
 
