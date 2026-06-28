@@ -1,7 +1,7 @@
 """Typer commands for end-to-end batch inference (task_16).
 
 Exposes the ``infer`` command (single file or directory of videos) plus placeholder
-commands for pipeline components not yet implemented (Track A/B, Layer 2/3).
+commands for pipeline components not yet implemented (Track B, Layer 2/3).
 The whole group is attached to the root CLI with a single ``add_typer`` call in
 :mod:`pickup_putdown.cli`.
 """
@@ -254,12 +254,6 @@ def _unavailable(component: str, depends_on: str) -> None:
         err=True,
     )
     raise typer.Exit(code=2)
-
-
-@infer_app.command("track-a")
-def track_a() -> None:
-    """[stub] Track A interpretable detector inference."""
-    _unavailable("track-a", "task_9/task_10")
 
 
 @infer_app.command("track-b1")
