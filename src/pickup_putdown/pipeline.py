@@ -266,6 +266,19 @@ def validate_predictions_csv(path: Path) -> bool:
 # ---------------------------------------------------------------------------
 # Orchestrator
 # ---------------------------------------------------------------------------
+def _repoint(value: str, partial_dir: Path, final_dir: Path) -> str:
+    """Rebase an output path from the partial stage dir onto the final one.
+
+    Paths not under ``partial_dir`` (e.g. a stage that wrote outside its
+    ``stage_dir``) are returned unchanged.
+    """
+    try:
+        relative = Path(value).relative_to(partial_dir)
+    except ValueError:
+        return value
+    return str(final_dir / relative)
+
+
 def _run_stage_atomic(stage: Stage, ctx: StageContext, input_hash: str) -> StageResult:
     """Run a stage into a partial dir, then promote it and write the marker last."""
     final_dir = ctx.stage_dir
@@ -285,6 +298,14 @@ def _run_stage_atomic(stage: Stage, ctx: StageContext, input_hash: str) -> Stage
     if final_dir.exists():
         shutil.rmtree(final_dir)
     os.replace(partial_dir, final_dir)
+
+    # The stage ran with ``stage_dir=partial_dir`` and built its ``outputs``
+    # paths under it; after promotion those must point at ``final_dir`` or every
+    # downstream consumer (and the persisted marker) would reference the now-gone
+    # partial directory. Remap only paths that live under ``partial_dir``.
+    result.outputs = {
+        key: _repoint(value, partial_dir, final_dir) for key, value in result.outputs.items()
+    }
 
     # Marker LAST: its presence now implies the outputs are complete.
     result.input_hash = input_hash

@@ -22,6 +22,7 @@ from pickup_putdown.pipeline import (
     StageResult,
     TrackAStage,
     TriageStage,
+    _run_stage_atomic,
     _stage_input_hash,
     run_pipeline,
     validate_predictions_csv,
@@ -32,8 +33,11 @@ from pickup_putdown.pipeline import (
 # Synthetic fixtures (tiny stand-in "videos"; injected stages do not decode)
 # ---------------------------------------------------------------------------
 @pytest.fixture
-def app_config() -> AppConfig:
-    return load_config(None)
+def app_config(tmp_path: Path) -> AppConfig:
+    # Isolate the derived cache_dir under tmp_path: run_pipeline mkdir's
+    # config.cache_dir (default "cache"), which would otherwise create ./cache
+    # in the repo working tree during tests.
+    return load_config(None).model_copy(update={"cache_dir": str(tmp_path / "cache")})
 
 
 @pytest.fixture
@@ -262,6 +266,39 @@ def test_failed_stage_leaves_no_marker_or_partial(
     assert not any(p.name.startswith("propose.partial") for p in clip_dir.iterdir())
     # The successful upstream stage kept its marker.
     assert (clip_dir / "triage" / ".stage_meta.json").is_file()
+
+
+def test_run_stage_atomic_repoints_outputs_to_final_dir(
+    tmp_path: Path, video_person: Path
+) -> None:
+    # A stage runs with stage_dir=partial_dir and builds its outputs paths under
+    # it; after promotion those must be repointed to the final dir, or a
+    # downstream consumer reading them (e.g. ProposeStage <- triage.outputs) hits
+    # a vanished partial path.
+    final_dir = tmp_path / "out" / "clip_person" / "triage"
+    ctx = StageContext(
+        clip_id="clip_person",
+        video_path=video_person,
+        output_dir=final_dir.parent,
+        stage_dir=final_dir,
+        cache_dir=tmp_path / "cache",
+        config={},
+        config_path=final_dir.parent / "resolved_config.yaml",
+        run_metadata=RunMetadata(),
+        upstream={},
+    )
+
+    result = _run_stage_atomic(FakeTriage({}), ctx, "hash123")
+
+    out_path = result.outputs["clips.txt"]
+    # The output points at the final dir (not the promoted-away partial) ...
+    assert out_path == str(final_dir / "clips.txt")
+    # ... and the file is actually there.
+    assert Path(out_path).is_file()
+    assert not any(p.name.startswith("triage.partial") for p in final_dir.parent.iterdir())
+    # The persisted marker records the final path too.
+    meta = json.loads((final_dir / ".stage_meta.json").read_text(encoding="utf-8"))
+    assert meta["outputs"]["clips.txt"] == str(final_dir / "clips.txt")
 
 
 def test_unavailable_upstream_cascades_to_downstream(
