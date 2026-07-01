@@ -1,14 +1,17 @@
 """End-to-end batch inference orchestrator (task_16).
 
 This module owns the *orchestration* layer that composes the individual stage
-commands (triage, propose, evaluate, and the not-yet-implemented detector and
-verifier stages) into a single, resumable run over one video file.
+commands into a single, resumable run over one video file. Wired and running
+today: triage (task_3), propose (task_5), the Track A detector (task_10, gated
+on trained checkpoints), and evaluate (task_8). The remaining detector/verifier
+stages are registry stubs that report *unavailable* and are skipped — see
+:class:`ComponentStub`.
 
 Design notes
 ------------
 * ``Stage`` is a :class:`typing.Protocol`. Real stages and the placeholder
-  stubs share one structural interface, so the detector stages added by
-  task_9/task_10/task_14 plug in without touching the orchestrator.
+  stubs share one structural interface, so a detector stage plugs into the
+  registry without touching the orchestrator.
 * Stage outputs are written **atomically**: a stage runs into a ``*.partial``
   directory which is promoted with :func:`os.replace`, and the
   ``.stage_meta.json`` marker is written **last** (and atomically). A crash can
@@ -664,30 +667,51 @@ class EvaluateStage:
 
 @dataclass
 class ComponentStub:
-    """Placeholder for a pipeline component implemented by a later task."""
+    """Registry placeholder for a component not reachable from the batch pipeline.
+
+    Always :meth:`is_available` ``False``, so the orchestrator skips it. Two
+    reasons a component is stubbed, recorded in ``owning_task`` / ``reason``:
+
+    * ``"merged_no_cli"`` — the module is merged (e.g. task_12 Track B1, task_14
+      Layer 2) but has no ``pickup-putdown`` inference CLI yet, so it cannot be
+      wired in;
+    * ``"unimplemented"`` — the component is not implemented yet (e.g. task_13
+      Track B2, task_15 Layer 3).
+    """
 
     name: str
     inputs: tuple[str, ...] = ()
     outputs: tuple[str, ...] = ()
-    depends_on_task: str = ""
+    owning_task: str = ""
+    reason: Literal["merged_no_cli", "unimplemented"] = "unimplemented"
 
     def is_available(self) -> bool:
         return False
 
     def run(self, ctx: StageContext) -> StageResult:  # pragma: no cover - never called
-        raise RuntimeError(f"stage {self.name} is not implemented yet ({self.depends_on_task})")
+        raise RuntimeError(
+            f"stage {self.name} is not wired into the batch pipeline "
+            f"({self.reason}, {self.owning_task})"
+        )
 
 
 def build_default_registry(config: AppConfig) -> list[Stage]:
-    """Ordered default registry: triage/propose/evaluate active, the rest stubbed."""
+    """Ordered default registry: triage/propose/track_a/evaluate active, rest stubbed."""
     return [
         TriageStage(config),
         ProposeStage(config),
         TrackAStage(config),
-        ComponentStub("track_b1", inputs=("propose",), depends_on_task="task_12"),
-        ComponentStub("track_b2", inputs=("propose",), depends_on_task="task_13"),
-        ComponentStub("layer2", inputs=("triage",), depends_on_task="task_14"),
-        ComponentStub("layer3", inputs=("layer2",), depends_on_task="task_15"),
+        # Registry order is preserved (asserted by the CLI tests). ``reason``
+        # records why each is stubbed: ``merged_no_cli`` = module merged but no
+        # inference CLI to wire in yet; ``unimplemented`` = not built yet.
+        ComponentStub(
+            "track_b1", inputs=("propose",), owning_task="task_12", reason="merged_no_cli"
+        ),
+        ComponentStub(
+            "track_b2", inputs=("propose",), owning_task="task_13", reason="unimplemented"
+        ),
+        ComponentStub("layer2", inputs=("triage",), owning_task="task_14", reason="merged_no_cli"),
+        ComponentStub("layer3", inputs=("layer2",), owning_task="task_15", reason="unimplemented"),
         EvaluateStage(config),
     ]
 

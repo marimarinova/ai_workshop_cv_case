@@ -1,7 +1,15 @@
 """Typer commands for end-to-end batch inference (task_16).
 
-Exposes the ``infer`` command (single file or directory of videos) plus placeholder
-commands for pipeline components not yet implemented (Track B, Layer 2/3).
+Exposes the ``infer`` command (single file or directory of videos) plus stub
+commands for the pipeline components that are not yet reachable from the batch
+pipeline. Two flavours of stub:
+
+* ``track-b1`` (task_12) and ``layer2`` (task_14) — the backing modules are
+  merged, but no ``pickup-putdown`` inference CLI exists for them yet, so they
+  cannot be wired in;
+* ``track-b2`` (task_13), ``verify`` / ``fuse`` (task_15) — the components are
+  not implemented yet.
+
 The whole group is attached to the root CLI with a single ``add_typer`` call in
 :mod:`pickup_putdown.cli`.
 """
