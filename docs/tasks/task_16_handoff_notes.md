@@ -37,4 +37,7 @@ handoff contract.
 - Cross-process orphan `*.partial-<pid>` stage directories from a crash in a
   previous process are not garbage-collected (no correctness impact: a missing
   marker forces reprocessing).
+- The `track-b1` (task_12) and `layer2` (task_14) modules are merged, but no
+  pickup-putdown inference CLI exists for them yet, so they are not wired into the
+  batch pipeline and remain stub commands (as do `track-b2`, `verify`, `fuse`).
 - No source videos, credentials, or model weights are committed.

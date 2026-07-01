@@ -256,10 +256,20 @@ def _unavailable(component: str, depends_on: str) -> None:
     raise typer.Exit(code=2)
 
 
+def _merged_no_cli(component: str, task: str) -> None:
+    """Stub whose backing module is merged but has no inference CLI to wire in yet."""
+    typer.echo(
+        f"Component '{component}' is not available yet: module merged ({task}) but no "
+        "pickup-putdown inference CLI exists yet, so it is not wired into the batch pipeline.",
+        err=True,
+    )
+    raise typer.Exit(code=2)
+
+
 @infer_app.command("track-b1")
 def track_b1() -> None:
     """[stub] Track B1 VideoMAE classifier inference."""
-    _unavailable("track-b1", "task_12")
+    _merged_no_cli("track-b1", "task_12")
 
 
 @infer_app.command("track-b2")
@@ -271,7 +281,7 @@ def track_b2() -> None:
 @infer_app.command("layer2")
 def layer2() -> None:
     """[stub] Layer 2 standalone Qwen inference."""
-    _unavailable("layer2", "task_14")
+    _merged_no_cli("layer2", "task_14")
 
 
 @infer_app.command("verify")
