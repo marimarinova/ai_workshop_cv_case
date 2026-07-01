@@ -11,6 +11,11 @@ handoff contract.
 - `pipeline.StageStatus` gained `"blocked"`. Top-level run status can now be
   `ok | no_person | blocked | failed`.
 - `pipeline._atomic_write_json` was promoted to public `pipeline.atomic_write_json`.
+- The canonical per-clip model output is `predictions.csv` (Prediction schema),
+  not `events.csv` — the latter is reserved for the ground-truth annotation
+  schema across the repo. Correspondingly `pipeline.CANONICAL_PREDICTION_COLUMNS`
+  and `pipeline.validate_predictions_csv`, and the `summary.json` keys
+  `predictions_csv` / `predictions_valid` / `n_predictions`.
 - `infer` accepts a file **or** a directory and, in directory mode, writes
   `batch_summary.json`. Exit codes: `0` ok, `1` directory had ≥1 failure,
   `2` bad input, `4` single-file blocked, `5` single-file failed.
@@ -18,13 +23,14 @@ handoff contract.
 ## Acceptance run and sample output
 
 - A machine-readable sample lives in [`task_16_samples/`](task_16_samples/):
-  `events.csv` (canonical header-only schema), `summary.json`, and
+  `predictions.csv` (canonical model-output header-only schema — distinct from
+  the ground-truth `events.csv` annotation schema), `summary.json`, and
   `resolved_config.yaml` (the resolved default `AppConfig`, i.e. the
   configuration a stage subprocess runs under).
 - **Honest scope:** that sample is from the **no-models path** — with no
   checkpoints on disk every model-backed stage is `unavailable`, so the run is
-  `status: "ok"` with an empty (header-only) `events.csv`. It demonstrates the
-  output contract and graceful degradation, **not** real detector events. The
+  `status: "ok"` with an empty (header-only) `predictions.csv`. It demonstrates
+  the output contract and graceful degradation, **not** real detector events. The
   full acceptance run with real pickup/putdown events is blocked on trained
   checkpoints (Task 7 / model weights) and is deferred until those land.
 
