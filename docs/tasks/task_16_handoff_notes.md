@@ -15,6 +15,19 @@ handoff contract.
   `batch_summary.json`. Exit codes: `0` ok, `1` directory had ≥1 failure,
   `2` bad input, `4` single-file blocked, `5` single-file failed.
 
+## Acceptance run and sample output
+
+- A machine-readable sample lives in [`task_16_samples/`](task_16_samples/):
+  `events.csv` (canonical header-only schema), `summary.json`, and
+  `resolved_config.yaml` (the resolved default `AppConfig`, i.e. the
+  configuration a stage subprocess runs under).
+- **Honest scope:** that sample is from the **no-models path** — with no
+  checkpoints on disk every model-backed stage is `unavailable`, so the run is
+  `status: "ok"` with an empty (header-only) `events.csv`. It demonstrates the
+  output contract and graceful degradation, **not** real detector events. The
+  full acceptance run with real pickup/putdown events is blocked on trained
+  checkpoints (Task 7 / model weights) and is deferred until those land.
+
 ## Assumptions
 
 - Stage subprocesses (`triage`, `propose`) load the same `AppConfig` schema, so

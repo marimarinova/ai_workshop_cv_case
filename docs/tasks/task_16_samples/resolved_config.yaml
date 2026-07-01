@@ -1,0 +1,131 @@
+actor_association:
+  allow_unmatched: true
+  match_iou_threshold: 0.15
+  max_gap_s: 0.5
+  min_actor_confidence: 0.3
+cache_dir: cache
+data_dir: data
+evaluation:
+  ground_truth_dir: ''
+output_dir: outputs
+pose:
+  device: auto
+  half: false
+  image_size: 640
+  max_detections: 100
+  model_path: models/pose_detector.pt
+  pose_confidence: 0.3
+  process_active_spans_only: true
+  target_fps: 8.0
+preview:
+  draw_actor_box: true
+  draw_candidate_intervals: true
+  draw_region_labels: true
+  draw_region_polygons: true
+  draw_wrist_positions: true
+  line_thickness: 2
+  max_output_height: 720
+  max_output_width: 1280
+  preview_fps: 4.0
+  text_scale: 0.5
+proposals:
+  context_after_s: 2.0
+  context_before_s: 2.0
+  maximum_candidate_duration_s: 10.0
+  merge_gap_s: 1.0
+  minimum_interaction_duration_s: 0.25
+  minimum_wrist_confidence: 0.3
+  smoothing_window: 3
+  target_fps: 8.0
+  trajectory_smoothing: false
+region_measurements:
+  expanded_margin_override: null
+  gap_tolerance_s: 0.5
+  min_dwell_duration_s: 0.25
+  min_wrist_confidence: 0.3
+  reversal_threshold: 0.3
+  velocity_window_frames: 5
+results_dir: results
+storage:
+  anonymous: false
+  bucket_uri: ''
+  endpoint_url: null
+  region: null
+track_a_features:
+  cache_dir: .local/track_a_features
+  crop_scale_method: bbox
+  encoder_batch_size: 32
+  encoder_device: auto
+  encoder_name: mobilenet_v3_small
+  encoder_version: v1.0
+  hand_crop_size: 224
+  max_interval_s: 99999.0
+  min_samples: 3
+  qa_samples_per_category: 20
+  save_crops: true
+  shelf_patch_size: 224
+track_a_stage:
+  artifact_dir: .local/track_a_artifacts
+  camera_id: store_camera_01
+  config_path: configs/track_a.yaml
+  shelves_config: configs/shelves.yaml
+track_b1:
+  batch_size: 8
+  checkpoint_dir: .local/track_b1_checkpoints
+  crop_margin: 0.15
+  freeze_backbone: true
+  image_size:
+  - 224
+  - 224
+  learning_rate: 0.0001
+  min_event_duration_s: 0.3
+  min_window_duration_s: 1.0
+  model_name: MCG-NJU/videomae-small
+  num_epochs: 20
+  num_frames: 16
+  num_workers: 4
+  results_dir: results/layer1_track_b1
+  same_type_merge_gap_s: 0.75
+  score_threshold: 0.5
+  smoothing_window: 3
+  unfreeze_last_n_blocks: 0
+  warmup_epochs: 2
+  weight_high: 1.0
+  weight_low: 0.5
+  weight_med: 1.0
+  window_duration_s: 2.5
+  window_stride_s: 0.5
+tracker:
+  match_iou_threshold: 0.5
+  max_age: 30
+  min_hits: 3
+  new_track_thresh: 0.6
+  object_threshold: 0.1
+  track_buffer: 30
+  track_high_thresh: 0.5
+  track_low_thresh: 0.1
+triage:
+  detector_confidence: 0.1
+  detector_iou_threshold: 0.7
+  device: auto
+  half: false
+  image_size: 640
+  max_detections: 100
+  max_track_observation_gap_s: 1.5
+  merge_gap_s: 1.0
+  minimum_observations: 2
+  minimum_track_confidence: 0.35
+  minimum_visible_duration_s: 0.75
+  model_path: models/person_detector.pt
+  pipeline_enabled: true
+  pipeline_frame_size:
+  - 640
+  - 640
+  pipeline_frame_timeout_s: 30.0
+  pipeline_n_decoders: 2
+  pipeline_queue_depth: 8
+  pipeline_resize_frames: false
+  preview_sample_rate: 0.1
+  sampling_seed: 42
+  target_fps: 1.0
+  tracker_config: configs/bytetrack_triage.yaml
