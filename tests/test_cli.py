@@ -3,7 +3,7 @@
 Unlike :mod:`test_cli_infer` (which monkeypatches ``run_pipeline``), these
 drive the command end-to-end through ``build_default_registry`` on a tiny
 fixture video. Without model checkpoints on disk the triage/propose stages
-report *unavailable*, so the run completes with a valid, empty ``events.csv``
+report *unavailable*, so the run completes with a valid, empty ``predictions.csv``
 and exercises the real wiring: config loading, ``resolved_config.yaml``
 materialisation, the structured output directory, and schema validation.
 
@@ -20,7 +20,7 @@ from pathlib import Path
 from typer.testing import CliRunner
 
 from pickup_putdown.cli import app
-from pickup_putdown.pipeline import validate_events_csv
+from pickup_putdown.pipeline import validate_predictions_csv
 
 runner = CliRunner()
 
@@ -49,13 +49,13 @@ def test_infer_single_file_real_registry_no_models(tmp_path: Path) -> None:
     assert (clip_dir / "run_metadata.json").is_file()
     assert (clip_dir / "summary.json").is_file()
 
-    events = clip_dir / "events.csv"
-    assert validate_events_csv(events)  # header-only but schema-valid
+    predictions = clip_dir / "predictions.csv"
+    assert validate_predictions_csv(predictions)  # header-only but schema-valid
 
     summary = json.loads((clip_dir / "summary.json").read_text(encoding="utf-8"))
     assert summary["status"] == "ok"
-    assert summary["n_events"] == 0
-    assert summary["events_valid"] is True
+    assert summary["n_predictions"] == 0
+    assert summary["predictions_valid"] is True
     # Without checkpoints the model-backed stages are unavailable.
     assert summary["stages"]["triage"]["status"] == "unavailable"
     assert summary["stages"]["propose"]["status"] == "unavailable"
@@ -76,4 +76,4 @@ def test_infer_directory_real_registry_writes_batch_summary(tmp_path: Path) -> N
     assert batch["n_failed"] == 0
     assert batch["n_ok"] == 2
     for stem in ("a", "b"):
-        assert validate_events_csv(out / stem / "events.csv")
+        assert validate_predictions_csv(out / stem / "predictions.csv")

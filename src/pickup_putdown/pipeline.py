@@ -24,7 +24,7 @@ Design notes
   (``--shelves-config``, ``--camera-id``, ``--tracker-config``) are left at
   their command defaults and do **not** invalidate a resumed stage when changed.
 * A clip with no detected person short-circuits the remaining stages and still
-  produces a valid, empty canonical ``events.csv``.
+  produces a valid, empty canonical ``predictions.csv``.
 """
 
 from __future__ import annotations
@@ -53,10 +53,12 @@ StageStatus = Literal["ok", "no_person", "resumed", "unavailable", "blocked", "f
 #: Upstream statuses that satisfy a downstream stage's declared input.
 _SATISFIED_INPUT_STATUSES: frozenset[StageStatus] = frozenset({"ok", "resumed"})
 
-#: Column order of the canonical per-clip predictions file (``events.csv``).
+#: Column order of the canonical per-clip model-output file (``predictions.csv``).
 #: Mirrors :class:`pickup_putdown.common.schemas.Prediction` and the columns
-#: consumed by :func:`pickup_putdown.evaluation.io.predictions_from_rows`.
-CANONICAL_EVENT_COLUMNS: tuple[str, ...] = (
+#: consumed by :func:`pickup_putdown.evaluation.io.predictions_from_rows`. Note
+#: this is the *predictions* artifact, distinct from the ground-truth
+#: ``events.csv`` (annotation schema) the evaluator reads as its GT input.
+CANONICAL_PREDICTION_COLUMNS: tuple[str, ...] = (
     "clip_id",
     "pred_id",
     "type",
@@ -188,11 +190,21 @@ def _git_commit() -> str:
 
 
 def build_run_metadata(config: AppConfig, *, config_path: str = "") -> RunMetadata:
-    """Build reproducibility metadata from the resolved configuration."""
+    """Build reproducibility metadata from the resolved configuration.
+
+    ``dataset_version`` / ``split_version`` / ``model_identifier`` /
+    ``checkpoint_hash`` are deliberately left at their empty defaults rather than
+    guessed: they become meaningful only once a frozen dataset (Task 7) and
+    trained detector checkpoints are in play, and are populated at that point
+    instead of being silently faked here.
+    """
     return RunMetadata(
         git_commit=_git_commit(),
         config=config_path,
         resolved_config=config.model_dump(mode="json"),
+        # The only seed carried by AppConfig today is the triage frame-sampling
+        # seed; record it as the run seed until a global run seed is introduced.
+        seed=config.triage.sampling_seed,
     )
 
 
@@ -209,22 +221,22 @@ def _collect_predictions(results: dict[str, StageResult]) -> list[dict[str, Any]
     return rows
 
 
-def _write_canonical_events(output_dir: Path, results: dict[str, StageResult]) -> Path:
-    """Write the canonical ``events.csv`` (header always present)."""
-    path = output_dir / "events.csv"
+def _write_canonical_predictions(output_dir: Path, results: dict[str, StageResult]) -> Path:
+    """Write the canonical ``predictions.csv`` (header always present)."""
+    path = output_dir / "predictions.csv"
     rows = _collect_predictions(results)
     tmp = path.with_name(f"{path.name}.tmp-{os.getpid()}")
     with tmp.open("w", newline="", encoding="utf-8") as handle:
-        writer = csv.DictWriter(handle, fieldnames=list(CANONICAL_EVENT_COLUMNS))
+        writer = csv.DictWriter(handle, fieldnames=list(CANONICAL_PREDICTION_COLUMNS))
         writer.writeheader()
         for row in rows:
-            writer.writerow({key: row.get(key, "") for key in CANONICAL_EVENT_COLUMNS})
+            writer.writerow({key: row.get(key, "") for key in CANONICAL_PREDICTION_COLUMNS})
     os.replace(tmp, path)
     return path
 
 
-def validate_events_csv(path: Path) -> bool:
-    """Return ``True`` when ``events.csv`` matches the canonical schema.
+def validate_predictions_csv(path: Path) -> bool:
+    """Return ``True`` when ``predictions.csv`` matches the canonical schema.
 
     A missing or unreadable file is treated as invalid (``False``) rather than
     raising, so callers can validate optimistically.
@@ -235,7 +247,7 @@ def validate_events_csv(path: Path) -> bool:
         return False
     with handle:
         reader = csv.DictReader(handle)
-        if tuple(reader.fieldnames or ()) != CANONICAL_EVENT_COLUMNS:
+        if tuple(reader.fieldnames or ()) != CANONICAL_PREDICTION_COLUMNS:
             return False
         for row in reader:
             try:
@@ -419,8 +431,8 @@ def run_pipeline(
         status = "blocked"
     else:
         status = "ok"
-    events_path = _write_canonical_events(output_dir, results)
-    return _write_summary(output_dir, clip_id, status, results, events_path, metadata)
+    predictions_path = _write_canonical_predictions(output_dir, results)
+    return _write_summary(output_dir, clip_id, status, results, predictions_path, metadata)
 
 
 def _write_summary(
@@ -428,7 +440,7 @@ def _write_summary(
     clip_id: str,
     status: str,
     results: dict[str, StageResult],
-    events_path: Path,
+    predictions_path: Path,
     metadata: RunMetadata,
 ) -> dict[str, Any]:
     summary: dict[str, Any] = {
@@ -436,9 +448,9 @@ def _write_summary(
         "status": status,
         "run_id": metadata.run_id,
         "git_commit": metadata.git_commit,
-        "events_csv": str(events_path),
-        "n_events": len(_collect_predictions(results)),
-        "events_valid": validate_events_csv(events_path),
+        "predictions_csv": str(predictions_path),
+        "n_predictions": len(_collect_predictions(results)),
+        "predictions_valid": validate_predictions_csv(predictions_path),
         "stages": {
             name: {
                 "status": result.status,
@@ -538,9 +550,10 @@ class TrackAStage(_CliStage):
 
     Gated on trained classifier checkpoints: until Task 7 produces
     ``hand_state.joblib`` / ``shelf_state.joblib`` the stage is *unavailable*,
-    so the orchestrator skips it and still emits a valid, empty ``events.csv``.
-    The ``infer-track-a`` ``predictions.csv`` is a superset of the canonical
-    columns (it adds ``actor_id``/``hand_side``/``region_id``), so its rows feed
+    so the orchestrator skips it and still emits a valid, empty
+    ``predictions.csv``. The ``infer-track-a`` ``predictions.csv`` is a superset
+    of the canonical columns (it adds ``actor_id``/``hand_side``/``region_id``),
+    so its rows feed
     ``summary["predictions"]`` directly — no column map.
     """
 
@@ -785,9 +798,10 @@ def _clip_durations_from_triage(ctx: StageContext) -> dict[str, float]:
 def _read_predictions_csv(path: Path) -> list[dict[str, Any]]:
     """Read an ``infer-track-a`` predictions CSV into canonical row dicts.
 
-    The file is a superset of :data:`CANONICAL_EVENT_COLUMNS` (it adds
+    The file is a superset of :data:`CANONICAL_PREDICTION_COLUMNS` (it adds
     ``actor_id``/``hand_side``/``region_id``); the extra columns are carried
-    through harmlessly and dropped when the canonical ``events.csv`` is written.
+    through harmlessly and dropped when the canonical ``predictions.csv`` is
+    written.
     """
     if not path.is_file():
         return []

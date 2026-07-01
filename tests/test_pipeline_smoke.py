@@ -15,7 +15,7 @@ import pytest
 from pickup_putdown.common.run_metadata import RunMetadata
 from pickup_putdown.config import AppConfig, load_config
 from pickup_putdown.pipeline import (
-    CANONICAL_EVENT_COLUMNS,
+    CANONICAL_PREDICTION_COLUMNS,
     EvaluateStage,
     Stage,
     StageContext,
@@ -24,7 +24,7 @@ from pickup_putdown.pipeline import (
     TriageStage,
     _stage_input_hash,
     run_pipeline,
-    validate_events_csv,
+    validate_predictions_csv,
 )
 
 
@@ -180,13 +180,13 @@ def test_person_clip_runs_full_pipeline(
     summary = run_pipeline(video_person, out, app_config, registry=_registry({}))
 
     assert summary["status"] == "ok"
-    assert summary["n_events"] == 1
-    assert summary["events_valid"] is True
+    assert summary["n_predictions"] == 1
+    assert summary["predictions_valid"] is True
     assert summary["stages"]["evaluate"]["status"] == "ok"
 
-    events = out / video_person.stem / "events.csv"
-    assert validate_events_csv(events)
-    assert events.read_text(encoding="utf-8").strip().count("\n") == 1  # header + 1 row
+    predictions = out / video_person.stem / "predictions.csv"
+    assert validate_predictions_csv(predictions)
+    assert predictions.read_text(encoding="utf-8").strip().count("\n") == 1  # header + 1 row
 
 
 def test_no_person_clip_completes_early(
@@ -196,15 +196,15 @@ def test_no_person_clip_completes_early(
     summary = run_pipeline(video_no_person, out, app_config, registry=_registry({}))
 
     assert summary["status"] == "no_person"
-    assert summary["n_events"] == 0
-    assert summary["events_valid"] is True
+    assert summary["n_predictions"] == 0
+    assert summary["predictions_valid"] is True
     # Downstream stages must not have run after early completion.
     assert "propose" not in summary["stages"]
     assert "evaluate" not in summary["stages"]
 
-    events = out / video_no_person.stem / "events.csv"
-    assert validate_events_csv(events)  # header only, still valid
-    assert events.read_text(encoding="utf-8").strip().count("\n") == 0
+    predictions = out / video_no_person.stem / "predictions.csv"
+    assert validate_predictions_csv(predictions)  # header only, still valid
+    assert predictions.read_text(encoding="utf-8").strip().count("\n") == 0
 
 
 def test_no_person_completes_early_on_resume(
@@ -367,25 +367,25 @@ def test_cli_stage_invoke_forwards_resolved_config(
     assert argv[argv.index("--config") + 1] == str(Path("cfg.yaml"))
 
 
-def test_events_csv_schema_rejects_bad_rows(tmp_path: Path) -> None:
+def test_predictions_csv_schema_rejects_bad_rows(tmp_path: Path) -> None:
     good = tmp_path / "good.csv"
     good.write_text(
         "clip_id,pred_id,type,t_start,t_end,score,model\nclip_x,p1,pickup,1.0,2.0,0.5,m\n",
         encoding="utf-8",
     )
-    assert validate_events_csv(good)
+    assert validate_predictions_csv(good)
 
     bad_score = tmp_path / "bad.csv"
     bad_score.write_text(
         "clip_id,pred_id,type,t_start,t_end,score,model\nclip_x,p1,pickup,1.0,2.0,9.9,m\n",
         encoding="utf-8",
     )
-    assert not validate_events_csv(bad_score)
+    assert not validate_predictions_csv(bad_score)
 
 
-def test_events_csv_missing_file_is_invalid_not_raising(tmp_path: Path) -> None:
+def test_predictions_csv_missing_file_is_invalid_not_raising(tmp_path: Path) -> None:
     # A missing/unreadable file must read as invalid rather than raise OSError.
-    assert validate_events_csv(tmp_path / "nope.csv") is False
+    assert validate_predictions_csv(tmp_path / "nope.csv") is False
 
 
 # ---------------------------------------------------------------------------
@@ -432,9 +432,9 @@ def test_track_a_unavailable_without_checkpoints(
     # (not failed/blocked), so the run still reports success with an empty file.
     assert summary["stages"]["track_a"]["status"] == "unavailable"
     assert summary["status"] == "ok"
-    events = out / video_person.stem / "events.csv"
-    assert validate_events_csv(events)
-    assert events.read_text(encoding="utf-8").strip().count("\n") == 0  # header only
+    predictions = out / video_person.stem / "predictions.csv"
+    assert validate_predictions_csv(predictions)
+    assert predictions.read_text(encoding="utf-8").strip().count("\n") == 0  # header only
 
 
 def test_track_a_runs_and_adapts_predictions(
@@ -493,8 +493,8 @@ def test_track_a_runs_and_adapts_predictions(
     assert 0.0 <= float(row["score"]) <= 1.0
     assert row["actor_id"] == "a1"  # extra column carried through
     # The canonical projection keeps exactly the 7 columns; extras are dropped.
-    canonical = {key: row.get(key, "") for key in CANONICAL_EVENT_COLUMNS}
-    assert tuple(canonical) == CANONICAL_EVENT_COLUMNS
+    canonical = {key: row.get(key, "") for key in CANONICAL_PREDICTION_COLUMNS}
+    assert tuple(canonical) == CANONICAL_PREDICTION_COLUMNS
 
 
 def test_track_a_resume_key_changes_with_checkpoint(
@@ -688,7 +688,7 @@ def test_evaluate_applies_ground_truth_ignores(tmp_path: Path, app_config: AppCo
 # ---------------------------------------------------------------------------
 # Component-selected pipelines (run_pipeline with a filtered registry)
 # ---------------------------------------------------------------------------
-def test_components_without_evaluate_still_writes_valid_events(
+def test_components_without_evaluate_still_writes_valid_predictions(
     tmp_path: Path, app_config: AppConfig, video_person: Path
 ) -> None:
     out = tmp_path / "out"
@@ -697,11 +697,11 @@ def test_components_without_evaluate_still_writes_valid_events(
 
     summary = run_pipeline(video_person, out, app_config, registry=registry)
 
-    # events.csv is written unconditionally, so dropping evaluate cannot break it.
+    # predictions.csv is written unconditionally, so dropping evaluate cannot break it.
     assert "evaluate" not in summary["stages"]
-    assert summary["n_events"] == 1
-    events = out / video_person.stem / "events.csv"
-    assert validate_events_csv(events)
+    assert summary["n_predictions"] == 1
+    predictions = out / video_person.stem / "predictions.csv"
+    assert validate_predictions_csv(predictions)
 
 
 def test_resume_across_changed_components(
