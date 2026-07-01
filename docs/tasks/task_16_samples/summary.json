@@ -1,0 +1,53 @@
+{
+  "clip_id": "clip_clip_demo",
+  "git_commit": "64797bce5c75447d26dec7eb2099ecccb3320e30",
+  "n_predictions": 0,
+  "predictions_csv": "clip_demo/predictions.csv",
+  "predictions_valid": true,
+  "run_id": "d05ad81ae039",
+  "stages": {
+    "evaluate": {
+      "outputs": {},
+      "status": "unavailable",
+      "summary": {
+        "blocked_on": "propose"
+      }
+    },
+    "layer2": {
+      "outputs": {},
+      "status": "unavailable",
+      "summary": {}
+    },
+    "layer3": {
+      "outputs": {},
+      "status": "unavailable",
+      "summary": {}
+    },
+    "propose": {
+      "outputs": {},
+      "status": "unavailable",
+      "summary": {}
+    },
+    "track_a": {
+      "outputs": {},
+      "status": "unavailable",
+      "summary": {}
+    },
+    "track_b1": {
+      "outputs": {},
+      "status": "unavailable",
+      "summary": {}
+    },
+    "track_b2": {
+      "outputs": {},
+      "status": "unavailable",
+      "summary": {}
+    },
+    "triage": {
+      "outputs": {},
+      "status": "unavailable",
+      "summary": {}
+    }
+  },
+  "status": "ok"
+}

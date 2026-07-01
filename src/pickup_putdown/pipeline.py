@@ -1,0 +1,840 @@
+"""End-to-end batch inference orchestrator (task_16).
+
+This module owns the *orchestration* layer that composes the individual stage
+commands into a single, resumable run over one video file. Wired and running
+today: triage (task_3), propose (task_5), the Track A detector (task_10, gated
+on trained checkpoints), and evaluate (task_8). The remaining detector/verifier
+stages are registry stubs that report *unavailable* and are skipped — see
+:class:`ComponentStub`.
+
+Design notes
+------------
+* ``Stage`` is a :class:`typing.Protocol`. Real stages and the placeholder
+  stubs share one structural interface, so a detector stage plugs into the
+  registry without touching the orchestrator.
+* Stage outputs are written **atomically**: a stage runs into a ``*.partial``
+  directory which is promoted with :func:`os.replace`, and the
+  ``.stage_meta.json`` marker is written **last** (and atomically). A crash can
+  therefore never leave a marker that points at incomplete outputs, which keeps
+  resumability honest.
+* Resumability is keyed on a content hash of the stage inputs (source checksum,
+  resolved config, git commit, upstream hashes), not merely on output-file
+  existence. Note that only the resolved :class:`~pickup_putdown.config.AppConfig`
+  feeds this hash: secondary CLI configs that are *not* part of ``AppConfig``
+  (``--shelves-config``, ``--camera-id``, ``--tracker-config``) are left at
+  their command defaults and do **not** invalidate a resumed stage when changed.
+* A clip with no detected person short-circuits the remaining stages and still
+  produces a valid, empty canonical ``predictions.csv``.
+"""
+
+from __future__ import annotations
+
+import csv
+import hashlib
+import json
+import logging
+import os
+import shutil
+import subprocess
+import sys
+from dataclasses import dataclass, field, replace
+from pathlib import Path
+from typing import Any, Literal, Protocol, runtime_checkable
+
+import yaml
+
+from pickup_putdown.common.run_metadata import RunMetadata
+from pickup_putdown.config import AppConfig, EvaluationStageConfig
+
+logger = logging.getLogger(__name__)
+
+StageStatus = Literal["ok", "no_person", "resumed", "unavailable", "blocked", "failed"]
+
+#: Upstream statuses that satisfy a downstream stage's declared input.
+_SATISFIED_INPUT_STATUSES: frozenset[StageStatus] = frozenset({"ok", "resumed"})
+
+#: Column order of the canonical per-clip model-output file (``predictions.csv``).
+#: Mirrors :class:`pickup_putdown.common.schemas.Prediction` and the columns
+#: consumed by :func:`pickup_putdown.evaluation.io.predictions_from_rows`. Note
+#: this is the *predictions* artifact, distinct from the ground-truth
+#: ``events.csv`` (annotation schema) the evaluator reads as its GT input.
+CANONICAL_PREDICTION_COLUMNS: tuple[str, ...] = (
+    "clip_id",
+    "pred_id",
+    "type",
+    "t_start",
+    "t_end",
+    "score",
+    "model",
+)
+
+_STAGE_META_NAME = ".stage_meta.json"
+_TRIAGE_STAGE = "triage"
+
+
+# ---------------------------------------------------------------------------
+# Stage contract
+# ---------------------------------------------------------------------------
+@dataclass(frozen=True)
+class StageContext:
+    """Immutable inputs handed to a stage's :meth:`Stage.run`.
+
+    ``stage_dir`` is the per-clip output directory for this stage; ``cache_dir``
+    is a cross-clip cache root (shared across the batch and across runs) where a
+    stage may keep reusable artifacts such as frozen embeddings keyed by source
+    checksum and encoder version.
+    """
+
+    clip_id: str
+    video_path: Path
+    output_dir: Path
+    stage_dir: Path
+    cache_dir: Path
+    config: dict[str, Any]
+    config_path: Path
+    run_metadata: RunMetadata
+    upstream: dict[str, StageResult]
+
+
+@dataclass
+class StageResult:
+    """Outcome of a single stage."""
+
+    name: str
+    status: StageStatus
+    outputs: dict[str, str] = field(default_factory=dict)
+    summary: dict[str, Any] = field(default_factory=dict)
+    input_hash: str = ""
+
+
+@runtime_checkable
+class Stage(Protocol):
+    """Structural contract shared by real stages and placeholder stubs."""
+
+    name: str
+    inputs: tuple[str, ...]
+    outputs: tuple[str, ...]
+
+    def is_available(self) -> bool:
+        """Return ``True`` when the stage can run in the current environment."""
+
+    def run(self, ctx: StageContext) -> StageResult:
+        """Execute the stage, writing artifacts into ``ctx.stage_dir``."""
+
+
+# ---------------------------------------------------------------------------
+# Atomic / hashing helpers
+# ---------------------------------------------------------------------------
+def _atomic_write_text(path: Path, text: str) -> None:
+    """Write ``text`` to ``path`` via a temp file + atomic rename."""
+    tmp = path.with_name(f"{path.name}.tmp-{os.getpid()}")
+    tmp.write_text(text, encoding="utf-8")
+    os.replace(tmp, path)
+
+
+def atomic_write_json(path: Path, payload: dict[str, Any]) -> None:
+    """Serialise ``payload`` to ``path`` as JSON via a temp file + atomic rename."""
+    _atomic_write_text(path, json.dumps(payload, indent=2, sort_keys=True, default=str))
+
+
+def _read_stage_meta(stage_dir: Path) -> dict[str, Any] | None:
+    meta_path = stage_dir / _STAGE_META_NAME
+    if not meta_path.is_file():
+        return None
+    try:
+        loaded: Any = json.loads(meta_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return None
+    return loaded if isinstance(loaded, dict) else None
+
+
+def _file_checksum(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1 << 20), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _stage_input_hash(stage: Stage, ctx: StageContext) -> str:
+    """Content hash that changes whenever a stage's inputs change."""
+    digest = hashlib.sha256()
+    digest.update(stage.name.encode("utf-8"))
+    digest.update(_file_checksum(ctx.video_path).encode("utf-8"))
+    digest.update(json.dumps(ctx.config, sort_keys=True, default=str).encode("utf-8"))
+    digest.update(ctx.run_metadata.git_commit.encode("utf-8"))
+    for dep in stage.inputs:
+        upstream = ctx.upstream.get(dep)
+        if upstream is not None:
+            digest.update(f"{dep}:{upstream.input_hash}".encode())
+    # A stage may fold extra, environment-derived material into its resume key
+    # (e.g. trained-checkpoint checksums that the orchestrator does not see as a
+    # file input) by exposing an optional ``resume_fingerprint(ctx)`` method.
+    fingerprint = getattr(stage, "resume_fingerprint", None)
+    if callable(fingerprint):
+        digest.update(f"fingerprint:{fingerprint(ctx)}".encode())
+    return digest.hexdigest()
+
+
+def _git_commit() -> str:
+    try:
+        completed = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except OSError:
+        return ""
+    return completed.stdout.strip() if completed.returncode == 0 else ""
+
+
+def build_run_metadata(config: AppConfig, *, config_path: str = "") -> RunMetadata:
+    """Build reproducibility metadata from the resolved configuration.
+
+    ``dataset_version`` / ``split_version`` / ``model_identifier`` /
+    ``checkpoint_hash`` are deliberately left at their empty defaults rather than
+    guessed: they become meaningful only once a frozen dataset (Task 7) and
+    trained detector checkpoints are in play, and are populated at that point
+    instead of being silently faked here.
+    """
+    return RunMetadata(
+        git_commit=_git_commit(),
+        config=config_path,
+        resolved_config=config.model_dump(mode="json"),
+        # The only seed carried by AppConfig today is the triage frame-sampling
+        # seed; record it as the run seed until a global run seed is introduced.
+        seed=config.triage.sampling_seed,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Canonical output writers
+# ---------------------------------------------------------------------------
+def _collect_predictions(results: dict[str, StageResult]) -> list[dict[str, Any]]:
+    """Gather prediction rows contributed by detector stages."""
+    rows: list[dict[str, Any]] = []
+    for result in results.values():
+        for row in result.summary.get("predictions", []):
+            if isinstance(row, dict):
+                rows.append(row)
+    return rows
+
+
+def _write_canonical_predictions(output_dir: Path, results: dict[str, StageResult]) -> Path:
+    """Write the canonical ``predictions.csv`` (header always present)."""
+    path = output_dir / "predictions.csv"
+    rows = _collect_predictions(results)
+    tmp = path.with_name(f"{path.name}.tmp-{os.getpid()}")
+    with tmp.open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(handle, fieldnames=list(CANONICAL_PREDICTION_COLUMNS))
+        writer.writeheader()
+        for row in rows:
+            writer.writerow({key: row.get(key, "") for key in CANONICAL_PREDICTION_COLUMNS})
+    os.replace(tmp, path)
+    return path
+
+
+def validate_predictions_csv(path: Path) -> bool:
+    """Return ``True`` when ``predictions.csv`` matches the canonical schema.
+
+    A missing or unreadable file is treated as invalid (``False``) rather than
+    raising, so callers can validate optimistically.
+    """
+    try:
+        handle = path.open(newline="", encoding="utf-8")
+    except OSError:
+        return False
+    with handle:
+        reader = csv.DictReader(handle)
+        if tuple(reader.fieldnames or ()) != CANONICAL_PREDICTION_COLUMNS:
+            return False
+        for row in reader:
+            try:
+                float(row["t_start"])
+                float(row["t_end"])
+                score = float(row["score"])
+            except (KeyError, TypeError, ValueError):
+                return False
+            if not 0.0 <= score <= 1.0:
+                return False
+            if row["type"] not in ("pickup", "putdown"):
+                return False
+    return True
+
+
+# ---------------------------------------------------------------------------
+# Orchestrator
+# ---------------------------------------------------------------------------
+def _repoint(value: str, partial_dir: Path, final_dir: Path) -> str:
+    """Rebase an output path from the partial stage dir onto the final one.
+
+    Paths not under ``partial_dir`` (e.g. a stage that wrote outside its
+    ``stage_dir``) are returned unchanged.
+    """
+    try:
+        relative = Path(value).relative_to(partial_dir)
+    except ValueError:
+        return value
+    return str(final_dir / relative)
+
+
+def _run_stage_atomic(stage: Stage, ctx: StageContext, input_hash: str) -> StageResult:
+    """Run a stage into a partial dir, then promote it and write the marker last."""
+    final_dir = ctx.stage_dir
+    partial_dir = final_dir.with_name(f"{final_dir.name}.partial-{os.getpid()}")
+    if partial_dir.exists():
+        shutil.rmtree(partial_dir)
+    partial_dir.mkdir(parents=True)
+
+    run_ctx = replace(ctx, stage_dir=partial_dir)
+    try:
+        result = stage.run(run_ctx)
+    except Exception:
+        shutil.rmtree(partial_dir, ignore_errors=True)
+        raise
+
+    # Promote the completed outputs into their final location.
+    if final_dir.exists():
+        shutil.rmtree(final_dir)
+    os.replace(partial_dir, final_dir)
+
+    # The stage ran with ``stage_dir=partial_dir`` and built its ``outputs``
+    # paths under it; after promotion those must point at ``final_dir`` or every
+    # downstream consumer (and the persisted marker) would reference the now-gone
+    # partial directory. Remap only paths that live under ``partial_dir``.
+    result.outputs = {
+        key: _repoint(value, partial_dir, final_dir) for key, value in result.outputs.items()
+    }
+
+    # Marker LAST: its presence now implies the outputs are complete.
+    result.input_hash = input_hash
+    atomic_write_json(
+        final_dir / _STAGE_META_NAME,
+        {
+            "name": stage.name,
+            "status": result.status,
+            "input_hash": input_hash,
+            "outputs": result.outputs,
+            "summary": result.summary,
+        },
+    )
+    return result
+
+
+def _gate_status(stage: Stage, results: dict[str, StageResult]) -> tuple[StageStatus, str] | None:
+    """Decide whether ``stage`` may run given its upstream results.
+
+    Returns ``None`` when every declared input is satisfied. Otherwise returns
+    the status to record for the gated stage plus the offending dependency: a
+    *failed* (or missing) upstream is a hard dependency failure (``"blocked"``),
+    while a merely *unavailable*/blocked upstream cascades unavailability through
+    the subtree (``"unavailable"``). This keeps a real detector with
+    ``inputs=("propose",)`` from running—and crashing—when propose produced no
+    outputs.
+    """
+    for dep in stage.inputs:
+        upstream = results.get(dep)
+        if upstream is None:
+            return ("blocked", dep)
+        if upstream.status in _SATISFIED_INPUT_STATUSES:
+            continue
+        if upstream.status == "failed":
+            return ("blocked", dep)
+        return ("unavailable", dep)
+    return None
+
+
+def run_pipeline(
+    video_path: Path,
+    output_root: Path,
+    config: AppConfig,
+    *,
+    registry: list[Stage] | None = None,
+    resume: bool = True,
+    run_metadata: RunMetadata | None = None,
+) -> dict[str, Any]:
+    """Run the full pipeline over a single video and return a JSON-able summary."""
+    # Validate the input before touching the filesystem so a bad path cannot
+    # leave behind an empty output directory (or fail later inside checksumming).
+    if not video_path.is_file():
+        raise FileNotFoundError(f"video not found: {video_path}")
+
+    stages = registry if registry is not None else build_default_registry(config)
+    clip_id = f"clip_{video_path.stem}"
+    output_dir = output_root / video_path.stem
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    # Cross-clip cache root (frozen embeddings, etc.): derived from config so it
+    # is shared across every clip in a batch and across runs, not per-clip.
+    cache_dir = Path(config.cache_dir)
+    cache_dir.mkdir(parents=True, exist_ok=True)
+
+    metadata = run_metadata if run_metadata is not None else build_run_metadata(config)
+    resolved = metadata.resolved_config
+    atomic_write_json(output_dir / "run_metadata.json", metadata.to_dict())
+
+    # Materialise the resolved config so CLI-based stages run under the exact
+    # configuration that feeds the input hash (keeping behaviour and resume
+    # honest, instead of letting each subprocess reload its own YAML default).
+    config_path = output_dir / "resolved_config.yaml"
+    _atomic_write_text(config_path, yaml.safe_dump(resolved, sort_keys=True))
+
+    results: dict[str, StageResult] = {}
+    early_complete = False
+
+    for stage in stages:
+        stage_dir = output_dir / stage.name
+        ctx = StageContext(
+            clip_id=clip_id,
+            video_path=video_path,
+            output_dir=output_dir,
+            stage_dir=stage_dir,
+            cache_dir=cache_dir,
+            config=resolved,
+            config_path=config_path,
+            run_metadata=metadata,
+            upstream=dict(results),
+        )
+
+        if not stage.is_available():
+            logger.info("stage %s is unavailable; skipping", stage.name)
+            results[stage.name] = StageResult(stage.name, "unavailable")
+            continue
+
+        gate = _gate_status(stage, results)
+        if gate is not None:
+            gated_status, dep = gate
+            logger.info("stage %s %s: upstream %r not satisfied", stage.name, gated_status, dep)
+            results[stage.name] = StageResult(
+                stage.name, gated_status, summary={"blocked_on": dep}
+            )
+            continue
+
+        input_hash = _stage_input_hash(stage, ctx)
+        cached = _read_stage_meta(stage_dir)
+        if (
+            resume
+            and cached is not None
+            and cached.get("input_hash") == input_hash
+            and cached.get("status") in ("ok", "no_person")
+        ):
+            logger.info("stage %s resumed from cache", stage.name)
+            # Preserve a cached "no_person" outcome so early completion stays
+            # status-driven on resume too; everything else reads as "resumed".
+            cached_status = cached.get("status")
+            resumed_status: StageStatus = (
+                "no_person" if cached_status == "no_person" else "resumed"
+            )
+            results[stage.name] = StageResult(
+                name=stage.name,
+                status=resumed_status,
+                outputs=dict(cached.get("outputs", {})),
+                summary=dict(cached.get("summary", {})),
+                input_hash=input_hash,
+            )
+        else:
+            results[stage.name] = _run_stage_atomic(stage, ctx, input_hash)
+
+        if stage.name == _TRIAGE_STAGE and results[stage.name].status == "no_person":
+            logger.info("no person detected in %s; completing early", clip_id)
+            early_complete = True
+            break
+
+    # A blocked/failed stage must not let the run report success.
+    all_statuses = {result.status for result in results.values()}
+    status: StageStatus
+    if early_complete:
+        status = "no_person"
+    elif "failed" in all_statuses:
+        status = "failed"
+    elif "blocked" in all_statuses:
+        status = "blocked"
+    else:
+        status = "ok"
+    predictions_path = _write_canonical_predictions(output_dir, results)
+    return _write_summary(output_dir, clip_id, status, results, predictions_path, metadata)
+
+
+def _write_summary(
+    output_dir: Path,
+    clip_id: str,
+    status: str,
+    results: dict[str, StageResult],
+    predictions_path: Path,
+    metadata: RunMetadata,
+) -> dict[str, Any]:
+    summary: dict[str, Any] = {
+        "clip_id": clip_id,
+        "status": status,
+        "run_id": metadata.run_id,
+        "git_commit": metadata.git_commit,
+        "predictions_csv": str(predictions_path),
+        "n_predictions": len(_collect_predictions(results)),
+        "predictions_valid": validate_predictions_csv(predictions_path),
+        "stages": {
+            name: {
+                "status": result.status,
+                "outputs": result.outputs,
+                "summary": {k: v for k, v in result.summary.items() if k != "predictions"},
+            }
+            for name, result in results.items()
+        },
+    }
+    atomic_write_json(output_dir / "summary.json", summary)
+    return summary
+
+
+# ---------------------------------------------------------------------------
+# Stage implementations
+# ---------------------------------------------------------------------------
+class _CliStage:
+    """Base for stages that shell out to an existing ``pickup_putdown.cli`` command."""
+
+    name: str = ""
+    inputs: tuple[str, ...] = ()
+    outputs: tuple[str, ...] = ()
+
+    def __init__(self, config: AppConfig) -> None:
+        self._config = config
+
+    def is_available(self) -> bool:  # pragma: no cover - overridden
+        return False
+
+    def _invoke(self, args: list[str], config_path: Path) -> None:
+        completed = subprocess.run(
+            [sys.executable, "-m", "pickup_putdown.cli", *args, "--config", str(config_path)],
+            check=False,
+        )
+        if completed.returncode != 0:
+            raise RuntimeError(f"stage {self.name} failed (exit {completed.returncode})")
+
+
+class TriageStage(_CliStage):
+    """Stage A: person detection + active-span triage (task_3)."""
+
+    name = "triage"
+    inputs: tuple[str, ...] = ()
+    outputs: tuple[str, ...] = ("tracks_person.parquet", "active_spans.parquet", "clips.parquet")
+
+    def is_available(self) -> bool:
+        return Path(self._config.triage.model_path).is_file()
+
+    def run(self, ctx: StageContext) -> StageResult:
+        self._invoke(
+            ["triage", str(ctx.video_path), "--output-dir", str(ctx.stage_dir)],
+            ctx.config_path,
+        )
+        has_person = _clips_have_person(ctx.stage_dir / "clips.parquet")
+        return StageResult(
+            name=self.name,
+            status="no_person" if not has_person else "ok",
+            outputs={name: str(ctx.stage_dir / name) for name in self.outputs},
+            summary={"has_person": has_person},
+        )
+
+
+class ProposeStage(_CliStage):
+    """Stage B: pose-based interaction proposals (task_5)."""
+
+    name = "propose"
+    inputs: tuple[str, ...] = ("triage",)
+    outputs: tuple[str, ...] = ("candidates.parquet", "tracks_pose.parquet")
+
+    def is_available(self) -> bool:
+        return Path(self._config.pose.model_path).is_file()
+
+    def run(self, ctx: StageContext) -> StageResult:
+        triage = ctx.upstream["triage"]
+        self._invoke(
+            [
+                "propose",
+                str(ctx.video_path),
+                "--person-tracks",
+                triage.outputs["tracks_person.parquet"],
+                "--active-spans",
+                triage.outputs["active_spans.parquet"],
+                "--output-dir",
+                str(ctx.stage_dir),
+            ],
+            ctx.config_path,
+        )
+        return StageResult(
+            name=self.name,
+            status="ok",
+            outputs={name: str(ctx.stage_dir / name) for name in self.outputs},
+        )
+
+
+class TrackAStage(_CliStage):
+    """Track A interpretable detector (task_10), wired to ``infer-track-a``.
+
+    Gated on trained classifier checkpoints: until Task 7 produces
+    ``hand_state.joblib`` / ``shelf_state.joblib`` the stage is *unavailable*,
+    so the orchestrator skips it and still emits a valid, empty
+    ``predictions.csv``. The ``infer-track-a`` ``predictions.csv`` is a superset
+    of the canonical columns (it adds ``actor_id``/``hand_side``/``region_id``),
+    so its rows feed
+    ``summary["predictions"]`` directly — no column map.
+    """
+
+    name = "track_a"
+    inputs: tuple[str, ...] = ("propose",)
+    outputs: tuple[str, ...] = ("predictions.csv",)
+
+    def _checkpoints(self) -> tuple[Path, Path]:
+        artifact_dir = Path(self._config.track_a_stage.artifact_dir)
+        return artifact_dir / "hand_state.joblib", artifact_dir / "shelf_state.joblib"
+
+    def is_available(self) -> bool:
+        hand, shelf = self._checkpoints()
+        return hand.is_file() and shelf.is_file()
+
+    def resume_fingerprint(self, ctx: StageContext) -> str:
+        """Fold trained-checkpoint content into the stage's resume key.
+
+        ``_stage_input_hash`` hashes video + config + upstream, but not the
+        classifier artifacts; without this, swapping in freshly trained
+        checkpoints (Task 7) would be served a stale cached result.
+        """
+        digest = hashlib.sha256()
+        for path in self._checkpoints():
+            if path.is_file():
+                digest.update(_file_checksum(path).encode("utf-8"))
+        return digest.hexdigest()
+
+    def run(self, ctx: StageContext) -> StageResult:
+        stage_cfg = self._config.track_a_stage
+        propose = ctx.upstream["propose"]
+        # ``infer-track-a`` takes its own Track A YAML as ``--config`` (distinct
+        # from the resolved AppConfig); ``_invoke`` appends it as the trailing
+        # ``--config``, so it is passed here as the config-path argument.
+        #
+        # ``--clip-id`` is intentionally omitted: in per-clip batch the candidates
+        # parquet holds only this clip, so filtering is redundant and a clip-id
+        # convention mismatch would instead yield zero matches (a hard error).
+        #
+        # Activation caveats (to revisit when the gate is switched on after Task 7):
+        #  * a non-zero ``infer-track-a`` exit — including the "no candidates"
+        #    case — raises from ``_invoke`` and marks the whole clip ``failed``;
+        #  * actor_id/hand_side/region_id enrichment needs the Task 9
+        #    ``feature_dataset.parquet`` under ``--cache-dir``; absent it, the
+        #    detector emits empty predictions rather than failing.
+        self._invoke(
+            [
+                "infer-track-a",
+                "--candidates",
+                propose.outputs["candidates.parquet"],
+                "--pose-observations",
+                propose.outputs["tracks_pose.parquet"],
+                "--source-video-dir",
+                str(ctx.video_path.parent),
+                "--shelves-config",
+                stage_cfg.shelves_config,
+                "--camera-id",
+                stage_cfg.camera_id,
+                "--artifact-dir",
+                stage_cfg.artifact_dir,
+                "--cache-dir",
+                str(ctx.cache_dir),
+                "--output-dir",
+                str(ctx.stage_dir),
+            ],
+            Path(stage_cfg.config_path),
+        )
+        predictions = _read_predictions_csv(ctx.stage_dir / "predictions.csv")
+        return StageResult(
+            name=self.name,
+            status="ok",
+            outputs={name: str(ctx.stage_dir / name) for name in self.outputs},
+            summary={"predictions": predictions},
+        )
+
+
+class EvaluateStage:
+    """Aggregate detector predictions and score them with the task_8 evaluator.
+
+    Predictions contributed by detector stages are always gathered. When
+    ``evaluation.ground_truth_dir`` is configured and a per-clip ground-truth
+    ``events.csv`` exists, the stage scores them with the Task 8 evaluator and
+    writes the full metric bundle; otherwise it writes a stable, zero-prediction
+    stub so downstream tooling has a consistent artifact. Activation is a config
+    change (point at frozen Task 7 ground truth), not a code change.
+    """
+
+    name = "evaluate"
+    inputs: tuple[str, ...] = ("propose",)
+    outputs: tuple[str, ...] = ("metrics.json",)
+
+    def __init__(self, config: AppConfig) -> None:
+        self._config = config
+
+    def is_available(self) -> bool:
+        return True
+
+    def run(self, ctx: StageContext) -> StageResult:
+        predictions = [
+            row
+            for result in ctx.upstream.values()
+            for row in result.summary.get("predictions", [])
+            if isinstance(row, dict)
+        ]
+        metrics = _evaluate_predictions(predictions, ctx, self._config.evaluation)
+        if metrics["evaluated"]:
+            # Serialise via the Task 8 serialiser; kept off the disabled path so a
+            # common pre-Task-7 run never imports the (numpy-heavy) evaluator.
+            from pickup_putdown.evaluation import report
+
+            _atomic_write_text(
+                ctx.stage_dir / "metrics.json",
+                report.metrics_to_json(metrics, indent=2, sort_keys=True, default=str),
+            )
+        else:
+            atomic_write_json(ctx.stage_dir / "metrics.json", metrics)
+        return StageResult(
+            name=self.name,
+            status="ok",
+            outputs={"metrics.json": str(ctx.stage_dir / "metrics.json")},
+            summary=metrics,
+        )
+
+
+@dataclass
+class ComponentStub:
+    """Registry placeholder for a component not reachable from the batch pipeline.
+
+    Always :meth:`is_available` ``False``, so the orchestrator skips it. Two
+    reasons a component is stubbed, recorded in ``owning_task`` / ``reason``:
+
+    * ``"merged_no_cli"`` — the module is merged (e.g. task_12 Track B1, task_14
+      Layer 2) but has no ``pickup-putdown`` inference CLI yet, so it cannot be
+      wired in;
+    * ``"unimplemented"`` — the component is not implemented yet (e.g. task_13
+      Track B2, task_15 Layer 3).
+    """
+
+    name: str
+    inputs: tuple[str, ...] = ()
+    outputs: tuple[str, ...] = ()
+    owning_task: str = ""
+    reason: Literal["merged_no_cli", "unimplemented"] = "unimplemented"
+
+    def is_available(self) -> bool:
+        return False
+
+    def run(self, ctx: StageContext) -> StageResult:  # pragma: no cover - never called
+        raise RuntimeError(
+            f"stage {self.name} is not wired into the batch pipeline "
+            f"({self.reason}, {self.owning_task})"
+        )
+
+
+def build_default_registry(config: AppConfig) -> list[Stage]:
+    """Ordered default registry: triage/propose/track_a/evaluate active, rest stubbed."""
+    return [
+        TriageStage(config),
+        ProposeStage(config),
+        TrackAStage(config),
+        # Registry order is preserved (asserted by the CLI tests). ``reason``
+        # records why each is stubbed: ``merged_no_cli`` = module merged but no
+        # inference CLI to wire in yet; ``unimplemented`` = not built yet.
+        ComponentStub(
+            "track_b1", inputs=("propose",), owning_task="task_12", reason="merged_no_cli"
+        ),
+        ComponentStub(
+            "track_b2", inputs=("propose",), owning_task="task_13", reason="unimplemented"
+        ),
+        ComponentStub("layer2", inputs=("triage",), owning_task="task_14", reason="merged_no_cli"),
+        ComponentStub("layer3", inputs=("layer2",), owning_task="task_15", reason="unimplemented"),
+        EvaluateStage(config),
+    ]
+
+
+def _evaluate_predictions(
+    prediction_rows: list[dict[str, Any]],
+    ctx: StageContext,
+    config: EvaluationStageConfig,
+) -> dict[str, Any]:
+    """Score predictions against frozen ground truth when configured.
+
+    Returns the full Task 8 metric bundle (``evaluated`` True) when
+    ``ground_truth_dir`` is set and a per-clip ``<clip_id>.csv`` exists; otherwise
+    an ``n_predictions`` / ``evaluated: False`` stub — the pre-Task-7 contract.
+    """
+    stub: dict[str, Any] = {"n_predictions": len(prediction_rows), "evaluated": False}
+    if not config.ground_truth_dir:
+        return stub
+    gt_path = Path(config.ground_truth_dir) / f"{ctx.clip_id}.csv"
+    if not gt_path.is_file():
+        return stub
+
+    # Lazy: the evaluator package pulls numpy; keep it off the disabled path.
+    from pickup_putdown.evaluation import io, metrics
+
+    ignores_path = Path(config.ground_truth_dir) / f"{ctx.clip_id}.ignores.csv"
+    ignores = (
+        io.ignores_from_rows(io.read_csv(str(ignores_path))) if ignores_path.is_file() else []
+    )
+    bundle = metrics.aggregate_metrics(
+        io.load_events_csv(str(gt_path)),
+        io.predictions_from_rows(prediction_rows),
+        _clip_durations_from_triage(ctx),
+        ignores,
+    )
+    bundle["n_predictions"] = len(prediction_rows)
+    bundle["evaluated"] = True
+    bundle["ground_truth"] = str(gt_path)
+    return bundle
+
+
+def _clip_durations_from_triage(ctx: StageContext) -> dict[str, float]:
+    """Best-effort ``{clip_id: duration_s}`` from the triage ``clips.parquet``.
+
+    Feeds Task 8 mAP normalisation; on any failure (no triage upstream, missing or
+    legacy parquet) returns ``{}`` so scoring still proceeds without mAP
+    normalisation rather than failing the stage.
+    """
+    triage = ctx.upstream.get("triage")
+    if triage is None:
+        return {}
+    clips_path = triage.outputs.get("clips.parquet")
+    if not clips_path or not Path(clips_path).is_file():
+        return {}
+    try:
+        import pyarrow.parquet as pq
+
+        table = pq.read_table(clips_path, columns=["clip_id", "duration_s"])  # type: ignore[no-untyped-call]
+        return {
+            str(clip_id): float(duration)
+            for clip_id, duration in zip(
+                table.column("clip_id").to_pylist(),
+                table.column("duration_s").to_pylist(),
+                strict=False,
+            )
+        }
+    except (OSError, KeyError, ValueError):
+        return {}
+
+
+def _read_predictions_csv(path: Path) -> list[dict[str, Any]]:
+    """Read an ``infer-track-a`` predictions CSV into canonical row dicts.
+
+    The file is a superset of :data:`CANONICAL_PREDICTION_COLUMNS` (it adds
+    ``actor_id``/``hand_side``/``region_id``); the extra columns are carried
+    through harmlessly and dropped when the canonical ``predictions.csv`` is
+    written.
+    """
+    if not path.is_file():
+        return []
+    with path.open(newline="", encoding="utf-8") as handle:
+        return [dict(row) for row in csv.DictReader(handle)]
+
+
+def _clips_have_person(clips_path: Path) -> bool:
+    """Best-effort read of the triage ``clips.parquet`` ``has_person`` column."""
+    if not clips_path.is_file():
+        return False
+    import pyarrow.parquet as pq
+
+    table = pq.read_table(clips_path, columns=["has_person"])  # type: ignore[no-untyped-call]
+    return any(bool(value) for value in table.column("has_person").to_pylist())

@@ -1,0 +1,62 @@
+# task_16 — Handoff Notes (batch CLI / end-to-end inference)
+
+Short note accompanying the `feature/task-16-batch-cli` work, per the task
+handoff contract.
+
+## Interface changes
+
+- `pipeline.StageContext` gained two fields: `config_path` (resolved config
+  materialised to YAML for CLI-based stages) and `cache_dir` (cross-clip cache
+  root, derived from `AppConfig.cache_dir`).
+- `pipeline.StageStatus` gained `"blocked"`. Top-level run status can now be
+  `ok | no_person | blocked | failed`.
+- `pipeline._atomic_write_json` was promoted to public `pipeline.atomic_write_json`.
+- The canonical per-clip model output is `predictions.csv` (Prediction schema),
+  not `events.csv` — the latter is reserved for the ground-truth annotation
+  schema across the repo. Correspondingly `pipeline.CANONICAL_PREDICTION_COLUMNS`
+  and `pipeline.validate_predictions_csv`, and the `summary.json` keys
+  `predictions_csv` / `predictions_valid` / `n_predictions`.
+- `infer` accepts a file **or** a directory and, in directory mode, writes
+  `batch_summary.json`. Exit codes: `0` ok, `1` directory had ≥1 failure,
+  `2` bad input, `4` single-file blocked, `5` single-file failed.
+
+## Acceptance run and sample output
+
+- A machine-readable sample lives in [`task_16_samples/`](task_16_samples/):
+  `predictions.csv` (canonical model-output header-only schema — distinct from
+  the ground-truth `events.csv` annotation schema), `summary.json`, and
+  `resolved_config.yaml` (the resolved default `AppConfig`, i.e. the
+  configuration a stage subprocess runs under).
+- **Honest scope:** that sample is from the **no-models path** — with no
+  checkpoints on disk every model-backed stage is `unavailable`, so the run is
+  `status: "ok"` with an empty (header-only) `predictions.csv`. It demonstrates
+  the output contract and graceful degradation, **not** real detector events. The
+  full acceptance run with real pickup/putdown events is blocked on trained
+  checkpoints (Task 7 / model weights) and is deferred until those land.
+
+## Assumptions
+
+- Stage subprocesses (`triage`, `propose`) load the same `AppConfig` schema, so
+  the orchestrator forwards the resolved config via `--config`; this keeps the
+  resume input-hash consistent with the behaviour it hashes.
+- A stage is gated on its declared `inputs`: a *failed* upstream blocks it;
+  a merely *unavailable* upstream cascades unavailability through the subtree.
+
+## Known limitations
+
+- **The executed triage/propose subprocess path (`_CliStage._invoke`) is not
+  covered by tests without real model checkpoints.** Integration tests
+  (`tests/test_cli.py`) drive the real registry, but with no `.pt` files on
+  disk the model-backed stages report *unavailable*, so the actual subprocess
+  invocation is exercised only when checkpoints are present (out of scope for
+  CI smoke testing).
+- Secondary configs not part of `AppConfig` — `tracker_config`,
+  `shelves_config`, `camera_id` — are left at their CLI defaults and do not
+  feed the resume input-hash.
+- Cross-process orphan `*.partial-<pid>` stage directories from a crash in a
+  previous process are not garbage-collected (no correctness impact: a missing
+  marker forces reprocessing).
+- The `track-b1` (task_12) and `layer2` (task_14) modules are merged, but no
+  pickup-putdown inference CLI exists for them yet, so they are not wired into the
+  batch pipeline and remain stub commands (as do `track-b2`, `verify`, `fuse`).
+- No source videos, credentials, or model weights are committed.
